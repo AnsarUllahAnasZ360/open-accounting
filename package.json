@@ -1,0 +1,23 @@
+{
+  "name": "ottex-ai-accounting",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.26.2",
+  "scripts": {
+    "dev": "pnpm --filter @ottex/web dev",
+    "build": "pnpm --filter @ottex/web build",
+    "lint": "pnpm --filter @ottex/web lint",
+    "typecheck": "pnpm --filter @ottex/web typecheck",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.42",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@auth/core": "^0.37.0",
+    "@convex-dev/auth": "^0.0.93",
+    "convex": "^1.40.0"
+  }
+}

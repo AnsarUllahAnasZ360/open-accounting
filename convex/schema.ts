@@ -315,6 +315,29 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_entity", ["entityId"]),
+  receiptEmbeddings: defineTable({
+    entityId: v.id("entities"),
+    documentId: v.id("documents"),
+    vendor: v.string(),
+    date: v.string(),
+    totalMinor: v.number(),
+    currency: v.string(),
+    sourceText: v.string(),
+    embedding: v.array(v.float64()),
+    embeddingModel: v.string(),
+    matchedTransactionId: v.optional(v.id("transactions")),
+    matchScore: v.optional(v.number()),
+    status: v.union(v.literal("active"), v.literal("stale")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_document", ["documentId"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1024,
+      filterFields: ["entityId"],
+    }),
   invoices: defineTable({
     entityId: v.id("entities"),
     contactId: v.id("contacts"),

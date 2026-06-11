@@ -12,7 +12,7 @@ import {
 } from "./bedrockCategorizer";
 import { requireWorkspaceRole } from "./authz";
 import { assertNonNegativeMinorUnit } from "./money";
-import { embedSemanticText } from "./semanticMemory";
+import { embedSemanticText, SEMANTIC_MEMORY_DIMENSIONS } from "./semanticMemory";
 
 const documentKindValidator = v.union(v.literal("receipt"), v.literal("bill"));
 
@@ -63,6 +63,13 @@ type ReceiptMatchCandidate = {
 type ReceiptEmbeddingMatch = {
   transactionId: Id<"transactions">;
   score: number;
+};
+
+type ReceiptEmbeddingMatchResult = {
+  match: ReceiptEmbeddingMatch | null;
+  sourceText: string;
+  embedding: number[];
+  embeddingModel: string;
 };
 
 function titleCase(value: string) {
@@ -278,6 +285,15 @@ export function chooseBestReceiptEmbeddingMatch(
     .filter((candidate) => candidate.score >= 0.78)
     .sort((a, b) => b.score - a.score)[0] ?? null;
   return best;
+}
+
+export function assertReceiptEmbeddingVector(embedding: number[]) {
+  if (
+    embedding.length !== SEMANTIC_MEMORY_DIMENSIONS ||
+    embedding.some((value) => !Number.isFinite(value))
+  ) {
+    throw new Error(`Receipt embeddings must be ${SEMANTIC_MEMORY_DIMENSIONS} finite numbers.`);
+  }
 }
 
 async function findReceiptMatch(
@@ -498,6 +514,73 @@ export const applyBedrockExtraction = internalMutation({
   },
 });
 
+export const upsertReceiptEmbedding = internalMutation({
+  args: {
+    entityId: v.id("entities"),
+    documentId: v.id("documents"),
+    vendor: v.string(),
+    date: v.string(),
+    totalMinor: v.number(),
+    currency: v.string(),
+    sourceText: v.string(),
+    embedding: v.array(v.float64()),
+    embeddingModel: v.string(),
+    matchedTransactionId: v.optional(v.id("transactions")),
+    matchScore: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    assertReceiptEmbeddingVector(args.embedding);
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new Error("OpenBooks entity not found.");
+    }
+    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    const document = await ctx.db.get(args.documentId);
+    if (!document || document.entityId !== entity._id) {
+      throw new Error("Receipt embedding must belong to a document on this entity.");
+    }
+    const matchedTransaction = args.matchedTransactionId
+      ? await ctx.db.get(args.matchedTransactionId)
+      : null;
+    if (matchedTransaction && matchedTransaction.entityId !== entity._id) {
+      throw new Error("Receipt embedding match must use a transaction from the same entity.");
+    }
+    assertNonNegativeMinorUnit(args.totalMinor, "Receipt total");
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("receiptEmbeddings")
+      .withIndex("by_document", (q) => q.eq("documentId", document._id))
+      .first();
+    const row = {
+      entityId: entity._id,
+      documentId: document._id,
+      vendor: args.vendor,
+      date: args.date,
+      totalMinor: args.totalMinor,
+      currency: args.currency.trim().toUpperCase() || entity.currency,
+      sourceText: args.sourceText,
+      embedding: args.embedding,
+      embeddingModel: args.embeddingModel,
+      ...(matchedTransaction ? { matchedTransactionId: matchedTransaction._id } : {}),
+      ...(args.matchScore !== undefined ? { matchScore: args.matchScore } : {}),
+      status: "active" as const,
+      updatedAt: now,
+    };
+    if (existing) {
+      await ctx.db.replace(existing._id, {
+        ...row,
+        createdAt: existing.createdAt,
+      });
+      return { receiptEmbeddingId: existing._id, status: "updated" as const };
+    }
+    const receiptEmbeddingId = await ctx.db.insert("receiptEmbeddings", {
+      ...row,
+      createdAt: now,
+    });
+    return { receiptEmbeddingId, status: "created" as const };
+  },
+});
+
 function receiptVisionPrompt(kind: string) {
   return [
     `Extract ${kind === "bill" ? "bill" : "receipt"} fields for OpenBooks.`,
@@ -558,17 +641,17 @@ async function findReceiptEmbeddingMatch(
     currency: string;
     embeddingsModel: string | null;
   },
-): Promise<ReceiptEmbeddingMatch | null> {
+): Promise<ReceiptEmbeddingMatchResult | null> {
   if (!args.embeddingsModel) return null;
+  const sourceText = buildReceiptEmbeddingText(args);
+  const receiptEmbedding = await embedSemanticText({
+    modelId: args.embeddingsModel,
+    text: sourceText,
+  });
   const candidates: ReceiptMatchCandidate[] = await ctx.runQuery(internal.receipts.receiptEmbeddingCandidates, {
     entityId: args.entityId,
     date: args.date,
     totalMinor: args.totalMinor,
-  });
-  if (candidates.length === 0) return null;
-  const receiptEmbedding = await embedSemanticText({
-    modelId: args.embeddingsModel,
-    text: buildReceiptEmbeddingText(args),
   });
   const scored = await Promise.all(
     candidates.map(async (candidate) => {
@@ -582,7 +665,12 @@ async function findReceiptEmbeddingMatch(
       };
     }),
   );
-  return chooseBestReceiptEmbeddingMatch(scored);
+  return {
+    match: chooseBestReceiptEmbeddingMatch(scored),
+    sourceText,
+    embedding: receiptEmbedding.vector,
+    embeddingModel: receiptEmbedding.modelId,
+  };
 }
 
 export const extractWithBedrock = action({
@@ -632,9 +720,9 @@ export const extractWithBedrock = action({
         return { mode: "fallback", status: "skipped", reason: extracted.notes };
       }
 
-      let embeddingMatch: ReceiptEmbeddingMatch | null = null;
+      let embeddingResult: ReceiptEmbeddingMatchResult | null = null;
       try {
-        embeddingMatch = await findReceiptEmbeddingMatch(ctx, {
+        embeddingResult = await findReceiptEmbeddingMatch(ctx, {
           entityId: context.entity.id,
           vendor: extracted.vendor,
           date: extracted.date,
@@ -643,7 +731,7 @@ export const extractWithBedrock = action({
           embeddingsModel: context.embeddingsModel,
         });
       } catch {
-        embeddingMatch = null;
+        embeddingResult = null;
       }
 
       const result: ApplyBedrockExtractionResult = await ctx.runMutation(internal.receipts.applyBedrockExtraction, {
@@ -654,13 +742,37 @@ export const extractWithBedrock = action({
         currency: context.entity.currency,
         confidence: extracted.confidence,
         notes: extracted.notes,
-        ...(embeddingMatch
+        ...(embeddingResult?.match
           ? {
-              embeddingMatchedTransactionId: embeddingMatch.transactionId,
-              embeddingMatchScore: embeddingMatch.score,
+              embeddingMatchedTransactionId: embeddingResult.match.transactionId,
+              embeddingMatchScore: embeddingResult.match.score,
             }
           : {}),
       });
+      if (embeddingResult) {
+        try {
+          const _: { receiptEmbeddingId: Id<"receiptEmbeddings">; status: "created" | "updated" } = await ctx.runMutation(
+            internal.receipts.upsertReceiptEmbedding,
+            {
+              entityId: context.entity.id,
+              documentId: context.document.id,
+              vendor: extracted.vendor,
+              date: extracted.date,
+              totalMinor: extracted.totalMinor,
+              currency: context.entity.currency,
+              sourceText: embeddingResult.sourceText,
+              embedding: embeddingResult.embedding,
+              embeddingModel: embeddingResult.embeddingModel,
+              ...(result.matchedTransactionId ? { matchedTransactionId: result.matchedTransactionId } : {}),
+              ...(embeddingResult.match?.transactionId === result.matchedTransactionId
+                ? { matchScore: embeddingResult.match.score }
+                : {}),
+            },
+          );
+        } catch {
+          // Receipt extraction remains useful even if vector persistence falls back.
+        }
+      }
       return { mode: "bedrock", ...result };
     } catch (error) {
       return {

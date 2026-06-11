@@ -323,7 +323,8 @@ image-OCR attempt. Working: five deterministic PNG fixtures, Convex file
 storage, filename/manual metadata extraction with confidence display, Bedrock
 vision extraction for PNG/JPEG/WebP when Bedrock env/model is present,
 heuristic auto-match, embedding-assisted match as a bounded tie-breaker,
-receipt inbox queueing, and manual match from Bills. Still open: PDF OCR.
+persisted receipt vectors, receipt inbox queueing, and manual match from Bills.
+Still open: PDF OCR.
 
 Done when: uploading 5 sample receipts auto-matches or sensibly queues ≥4.
 If extraction quality blocks this, ship upload + manual match and log the gap.

@@ -1,0 +1,13 @@
+
+> openbooks@0.0.0 test:unit /Users/ansarullahanas/Documents/OpenBooks
+> vitest run --passWithNoTests -- convex/receipts.test.ts
+
+
+ RUN  v4.1.8 /Users/ansarullahanas/Documents/OpenBooks
+
+
+ Test Files  13 passed (13)
+      Tests  57 passed (57)
+   Start at  11:54:40
+   Duration  5.32s (transform 995ms, setup 0ms, import 2.30s, tests 7.27s, environment 564ms)
+

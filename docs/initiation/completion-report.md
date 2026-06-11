@@ -27,7 +27,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 11 | Full data export | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m7-settings-export.json` | Settings export passed in reports spec. |
 | 12 | Plaid sandbox connect → sync → pipeline | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m9-plaid-settings-e2e.png` | Sandbox-ready path connects, selects accounts, syncs Plaid-shaped rows through the pipeline, shows recent imports, and simulates relink. Durable access-token persistence remains a hardening item. |
 | 13 | Stripe test sync + payout drill-down + invoice via Stripe | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-object-ids.json` | Stripe spec passed in the final production run; payout reconciliation remains fixture-backed per sandbox-reality notes and webhook registration remains a product deviation. |
-| 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png` | Report-backed chat and confirmed Uber rule pass in production. Full five-question semantic/tool-call verification remains partial. |
+| 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png`; `docs/initiation/evidence/2026-06-11-m10-semantic-memory-focused-e2e.txt` | Report-backed chat, confirmed Uber rule, Bedrock categorizer, and vector-backed semantic correction memory pass. Full streaming/tool-call chat and live five-question semantic verification remain partial. |
 | 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m11-bedrock-receipt-ocr-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-bedrock-receipt-ocr-e2e.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Image uploads now attempt Bedrock vision OCR in a Convex action, then fall back to filename/manual metadata. PDF OCR and embedding-assisted matching remain open allowed degradations. |
 | 16 | Mobile usability (4 core surfaces) | PARTIAL | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-mobile.png`; `docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png` | Dashboard mobile evidenced; Inbox/Transactions are covered in core responsive spec. Chat mobile still needs a dedicated screenshot. |
 | 17 | Audit log attribution (user/rule/AI) | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png` | User/rule ledger history and confirmed AI rule evidence are present. Full audit attribution matrix remains partial. |
@@ -62,7 +62,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 |---|---|---|---|
 | Product spec §4 / §6.8 | M10 ships a real Bedrock categorization action plus a report-backed deterministic chat, not full Vercel AI SDK streaming with Bedrock chat/tool calls. | The safe increment proves confirm-first actions, provider/degraded state, and ledger-safe routing; the Bedrock categorizer now produces structured proposals but chat remains deterministic/report-backed. | Add the AI SDK provider registry, streaming `useChat`, server-side read/action tools, and route chat tool calls through Bedrock before marking M10 fully complete. |
 | Product spec §4 | Bedrock categorization is available as a single-transaction Convex action, not yet a batched worker over sync/import queues. | This gets the model proposal path real without changing Plaid/Stripe/CSV sync semantics late in the acceptance run. | Feed uncategorized imported transactions through the action in controlled batches with job status and retry/degraded handling. |
-| Product spec §4 | Correction memory is table-backed by merchant/category; it is not yet a Convex vector index over embeddings. | This keeps the ledger/pipeline invariant testable while avoiding a fake embedding implementation. | Add embedding generation in Convex actions, store vectors in a vector-indexed memory table, and use top-k memory in the LLM categorizer. |
+| Product spec §4 | Correction memory now has a Convex vector-indexed embedding table for semantic categorization memory, but it is not yet a batched worker over all imported uncategorized rows. | This keeps the ledger/pipeline invariant testable: exact and semantic memory still route through `pipeline.routeTransaction`, while Bedrock embedding calls stay in Convex actions. | Feed uncategorized sync/import queues through the semantic memory and Bedrock categorizer actions with job status, retry/degraded handling, and live eval evidence. |
 | Goal §2 categorization eval | Recorded 5-row backend fixture accuracy, not the full seeded >=100-row live eval. | CLI execution lacks the signed-in owner workspace context required by authorization. | Add an authenticated eval runner and record the full seeded eval before final acceptance. |
 | Product spec §5.2 / M11 | Receipt extraction now attempts Bedrock vision OCR for PNG/JPEG/WebP uploads, but PDF OCR and live model-quality evidence remain partial. | The milestone explicitly allows degradation to upload + manual match; the app now tries Bedrock when safe and keeps the current manual review/match UI as fallback. | Add PDF/image conversion and authenticated live OCR quality evidence before marking receipt extraction fully complete. |
 | Product spec §5.2 / M11 | Matching is heuristic by amount/date/merchant plus manual match, not embedding-assisted. | Embedding memory remains part of the open M10/M11 AI gap. | Add embedding generation/search for receipts once the vector memory layer is in place. |
@@ -910,7 +910,7 @@ PASS/PARTIAL table:
 Next:
 
 - Implement seed reset as a real job: lock per workspace/entity, clear in chunks, route in chunks, expose status, and make Playwright wait on status. Then rerun full `pnpm test:e2e` from a clean state.
-- Add authenticated full seeded categorization eval, Bedrock receipt OCR, embedding memory/matching, durable Plaid access-token sync, and Stripe webhook HTTP route before claiming final v1 complete.
+- Add authenticated full seeded categorization eval, receipt PDF OCR, receipt embedding-assisted matching, batched categorization workers, durable Plaid access-token sync, and Stripe webhook HTTP route before claiming final v1 complete.
 
 ### 2026-06-11 09:22 CDT — M13 Acceptance closure
 
@@ -943,9 +943,9 @@ Verification:
 Remaining partials:
 
 - M10 chat remains report-backed/deterministic rather than full AI SDK streaming + Bedrock tool-call implementation; categorization now has a real Bedrock Runtime action for structured proposals.
-- Correction memory is table-backed, not vector/embedding-backed.
+- Correction memory now has a vector-indexed semantic memory table, but batched categorization workers over all imports remain open.
 - Live seeded >=100-row eval still needs an authenticated owner-context runner; fixture eval remains 5/5 = 100.0%.
-- Receipts remain upload + filename/manual extraction + heuristic/manual match; Bedrock OCR and embedding match remain open.
+- Receipts now attempt Bedrock image OCR, but PDF OCR and receipt embedding-assisted transaction matching remain open.
 - Stripe webhook registration remains open; payout E2E remains fixture-backed per sandbox-reality notes.
 
 ### 2026-06-11 09:31 CDT — M1 landing prototype exact-copy correction
@@ -1045,3 +1045,41 @@ PASS/PARTIAL table:
 | Existing receipt workflow | PASS | Focused Playwright test still uploads all five fixtures and manually matches a pending receipt. |
 | PDF OCR | PARTIAL | PDF uploads remain supported for storage/manual matching but are not converted for Bedrock vision extraction yet. |
 | Embedding-assisted matching | PARTIAL | Matching remains heuristic by amount/date/merchant plus manual match; vector/embedding receipt search remains open. |
+
+### 2026-06-11 10:12 CDT — M10 Semantic correction memory
+
+What changed:
+
+- Added `aiMemoryEmbeddings`, a dedicated Convex vector-indexed table for correction-memory embeddings with a 1024-dimension `by_embedding` vector index filtered by entity.
+- Added `convex/semanticMemory.ts` for Bedrock Titan embedding payloads, response-vector validation, internal semantic-memory search, and embedding-aware confirm/recategorize action wrappers.
+- Wired Inbox confirmations and Transaction recategorization to the embedding-aware action wrappers. The ledger write still happens inside internal pipeline mutations; Bedrock embedding calls happen only in Convex actions.
+- Added a pre-LLM semantic-memory lookup to `bedrockCategorizer.categorizeAndRouteTransaction`. Exact merchant correction memory still wins first; semantic memory routes as stage 4 memory through `pipeline.routeTransaction`; LLM categorization remains stage 6.
+- Added unit coverage for embedding payload hygiene, vector validation, and semantic-memory proposals routing through the existing memory stage.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m10-semantic-memory-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m10-semantic-memory-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m10-semantic-memory-convex-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-m10-semantic-memory-focused-e2e.txt`
+
+Verification:
+
+- `pnpm test:unit -- convex/ai.test.ts convex/pipeline.test.ts convex/receipts.test.ts` green; current unit total is 12 files / 50 tests.
+- `pnpm verify` green: typecheck, lint, Next.js production build, and 12 unit files / 50 tests.
+- `npx convex dev --once` green: semantic memory functions compile on the dev deployment.
+- `npx convex deploy --yes` green: Convex production deployed and added `aiMemoryEmbeddings.by_embedding` plus supporting indexes.
+- `pnpm test:e2e -- tests/e2e/ai-chat.spec.ts tests/e2e/receipts.spec.ts` green: 2/2 focused browser specs passed after UI switched to embedding-aware action wrappers.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Convex vector memory table | PASS | `aiMemoryEmbeddings.by_embedding` is deployed in production with 1024 dimensions and entity filtering. |
+| Bedrock embedding path | PASS | Titan embedding payload and response validation are implemented in a Convex action path. |
+| Human correction memory write | PASS | Inbox confirm and Transactions recategorize use action wrappers that post through pipeline mutations, then attempt embedding upsert. |
+| Categorizer memory lookup | PASS | Bedrock categorizer checks semantic memory before LLM categorization and routes matches through the existing memory stage. |
+| Ledger invariant | PASS | Semantic memory never writes journal rows directly; posting remains inside `pipeline.routeTransaction` / `ledger.postEntry`. |
+| Batched import worker | PARTIAL | Plaid/Stripe/CSV import queues are not yet automatically batched through the semantic memory and Bedrock categorizer actions. |
+| Receipt embedding match | PARTIAL | Receipt-to-transaction matching still uses heuristic amount/date/merchant plus manual match. |
+| Streaming chat/tools | PARTIAL | Chat remains report-backed/deterministic rather than AI SDK streaming with Bedrock tool calls. |

@@ -283,6 +283,15 @@ call. Still open: vector memory/embeddings, batched categorization over sync/imp
 queues, AI SDK provider registry, streaming/full-page chat, and live authenticated
 eval scoring.
 
+M10 semantic-memory note, 2026-06-11: added `aiMemoryEmbeddings` with a Convex
+vector index, Bedrock Titan embedding payload/response validation, embedding-aware
+Inbox/Transactions confirmation actions, and a pre-LLM semantic-memory lookup in
+the Bedrock categorizer. Exact merchant memory still wins first, and semantic
+memory routes through the existing pipeline memory stage rather than writing
+ledger rows directly. Still open: batched categorization over sync/import queues,
+AI SDK provider registry, streaming/full-page chat, live authenticated eval
+scoring, and receipt-specific embedding-assisted transaction matching.
+
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules
 after confirmation; eval accuracy logged.
@@ -355,7 +364,7 @@ and the acceptance table is filled. The seed-reset blocker was resolved with a
 workspace-scoped seed job lock plus a production-safe reset harness. Final
 local/dev `pnpm test:e2e` is 15/15 and final production-domain
 `pnpm test:e2e` is 15/15. The completion report still records product-level
-partials such as full Bedrock/vector AI depth, receipt OCR/embedding matching,
+partials such as full Bedrock AI/chat depth, receipt embedding matching,
 and Stripe webhook registration.
 
 Done when: every acceptance row has a status and evidence; the outcome in

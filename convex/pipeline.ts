@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, type MutationCtx } from "./_generated/server";
+import { internalMutation, mutation, type MutationCtx } from "./_generated/server";
 import { type AIAutonomy, shouldAutoPostAI } from "./ai";
 import { requireWorkspaceRole } from "./authz";
 import { assertSignedMinorUnit } from "./money";
@@ -14,6 +14,11 @@ const aiProposalValidator = v.object({
   reasoning: v.string(),
   needsHuman: v.boolean(),
   question: v.optional(v.string()),
+});
+const semanticMemoryProposalValidator = v.object({
+  categoryAccountId: v.id("ledgerAccounts"),
+  confidence: v.number(),
+  reasoning: v.string(),
 });
 
 function directionFor(amountMinor: number) {
@@ -387,6 +392,7 @@ export const routeTransaction = mutation({
     evalExpectedAccountId: v.optional(v.id("ledgerAccounts")),
     evalSet: v.optional(v.boolean()),
     plaidPriorAccountId: v.optional(v.id("ledgerAccounts")),
+    semanticMemoryProposal: v.optional(semanticMemoryProposalValidator),
     aiProposal: v.optional(aiProposalValidator),
   },
   handler: async (ctx, args) => {
@@ -544,6 +550,24 @@ export const routeTransaction = mutation({
       });
     }
 
+    if (args.semanticMemoryProposal && !args.forceReview) {
+      return await routeProposedCategory(ctx, {
+        entity,
+        bankAccount,
+        transactionId,
+        date: args.date,
+        amountMinor: args.amountMinor,
+        merchant: args.merchant,
+        source: args.source,
+        sourceId: args.externalId,
+        categoryAccountId: args.semanticMemoryProposal.categoryAccountId,
+        confidence: args.semanticMemoryProposal.confidence,
+        reasoning: args.semanticMemoryProposal.reasoning,
+        stage: "memory",
+        now,
+      });
+    }
+
     if (args.plaidPriorAccountId && !args.forceReview) {
       return await routeProposedCategory(ctx, {
         entity,
@@ -604,59 +628,135 @@ export const routeTransaction = mutation({
   },
 });
 
+async function confirmTransactionCore(
+  ctx: MutationCtx,
+  args: {
+    transactionId: Id<"transactions">;
+    categoryAccountId?: Id<"ledgerAccounts">;
+  },
+) {
+  const { entity, transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
+  if (transaction.entryId) {
+    await ctx.db.patch(transaction._id, {
+      review: "confirmed",
+      updatedAt: Date.now(),
+    });
+    return { entryId: transaction.entryId, status: "confirmed" as const };
+  }
+  const bankAccount = transaction.bankAccountId ? await ctx.db.get(transaction.bankAccountId) : null;
+  if (!bankAccount || bankAccount.entityId !== transaction.entityId) {
+    throw new Error("Transaction needs a bank account before it can be posted.");
+  }
+  const categoryAccountId = args.categoryAccountId ?? transaction.categoryAccountId;
+  if (!categoryAccountId) {
+    throw new Error("Choose a category before confirming this transaction.");
+  }
+  const entryId = await postTransactionEntry(ctx, {
+    entity,
+    bankAccount,
+    date: transaction.date,
+    amountMinor: transaction.amountMinor,
+    merchant: transaction.merchant,
+    source: transaction.source,
+    sourceId: transaction.externalId,
+    categoryAccountId,
+    memoSuffix: "human confirmed",
+  });
+  const now = Date.now();
+  await ctx.db.patch(transaction._id, {
+    review: "confirmed",
+    categoryAccountId,
+    entryId,
+    decidedBy: "rule",
+    confidence: 1,
+    reasoning: "Confirmed by human from the Inbox.",
+    updatedAt: now,
+  });
+  await recordCorrectionMemory(ctx, {
+    entity,
+    transaction,
+    categoryAccountId,
+    now,
+  });
+  await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
+  return { entryId, status: "confirmed" as const };
+}
+
 export const confirmTransaction = mutation({
   args: {
     transactionId: v.id("transactions"),
     categoryAccountId: v.optional(v.id("ledgerAccounts")),
   },
   handler: async (ctx, args) => {
-    const { entity, transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
-    if (transaction.entryId) {
-      await ctx.db.patch(transaction._id, {
-        review: "confirmed",
-        updatedAt: Date.now(),
-      });
-      return { entryId: transaction.entryId, status: "confirmed" as const };
-    }
-    const bankAccount = transaction.bankAccountId ? await ctx.db.get(transaction.bankAccountId) : null;
-    if (!bankAccount || bankAccount.entityId !== transaction.entityId) {
-      throw new Error("Transaction needs a bank account before it can be posted.");
-    }
-    const categoryAccountId = args.categoryAccountId ?? transaction.categoryAccountId;
-    if (!categoryAccountId) {
-      throw new Error("Choose a category before confirming this transaction.");
-    }
-    const entryId = await postTransactionEntry(ctx, {
-      entity,
-      bankAccount,
-      date: transaction.date,
-      amountMinor: transaction.amountMinor,
-      merchant: transaction.merchant,
-      source: transaction.source,
-      sourceId: transaction.externalId,
-      categoryAccountId,
-      memoSuffix: "human confirmed",
-    });
-    const now = Date.now();
-    await ctx.db.patch(transaction._id, {
-      review: "confirmed",
-      categoryAccountId,
-      entryId,
-      decidedBy: "rule",
-      confidence: 1,
-      reasoning: "Confirmed by human from the Inbox.",
-      updatedAt: now,
-    });
-    await recordCorrectionMemory(ctx, {
-      entity,
-      transaction,
-      categoryAccountId,
-      now,
-    });
-    await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
-    return { entryId, status: "confirmed" as const };
+    return await confirmTransactionCore(ctx, args);
   },
 });
+
+export const confirmTransactionInternal = internalMutation({
+  args: {
+    transactionId: v.id("transactions"),
+    categoryAccountId: v.optional(v.id("ledgerAccounts")),
+  },
+  handler: async (ctx, args) => {
+    return await confirmTransactionCore(ctx, args);
+  },
+});
+
+async function recategorizeTransactionCore(
+  ctx: MutationCtx,
+  args: {
+    transactionId: Id<"transactions">;
+    categoryAccountId: Id<"ledgerAccounts">;
+  },
+) {
+  const { entity, transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
+  const categoryAccount = await ctx.db.get(args.categoryAccountId);
+  if (!categoryAccount || categoryAccount.entityId !== transaction.entityId || categoryAccount.archived) {
+    throw new Error("Choose an active category on this entity.");
+  }
+  const bankAccount = transaction.bankAccountId ? await ctx.db.get(transaction.bankAccountId) : null;
+  if (!bankAccount || bankAccount.entityId !== transaction.entityId) {
+    throw new Error("Transaction needs a bank account before it can be recategorized.");
+  }
+  if (transaction.entryId) {
+    await reverseExistingEntry(ctx, {
+      entityId: transaction.entityId,
+      entryId: transaction.entryId,
+      date: transaction.date,
+      memo: `${transaction.merchant} - reverse old category`,
+      sourceId: transaction._id,
+    });
+  }
+  const entryId = await postTransactionEntry(ctx, {
+    entity,
+    bankAccount,
+    date: transaction.date,
+    amountMinor: transaction.amountMinor,
+    merchant: transaction.merchant,
+    source: transaction.source,
+    sourceId: transaction.externalId,
+    categoryAccountId: args.categoryAccountId,
+    memoSuffix: "recategorized",
+  });
+  const now = Date.now();
+  await ctx.db.patch(transaction._id, {
+    review: "confirmed",
+    categoryAccountId: args.categoryAccountId,
+    entryId,
+    decidedBy: "rule",
+    confidence: 1,
+    reasoning: "Recategorized by human with reversal and repost.",
+    updatedAt: now,
+  });
+  await recordCorrectionMemory(ctx, {
+    entity,
+    transaction,
+    categoryAccountId: args.categoryAccountId,
+    now,
+  });
+  await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
+  return { entryId, status: "recategorized" as const };
+}
 
 export const recategorizeTransaction = mutation({
   args: {
@@ -664,53 +764,17 @@ export const recategorizeTransaction = mutation({
     categoryAccountId: v.id("ledgerAccounts"),
   },
   handler: async (ctx, args) => {
-    const { entity, transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
-    const categoryAccount = await ctx.db.get(args.categoryAccountId);
-    if (!categoryAccount || categoryAccount.entityId !== transaction.entityId || categoryAccount.archived) {
-      throw new Error("Choose an active category on this entity.");
-    }
-    const bankAccount = transaction.bankAccountId ? await ctx.db.get(transaction.bankAccountId) : null;
-    if (!bankAccount || bankAccount.entityId !== transaction.entityId) {
-      throw new Error("Transaction needs a bank account before it can be recategorized.");
-    }
-    if (transaction.entryId) {
-      await reverseExistingEntry(ctx, {
-        entityId: transaction.entityId,
-        entryId: transaction.entryId,
-        date: transaction.date,
-        memo: `${transaction.merchant} - reverse old category`,
-        sourceId: transaction._id,
-      });
-    }
-    const entryId = await postTransactionEntry(ctx, {
-      entity,
-      bankAccount,
-      date: transaction.date,
-      amountMinor: transaction.amountMinor,
-      merchant: transaction.merchant,
-      source: transaction.source,
-      sourceId: transaction.externalId,
-      categoryAccountId: args.categoryAccountId,
-      memoSuffix: "recategorized",
-    });
-    const now = Date.now();
-    await ctx.db.patch(transaction._id, {
-      review: "confirmed",
-      categoryAccountId: args.categoryAccountId,
-      entryId,
-      decidedBy: "rule",
-      confidence: 1,
-      reasoning: "Recategorized by human with reversal and repost.",
-      updatedAt: now,
-    });
-    await recordCorrectionMemory(ctx, {
-      entity,
-      transaction,
-      categoryAccountId: args.categoryAccountId,
-      now,
-    });
-    await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
-    return { entryId, status: "recategorized" as const };
+    return await recategorizeTransactionCore(ctx, args);
+  },
+});
+
+export const recategorizeTransactionInternal = internalMutation({
+  args: {
+    transactionId: v.id("transactions"),
+    categoryAccountId: v.id("ledgerAccounts"),
+  },
+  handler: async (ctx, args) => {
+    return await recategorizeTransactionCore(ctx, args);
   },
 });
 

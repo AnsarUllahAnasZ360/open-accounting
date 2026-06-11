@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { Check, Download, FileText, FileUp, History, Layers2, ReceiptText, Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -263,7 +263,7 @@ export function DashboardScreen() {
 
 export function InboxScreen() {
   const inbox = useQuery(api.coreViews.inbox, {});
-  const confirmTransaction = useMutation(api.pipeline.confirmTransaction);
+  const confirmTransaction = useAction(api.semanticMemory.confirmTransactionWithMemoryEmbedding);
   const excludeTransaction = useMutation(api.pipeline.excludeTransaction);
   const createRuleFromTransaction = useMutation(api.pipeline.createRuleFromTransaction);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -534,7 +534,7 @@ export function TransactionsScreen() {
   const [manualMerchant, setManualMerchant] = useState("Manual import");
   const [csvText, setCsvText] = useState("date,description,amount\n2026-06-30,Sample CSV expense,-25.00");
   const data = useQuery(api.coreViews.transactions, { review, search });
-  const recategorizeTransaction = useMutation(api.pipeline.recategorizeTransaction);
+  const recategorizeTransaction = useAction(api.semanticMemory.recategorizeTransactionWithMemoryEmbedding);
   const excludeTransaction = useMutation(api.pipeline.excludeTransaction);
   const splitTransaction = useMutation(api.pipeline.splitTransaction);
   const routeTransaction = useMutation(api.pipeline.routeTransaction);

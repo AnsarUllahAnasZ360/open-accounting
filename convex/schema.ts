@@ -206,6 +206,28 @@ export default defineSchema({
   })
     .index("by_entity", ["entityId"])
     .index("by_entity_and_merchant_key_and_direction", ["entityId", "merchantKey", "direction"]),
+  aiMemoryEmbeddings: defineTable({
+    entityId: v.id("entities"),
+    correctionMemoryId: v.id("aiCorrectionMemories"),
+    merchantKey: v.string(),
+    merchantDisplayName: v.string(),
+    direction: v.union(v.literal("inflow"), v.literal("outflow")),
+    categoryAccountId: v.id("ledgerAccounts"),
+    sourceText: v.string(),
+    embedding: v.array(v.float64()),
+    embeddingModel: v.string(),
+    occurrenceCount: v.number(),
+    status: v.union(v.literal("active"), v.literal("rule_suggested")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_memory", ["correctionMemoryId"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1024,
+      filterFields: ["entityId"],
+    }),
   aiEvalRuns: defineTable({
     entityId: v.id("entities"),
     evaluatedCount: v.number(),

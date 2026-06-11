@@ -10,6 +10,12 @@ import {
   normalizeBedrockCategorizationProposal,
   parseBedrockCategorizationText,
 } from "./bedrockCategorizer";
+import {
+  SEMANTIC_MEMORY_DIMENSIONS,
+  bedrockEmbeddingPayload,
+  buildMemoryEmbeddingText,
+  extractEmbeddingVector,
+} from "./semanticMemory";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -222,6 +228,37 @@ describe("M10 AI backend", () => {
     });
   });
 
+  it("builds bounded semantic memory embedding payloads for Titan", () => {
+    const text = buildMemoryEmbeddingText({
+      merchant: "Cafe Izmir",
+      rawDescription: "Cafe Izmir team meal",
+      amountMinor: -2400,
+      currency: "usd",
+    });
+    const payload = bedrockEmbeddingPayload("amazon.titan-embed-text-v2:0", text);
+    const body = JSON.parse(payload.body) as { inputText: string; dimensions: number; normalize: boolean };
+
+    expect(text).toContain("merchant: Cafe Izmir");
+    expect(text).toContain("direction: outflow");
+    expect(text).not.toContain("AWS_SECRET_ACCESS_KEY");
+    expect(payload).toMatchObject({
+      contentType: "application/json",
+      accept: "application/json",
+    });
+    expect(body).toMatchObject({
+      dimensions: SEMANTIC_MEMORY_DIMENSIONS,
+      normalize: true,
+    });
+  });
+
+  it("validates Bedrock embedding vectors before storage", () => {
+    const vector = Array.from({ length: SEMANTIC_MEMORY_DIMENSIONS }, (_, index) => index / SEMANTIC_MEMORY_DIMENSIONS);
+
+    expect(extractEmbeddingVector({ embedding: vector })).toHaveLength(SEMANTIC_MEMORY_DIMENSIONS);
+    expect(() => extractEmbeddingVector({ embedding: [1, 2, 3] })).toThrow(/1024/);
+    expect(() => bedrockEmbeddingPayload("anthropic.claude-3-5-sonnet", "text")).toThrow(/Titan/);
+  });
+
   it("reports degraded provider status when Bedrock env is absent", async () => {
     vi.stubEnv("AI_PROVIDER", "");
     vi.stubEnv("AWS_ACCESS_KEY_ID", "");
@@ -430,6 +467,37 @@ describe("M10 AI backend", () => {
         autoPost: false,
         categoryAccountId: ids.mealsAccountId,
       });
+    });
+  });
+
+  it("routes semantic memory proposals through the existing memory stage", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const session = authed(t, ids.userId);
+
+    const result = await session.mutation(api.pipeline.routeTransaction, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      date: "2026-05-14",
+      amountMinor: -9900,
+      currency: "USD",
+      merchant: "Figma",
+      rawDescription: "Figma monthly subscription",
+      status: "posted",
+      source: "bank",
+      externalId: "txn-semantic-memory-1",
+      semanticMemoryProposal: {
+        categoryAccountId: ids.softwareAccountId,
+        confidence: 0.91,
+        reasoning: "Semantic memory matched a prior design-software correction.",
+      },
+    });
+
+    expect(result).toMatchObject({ status: "posted", stage: "rule" });
+    await t.run(async (ctx) => {
+      const transaction = await ctx.db.get(result.transactionId);
+      expect(transaction?.decidedBy).toBe("memory");
+      expect(transaction?.reasoning).toContain("Semantic memory matched");
     });
   });
 

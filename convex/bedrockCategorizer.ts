@@ -1,7 +1,7 @@
 import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, type ActionCtx } from "./_generated/server";
 
@@ -63,6 +63,11 @@ type PipelineProposal = {
   reasoning: string;
   needsHuman: boolean;
   question?: string;
+};
+type SemanticMemoryProposal = {
+  categoryAccountId: Id<"ledgerAccounts">;
+  confidence: number;
+  reasoning: string;
 };
 
 type NormalizedProposal = {
@@ -481,6 +486,7 @@ async function routeThroughPipeline(
   ctx: ActionCtx,
   args: RouteTransactionArgs,
   aiProposal: PipelineProposal | null,
+  semanticMemoryProposal?: SemanticMemoryProposal | null,
 ): Promise<RouteResult> {
   return await ctx.runMutation(api.pipeline.routeTransaction, {
     entityId: args.entityId,
@@ -501,6 +507,7 @@ async function routeThroughPipeline(
     ...(args.evalExpectedAccountId ? { evalExpectedAccountId: args.evalExpectedAccountId } : {}),
     ...(args.evalSet ? { evalSet: args.evalSet } : {}),
     ...(args.plaidPriorAccountId ? { plaidPriorAccountId: args.plaidPriorAccountId } : {}),
+    ...(semanticMemoryProposal ? { semanticMemoryProposal } : {}),
     ...(aiProposal ? { aiProposal } : {}),
   });
 }
@@ -569,6 +576,33 @@ export const categorizeAndRouteTransaction = action({
     }
 
     try {
+      const semanticMemoryProposal: SemanticMemoryProposal | null = await ctx.runAction(
+        internal.semanticMemory.proposeCategorizationMemory,
+        {
+          entityId: args.entityId,
+          merchant: args.merchant,
+          rawDescription: args.rawDescription,
+          amountMinor: args.amountMinor,
+          currency: args.currency,
+        },
+      );
+      if (semanticMemoryProposal) {
+        return {
+          mode: "bedrock" as const,
+          provider: "bedrock" as const,
+          model: env.modelId,
+          proposal: {
+            categoryAccountId: semanticMemoryProposal.categoryAccountId,
+            accountNumber: "memory",
+            categoryName: "Semantic memory",
+            confidence: semanticMemoryProposal.confidence,
+            needsHuman: false,
+          },
+          fallbackReason: null,
+          route: await routeThroughPipeline(ctx, args, null, semanticMemoryProposal),
+        };
+      }
+
       const prompt = buildCategorizationPrompt({
         entityName: context.entity.name,
         amountMinor: args.amountMinor,

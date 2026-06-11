@@ -1,0 +1,11 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test -- tests/e2e/ai-chat.spec.ts tests/e2e/receipts.spec.ts
+
+
+Running 2 tests using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first (1.2m)
+  ✓  2 [chromium] › tests/e2e/receipts.spec.ts:40:5 › M11 receipt fixtures upload, extract metadata, queue, and manually match (10.7s)
+
+  2 passed (1.4m)

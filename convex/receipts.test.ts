@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractReceiptMetadataFromFileName } from "./receipts";
+import { normalizeBedrockReceiptExtraction, extractReceiptMetadataFromFileName } from "./receipts";
 
 describe("M11 receipt extraction helpers", () => {
   it("extracts deterministic fixture metadata from receipt filenames", () => {
@@ -25,5 +25,39 @@ describe("M11 receipt extraction helpers", () => {
       confidence: 0.35,
       source: "bedrock_degraded",
     });
+  });
+
+  it("normalizes Bedrock receipt extraction into minor units", () => {
+    const result = normalizeBedrockReceiptExtraction(
+      {
+        vendor: "Figma",
+        date: "2026-05-14",
+        total: 99,
+        currency: "USD",
+        confidence: 0.84,
+        notes: "Clear receipt image.",
+      },
+      "USD",
+    );
+
+    expect(result).toMatchObject({
+      vendor: "Figma",
+      date: "2026-05-14",
+      totalMinor: 9900,
+      confidence: 0.84,
+      source: "bedrock_vision",
+    });
+  });
+
+  it("keeps incomplete Bedrock extraction in degraded review", () => {
+    const result = normalizeBedrockReceiptExtraction({ vendor: "Unknown" }, "USD");
+
+    expect(result).toMatchObject({
+      vendor: "Unknown",
+      date: null,
+      totalMinor: null,
+      source: "bedrock_degraded",
+    });
+    expect(result.confidence).toBeLessThanOrEqual(0.55);
   });
 });

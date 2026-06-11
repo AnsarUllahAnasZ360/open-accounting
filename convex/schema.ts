@@ -285,7 +285,7 @@ export default defineSchema({
     date: v.string(),
     totalMinor: v.number(),
     currency: v.string(),
-    extractionSource: v.optional(v.union(v.literal("filename_fixture"), v.literal("manual"), v.literal("bedrock_degraded"))),
+    extractionSource: v.optional(v.union(v.literal("filename_fixture"), v.literal("manual"), v.literal("bedrock_degraded"), v.literal("bedrock_vision"))),
     extractionConfidence: v.optional(v.number()),
     extractionNotes: v.optional(v.string()),
     matchedTransactionId: v.optional(v.id("transactions")),

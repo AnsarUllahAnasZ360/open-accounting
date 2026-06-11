@@ -77,6 +77,12 @@ type RouteResult = {
   stage: string;
 };
 
+export type BedrockPayload = {
+  contentType: string;
+  accept: string;
+  body: string;
+};
+
 type BedrockEnv = {
   ready: boolean;
   region: string | null;
@@ -95,7 +101,7 @@ function present(value: string | undefined) {
   return Boolean(value && value.trim().length > 0);
 }
 
-function bedrockEnv(modelFromConfig: string | null): BedrockEnv {
+export function bedrockRuntimeEnv(modelFromConfig: string | null): BedrockEnv {
   const modelId = modelFromConfig ?? process.env.AI_MODEL?.trim() ?? null;
   const region = process.env.AWS_REGION?.trim() ?? null;
   const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim() ?? null;
@@ -154,7 +160,7 @@ function amzDateParts(now = new Date()) {
   };
 }
 
-function bedrockPayload(modelId: string, prompt: string) {
+function bedrockPayload(modelId: string, prompt: string): BedrockPayload {
   if (modelId.includes("anthropic.claude")) {
     return {
       contentType: "application/json",
@@ -222,7 +228,7 @@ function truncate(value: string, max: number) {
   return cleaned.length > max ? `${cleaned.slice(0, max - 1)}...` : cleaned;
 }
 
-function responseText(modelId: string, payload: unknown) {
+export function extractBedrockResponseText(modelId: string, payload: unknown) {
   const body = asRecord(payload);
   if (!body) return "";
 
@@ -263,9 +269,9 @@ function responseText(modelId: string, payload: unknown) {
   return modelId.includes("amazon") ? JSON.stringify(payload) : "";
 }
 
-async function invokeBedrockText(args: {
+export async function invokeBedrockPayload(args: {
   env: BedrockEnv;
-  prompt: string;
+  payload: BedrockPayload;
 }) {
   if (!args.env.ready || !args.env.region || !args.env.accessKeyId || !args.env.secretAccessKey || !args.env.modelId) {
     throw new Error("Bedrock environment is incomplete.");
@@ -274,13 +280,12 @@ async function invokeBedrockText(args: {
   const host = `bedrock-runtime.${args.env.region}.amazonaws.com`;
   const canonicalUri = `/model/${encodeURIComponent(args.env.modelId)}/invoke`;
   const url = `https://${host}${canonicalUri}`;
-  const payload = bedrockPayload(args.env.modelId, args.prompt);
-  const payloadHash = await sha256Hex(payload.body);
+  const payloadHash = await sha256Hex(args.payload.body);
   const { amzDate, dateStamp } = amzDateParts();
   const signedHeaders = "accept;content-type;host;x-amz-content-sha256;x-amz-date";
   const canonicalHeaders = [
-    `accept:${payload.accept}`,
-    `content-type:${payload.contentType}`,
+    `accept:${args.payload.accept}`,
+    `content-type:${args.payload.contentType}`,
     `host:${host}`,
     `x-amz-content-sha256:${payloadHash}`,
     `x-amz-date:${amzDate}`,
@@ -307,14 +312,14 @@ async function invokeBedrockText(args: {
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      accept: payload.accept,
+      accept: args.payload.accept,
       authorization,
-      "content-type": payload.contentType,
+      "content-type": args.payload.contentType,
       host,
       "x-amz-content-sha256": payloadHash,
       "x-amz-date": amzDate,
     },
-    body: payload.body,
+    body: args.payload.body,
   });
 
   if (!response.ok) {
@@ -328,7 +333,18 @@ async function invokeBedrockText(args: {
     throw new Error(`Bedrock categorization invoke failed: ${truncate(code, 120)}`);
   }
 
-  return responseText(args.env.modelId, await response.json());
+  return await response.json();
+}
+
+async function invokeBedrockText(args: {
+  env: BedrockEnv;
+  prompt: string;
+}) {
+  if (!args.env.modelId) {
+    throw new Error("Bedrock environment is incomplete.");
+  }
+  const payload = bedrockPayload(args.env.modelId, args.prompt);
+  return extractBedrockResponseText(args.env.modelId, await invokeBedrockPayload({ env: args.env, payload }));
 }
 
 function firstJsonObject(text: string) {
@@ -530,7 +546,7 @@ export const categorizeAndRouteTransaction = action({
       amountMinor: args.amountMinor,
     });
 
-    const env = bedrockEnv(context.provider.model);
+    const env = bedrockRuntimeEnv(context.provider.model);
     const routeWithoutModel = async (mode: "degraded" | "fallback", reason: string | null) => ({
       mode,
       provider: mode === "degraded" ? context.provider.activeProvider : "bedrock" as const,

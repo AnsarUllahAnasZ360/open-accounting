@@ -456,6 +456,7 @@ export function BillsScreen() {
   const generateReceiptUploadUrl = useMutation(api.receipts.generateUploadUrl);
   const recordReceiptUpload = useMutation(api.receipts.recordUpload);
   const manualMatchReceipt = useMutation(api.receipts.manualMatch);
+  const extractReceiptWithBedrock = useAction(api.receipts.extractWithBedrock);
   const [selectedBill, setSelectedBill] = useState<BillRow | null>(null);
   const [documentKind, setDocumentKind] = useState<"receipt" | "bill">("receipt");
   const [vendor, setVendor] = useState("");
@@ -485,6 +486,7 @@ export function BillsScreen() {
         throw new Error("Receipt upload failed before it reached Convex storage.");
       }
       const { storageId } = await uploadResult.json() as { storageId: string };
+      const hasManualOverrides = Boolean(vendor.trim() || receiptDate.trim() || receiptAmount.trim());
       const result = await recordReceiptUpload({
         entityId: entity.id as Id<"entities">,
         kind: documentKind,
@@ -496,10 +498,19 @@ export function BillsScreen() {
         totalMinor: moneyInputToMinor(receiptAmount),
         currency: entity.currency,
       });
+      const bedrockResult = hasManualOverrides
+        ? null
+        : await extractReceiptWithBedrock({ documentId: result.documentId });
       setUploadMessage(
-        result.status === "matched"
+        bedrockResult?.mode === "bedrock"
+          ? bedrockResult.status === "matched"
+            ? `Uploaded ${file.name}: Bedrock extracted ${bedrockResult.vendor} and auto-matched it.`
+            : `Uploaded ${file.name}: Bedrock extracted ${bedrockResult.vendor}; queued for match.`
+          : result.status === "matched"
           ? `Uploaded ${file.name}: auto-matched to a bank transaction.`
-          : `Uploaded ${file.name}: queued for manual match.`,
+          : bedrockResult
+            ? `Uploaded ${file.name}: queued for manual match. ${bedrockResult.reason}`
+            : `Uploaded ${file.name}: queued for manual match.`,
       );
       setVendor("");
       setReceiptDate("");

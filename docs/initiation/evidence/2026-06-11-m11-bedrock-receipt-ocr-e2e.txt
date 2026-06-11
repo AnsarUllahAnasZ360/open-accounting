@@ -1,0 +1,10 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test -- tests/e2e/receipts.spec.ts
+
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/receipts.spec.ts:40:5 › M11 receipt fixtures upload, extract metadata, queue, and manually match (11.6s)
+
+  1 passed (13.7s)

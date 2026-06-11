@@ -28,7 +28,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 12 | Plaid sandbox connect → sync → pipeline | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m9-plaid-settings-e2e.png` | Sandbox-ready path connects, selects accounts, syncs Plaid-shaped rows through the pipeline, shows recent imports, and simulates relink. Durable access-token persistence remains a hardening item. |
 | 13 | Stripe test sync + payout drill-down + invoice via Stripe | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-object-ids.json` | Stripe spec passed in the final production run; payout reconciliation remains fixture-backed per sandbox-reality notes and webhook registration remains a product deviation. |
 | 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png` | Report-backed chat and confirmed Uber rule pass in production. Full five-question semantic/tool-call verification remains partial. |
-| 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Upload/manual metadata/manual match pass. Bedrock OCR and embedding-assisted matching remain open allowed degradations. |
+| 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m11-bedrock-receipt-ocr-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-bedrock-receipt-ocr-e2e.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Image uploads now attempt Bedrock vision OCR in a Convex action, then fall back to filename/manual metadata. PDF OCR and embedding-assisted matching remain open allowed degradations. |
 | 16 | Mobile usability (4 core surfaces) | PARTIAL | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-mobile.png`; `docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png` | Dashboard mobile evidenced; Inbox/Transactions are covered in core responsive spec. Chat mobile still needs a dedicated screenshot. |
 | 17 | Audit log attribution (user/rule/AI) | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png` | User/rule ledger history and confirmed AI rule evidence are present. Full audit attribution matrix remains partial. |
 | 18 | Honesty check — this table complete with evidence (acceptance #18) | WORKING | `docs/initiation/completion-report.md` | This table separates working, partial, and blocked rows and names next steps. |
@@ -64,7 +64,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | Product spec §4 | Bedrock categorization is available as a single-transaction Convex action, not yet a batched worker over sync/import queues. | This gets the model proposal path real without changing Plaid/Stripe/CSV sync semantics late in the acceptance run. | Feed uncategorized imported transactions through the action in controlled batches with job status and retry/degraded handling. |
 | Product spec §4 | Correction memory is table-backed by merchant/category; it is not yet a Convex vector index over embeddings. | This keeps the ledger/pipeline invariant testable while avoiding a fake embedding implementation. | Add embedding generation in Convex actions, store vectors in a vector-indexed memory table, and use top-k memory in the LLM categorizer. |
 | Goal §2 categorization eval | Recorded 5-row backend fixture accuracy, not the full seeded >=100-row live eval. | CLI execution lacks the signed-in owner workspace context required by authorization. | Add an authenticated eval runner and record the full seeded eval before final acceptance. |
-| Product spec §5.2 / M11 | Receipt extraction is filename/manual metadata with confidence, not Bedrock vision OCR. | The milestone explicitly allows degradation to upload + manual match; this keeps receipt intake usable without unverified model extraction. | Wire Bedrock vision extraction in a Convex action, then keep the current manual review/match UI as fallback. |
+| Product spec §5.2 / M11 | Receipt extraction now attempts Bedrock vision OCR for PNG/JPEG/WebP uploads, but PDF OCR and live model-quality evidence remain partial. | The milestone explicitly allows degradation to upload + manual match; the app now tries Bedrock when safe and keeps the current manual review/match UI as fallback. | Add PDF/image conversion and authenticated live OCR quality evidence before marking receipt extraction fully complete. |
 | Product spec §5.2 / M11 | Matching is heuristic by amount/date/merchant plus manual match, not embedding-assisted. | Embedding memory remains part of the open M10/M11 AI gap. | Add embedding generation/search for receipts once the vector memory layer is in place. |
 | Product spec §5.1 / M12 | No Stripe webhook was registered against the production `.convex.site` URL. | The current codebase exposes Convex Auth HTTP routes only; the Stripe slice uses manual sync and fixture-backed payout evidence. | Add a Stripe webhook HTTP action, signature verification, and webhook registration before marking webhooks complete. |
 | Goal §2 / M13 | Historical: full `pnpm test:e2e` was not green at the first M13 handoff. | Repeated browser demo resets conflicted with long-running seed actions and left report/entity context temporarily unsettled. | Resolved with seed job locking and a clean-reset harness; final local/prod e2e are 15/15. |
@@ -1008,3 +1008,40 @@ PASS/PARTIAL table:
 | Batched categorization | PARTIAL | The action is not yet wired as a queued/batched worker over imported uncategorized transactions. |
 | Vector memory | PARTIAL | Correction memory remains table-backed; embeddings/vector search remain open. |
 | Streaming Bedrock chat/tools | PARTIAL | Chat is still report-backed/deterministic, not Bedrock streaming with server-side tool calls. |
+
+### 2026-06-11 09:57 CDT — M11 Bedrock receipt OCR action
+
+What changed:
+
+- Added Bedrock Runtime reuse helpers so receipt OCR and transaction categorization share the same SigV4/fetch path without introducing a second AWS client.
+- Added `receipts.extractWithBedrock`, a Convex action that reads uploaded receipt image files from Convex storage, sends PNG/JPEG/WebP images to a Bedrock Claude vision model when AI env is present, parses vendor/date/total/currency/confidence JSON, and falls back to manual review when env, model support, file type, or parse quality is insufficient.
+- Kept the OCR apply step as internal Convex functions and re-checked workspace/entity authorization before reading or patching document rows.
+- Wired the Bills receipt upload UI to call Bedrock OCR after upload when the owner did not provide manual metadata; manual owner input remains authoritative and skips OCR.
+- Extended receipt helper tests to cover minor-unit normalization and incomplete Bedrock extraction fallback.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m11-bedrock-receipt-ocr-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m11-bedrock-receipt-ocr-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m11-bedrock-receipt-ocr-convex-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-m11-bedrock-receipt-ocr-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png`
+
+Verification:
+
+- `pnpm test:unit -- convex/receipts.test.ts` green; current unit total is 12 files / 47 tests.
+- `pnpm verify` green: typecheck, lint, Next.js production build, and 12 unit files / 47 tests.
+- `npx convex dev --once` green: receipt OCR functions compile on the dev deployment.
+- `pnpm test:e2e -- tests/e2e/receipts.spec.ts` green: receipt fixture upload/manual-match workflow still passes with OCR fallback active.
+- `npx convex deploy --yes` green: Convex production functions deployed to `https://perceptive-guanaco-487.convex.cloud`.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Bedrock image OCR action | PASS | PNG/JPEG/WebP uploads now attempt Bedrock vision extraction inside a Convex action. |
+| Authorization boundary | PASS | OCR context/apply helpers are internal functions and re-check owner workspace access. |
+| Manual fallback | PASS | Missing env, unsupported file types, parse gaps, and owner-provided manual metadata keep the upload/manual-match path working. |
+| Existing receipt workflow | PASS | Focused Playwright test still uploads all five fixtures and manually matches a pending receipt. |
+| PDF OCR | PARTIAL | PDF uploads remain supported for storage/manual matching but are not converted for Bedrock vision extraction yet. |
+| Embedding-assisted matching | PARTIAL | Matching remains heuristic by amount/date/merchant plus manual match; vector/embedding receipt search remains open. |

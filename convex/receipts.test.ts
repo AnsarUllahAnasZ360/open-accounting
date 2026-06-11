@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeBedrockReceiptExtraction, extractReceiptMetadataFromFileName } from "./receipts";
+import {
+  buildReceiptEmbeddingText,
+  chooseBestReceiptEmbeddingMatch,
+  cosineSimilarity,
+  normalizeBedrockReceiptExtraction,
+  extractReceiptMetadataFromFileName,
+} from "./receipts";
 
 describe("M11 receipt extraction helpers", () => {
   it("extracts deterministic fixture metadata from receipt filenames", () => {
@@ -59,5 +65,33 @@ describe("M11 receipt extraction helpers", () => {
       source: "bedrock_degraded",
     });
     expect(result.confidence).toBeLessThanOrEqual(0.55);
+  });
+
+  it("builds receipt embedding text without secrets", () => {
+    const text = buildReceiptEmbeddingText({
+      vendor: "Amazon Business",
+      date: "2026-04-12",
+      totalMinor: 12845,
+      currency: "usd",
+    });
+
+    expect(text).toContain("receipt_vendor: Amazon Business");
+    expect(text).toContain("amount_minor: 12845");
+    expect(text).toContain("currency: USD");
+    expect(text).not.toContain("AWS_SECRET_ACCESS_KEY");
+  });
+
+  it("chooses embedding matches only above threshold", () => {
+    const left = [1, 0, 0];
+    const right = [0.9, 0.1, 0];
+    const weak = [0, 1, 0];
+
+    expect(cosineSimilarity(left, right)).toBeGreaterThan(0.9);
+    expect(cosineSimilarity(left, weak)).toBe(0);
+    expect(chooseBestReceiptEmbeddingMatch([
+      { transactionId: "weak" as never, score: 0.71 },
+      { transactionId: "best" as never, score: 0.86 },
+    ])).toMatchObject({ transactionId: "best", score: 0.86 });
+    expect(chooseBestReceiptEmbeddingMatch([{ transactionId: "weak" as never, score: 0.71 }])).toBeNull();
   });
 });

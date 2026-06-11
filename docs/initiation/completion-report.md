@@ -28,7 +28,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 12 | Plaid sandbox connect → sync → pipeline | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m9-plaid-settings-e2e.png` | Sandbox-ready path connects, selects accounts, syncs Plaid-shaped rows through the pipeline, shows recent imports, and simulates relink. Durable access-token persistence remains a hardening item. |
 | 13 | Stripe test sync + payout drill-down + invoice via Stripe | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-object-ids.json` | Stripe spec passed in the final production run; payout reconciliation remains fixture-backed per sandbox-reality notes and webhook registration remains a product deviation. |
 | 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png`; `docs/initiation/evidence/2026-06-11-m10-semantic-memory-focused-e2e.txt` | Report-backed chat, confirmed Uber rule, Bedrock categorizer, and vector-backed semantic correction memory pass. Full streaming/tool-call chat and live five-question semantic verification remain partial. |
-| 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m11-bedrock-receipt-ocr-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-bedrock-receipt-ocr-e2e.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Image uploads now attempt Bedrock vision OCR in a Convex action, then fall back to filename/manual metadata. PDF OCR and embedding-assisted matching remain open allowed degradations. |
+| 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-e2e.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Image uploads attempt Bedrock vision OCR, deterministic matching, and embedding-assisted transaction matching as a bounded tie-breaker, then fall back to manual match. PDF OCR remains an allowed degradation. |
 | 16 | Mobile usability (4 core surfaces) | PARTIAL | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-mobile.png`; `docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png` | Dashboard mobile evidenced; Inbox/Transactions are covered in core responsive spec. Chat mobile still needs a dedicated screenshot. |
 | 17 | Audit log attribution (user/rule/AI) | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png` | User/rule ledger history and confirmed AI rule evidence are present. Full audit attribution matrix remains partial. |
 | 18 | Honesty check — this table complete with evidence (acceptance #18) | WORKING | `docs/initiation/completion-report.md` | This table separates working, partial, and blocked rows and names next steps. |
@@ -65,7 +65,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | Product spec §4 | Correction memory now has a Convex vector-indexed embedding table for semantic categorization memory, but it is not yet a batched worker over all imported uncategorized rows. | This keeps the ledger/pipeline invariant testable: exact and semantic memory still route through `pipeline.routeTransaction`, while Bedrock embedding calls stay in Convex actions. | Feed uncategorized sync/import queues through the semantic memory and Bedrock categorizer actions with job status, retry/degraded handling, and live eval evidence. |
 | Goal §2 categorization eval | Recorded 5-row backend fixture accuracy, not the full seeded >=100-row live eval. | CLI execution lacks the signed-in owner workspace context required by authorization. | Add an authenticated eval runner and record the full seeded eval before final acceptance. |
 | Product spec §5.2 / M11 | Receipt extraction now attempts Bedrock vision OCR for PNG/JPEG/WebP uploads, but PDF OCR and live model-quality evidence remain partial. | The milestone explicitly allows degradation to upload + manual match; the app now tries Bedrock when safe and keeps the current manual review/match UI as fallback. | Add PDF/image conversion and authenticated live OCR quality evidence before marking receipt extraction fully complete. |
-| Product spec §5.2 / M11 | Matching is heuristic by amount/date/merchant plus manual match, not embedding-assisted. | Embedding memory remains part of the open M10/M11 AI gap. | Add embedding generation/search for receipts once the vector memory layer is in place. |
+| Product spec §5.2 / M11 | Receipt matching now includes embedding-assisted tie-breaking across hard-gated candidate transactions, but does not persist reusable receipt vectors yet. | This avoids unsafe receipt attachment: embeddings can only choose among same-entity, amount/date-plausible transactions and never post ledger rows. | Persist reusable receipt/transaction vectors and add live OCR+matching quality evidence before marking this fully complete. |
 | Product spec §5.1 / M12 | No Stripe webhook was registered against the production `.convex.site` URL. | The current codebase exposes Convex Auth HTTP routes only; the Stripe slice uses manual sync and fixture-backed payout evidence. | Add a Stripe webhook HTTP action, signature verification, and webhook registration before marking webhooks complete. |
 | Goal §2 / M13 | Historical: full `pnpm test:e2e` was not green at the first M13 handoff. | Repeated browser demo resets conflicted with long-running seed actions and left report/entity context temporarily unsettled. | Resolved with seed job locking and a clean-reset harness; final local/prod e2e are 15/15. |
 
@@ -910,7 +910,7 @@ PASS/PARTIAL table:
 Next:
 
 - Implement seed reset as a real job: lock per workspace/entity, clear in chunks, route in chunks, expose status, and make Playwright wait on status. Then rerun full `pnpm test:e2e` from a clean state.
-- Add authenticated full seeded categorization eval, receipt PDF OCR, receipt embedding-assisted matching, batched categorization workers, durable Plaid access-token sync, and Stripe webhook HTTP route before claiming final v1 complete.
+- Add authenticated full seeded categorization eval, receipt PDF OCR, persisted receipt vectors, batched categorization workers, durable Plaid access-token sync, and Stripe webhook HTTP route before claiming final v1 complete.
 
 ### 2026-06-11 09:22 CDT — M13 Acceptance closure
 
@@ -945,7 +945,7 @@ Remaining partials:
 - M10 chat remains report-backed/deterministic rather than full AI SDK streaming + Bedrock tool-call implementation; categorization now has a real Bedrock Runtime action for structured proposals.
 - Correction memory now has a vector-indexed semantic memory table, but batched categorization workers over all imports remain open.
 - Live seeded >=100-row eval still needs an authenticated owner-context runner; fixture eval remains 5/5 = 100.0%.
-- Receipts now attempt Bedrock image OCR, but PDF OCR and receipt embedding-assisted transaction matching remain open.
+- Receipts now attempt Bedrock image OCR and embedding-assisted transaction matching; PDF OCR and persisted receipt vectors remain open.
 - Stripe webhook registration remains open; payout E2E remains fixture-backed per sandbox-reality notes.
 
 ### 2026-06-11 09:31 CDT — M1 landing prototype exact-copy correction
@@ -1083,3 +1083,39 @@ PASS/PARTIAL table:
 | Batched import worker | PARTIAL | Plaid/Stripe/CSV import queues are not yet automatically batched through the semantic memory and Bedrock categorizer actions. |
 | Receipt embedding match | PARTIAL | Receipt-to-transaction matching still uses heuristic amount/date/merchant plus manual match. |
 | Streaming chat/tools | PARTIAL | Chat remains report-backed/deterministic rather than AI SDK streaming with Bedrock tool calls. |
+
+### 2026-06-11 10:17 CDT — M11 Receipt embedding-assisted matching
+
+What changed:
+
+- Added receipt embedding text builders, cosine scoring, and thresholded best-candidate selection.
+- Added an authorized internal query that returns only same-entity, unmatched, outflow transaction candidates whose amount is within USD 1 and date is within 3 days of the extracted receipt.
+- Extended Bedrock receipt extraction to optionally embed the receipt and hard-gated candidate transactions, then attach the best embedding match when the similarity score clears threshold.
+- Kept matching conservative: deterministic amount/date/merchant matching still wins first; embedding matching cannot bypass hard gates; failures in the embeddings path do not discard OCR extraction or manual-match fallback.
+- Reused the Bedrock Titan embedding helper from semantic correction memory, keeping external calls in Convex actions.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-convex-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-e2e.txt`
+
+Verification:
+
+- `pnpm test:unit -- convex/receipts.test.ts convex/ai.test.ts` green; current unit total is 12 files / 52 tests.
+- `pnpm verify` green: typecheck, lint, Next.js production build, and 12 unit files / 52 tests.
+- `npx convex dev --once` green: receipt embedding-match functions compile on the dev deployment.
+- `npx convex deploy --yes` green: Convex production functions deployed.
+- `pnpm test:e2e -- tests/e2e/receipts.spec.ts` green: receipt fixture upload/manual-match workflow still passes with embedding tie-breaker active.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Hard-gated embedding match | PASS | Embeddings only choose among same-entity, unmatched, outflow candidates within amount/date tolerance. |
+| Manual fallback | PASS | Missing env, unsupported embeddings model, low score, or embedding error leaves receipt extraction/manual match usable. |
+| Ledger invariant | PASS | Receipt attachment does not post ledger rows; any accounting changes still go through existing ledger mutations elsewhere. |
+| Browser regression | PASS | Focused receipt e2e remains green. |
+| PDF OCR | PARTIAL | PDF uploads remain storage/manual-match only until a PDF-to-image/OCR path exists. |
+| Persisted receipt vectors | PARTIAL | This slice computes receipt/candidate embeddings on demand; it does not persist a reusable receipt vector index. |

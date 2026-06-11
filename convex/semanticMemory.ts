@@ -126,7 +126,7 @@ export function extractEmbeddingVector(payload: unknown) {
   return vector;
 }
 
-async function embedText(args: { modelId: string; text: string }) {
+export async function embedSemanticText(args: { modelId: string; text: string }) {
   const env = bedrockRuntimeEnv(args.modelId);
   if (!env.ready || !env.modelId) {
     throw new Error("Bedrock embeddings env is absent or incomplete.");
@@ -326,7 +326,7 @@ async function embedCorrectionMemory(
     return { mode: "degraded", reason: "AI_EMBEDDINGS_MODEL is not configured; table-backed memory remains active." };
   }
   try {
-    const embedded = await embedText({ modelId: context.embeddingsModel, text: context.sourceText });
+    const embedded = await embedSemanticText({ modelId: context.embeddingsModel, text: context.sourceText });
     const result: { memoryEmbeddingId: Id<"aiMemoryEmbeddings"> } = await ctx.runMutation(
       internal.semanticMemory.upsertCorrectionMemoryEmbedding,
       {
@@ -366,7 +366,7 @@ export async function findSemanticMemoryProposal(
   if (!context.embeddingsModel) {
     return null;
   }
-  const embedded = await embedText({ modelId: context.embeddingsModel, text: context.sourceText });
+  const embedded = await embedSemanticText({ modelId: context.embeddingsModel, text: context.sourceText });
   const matches = await ctx.vectorSearch("aiMemoryEmbeddings", "by_embedding", {
     vector: embedded.vector,
     limit: 5,

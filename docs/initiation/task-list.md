@@ -307,16 +307,19 @@ Evidence: chat transcripts + eval numbers in completion report.
       confidence-underlined review form — PNG/JPEG/WebP uploads now call a
       Convex Bedrock action and fall back to manual/filename metadata when env,
       model support, parse quality, or file type blocks extraction.
-- [ ] Heuristic + embedding match → auto-attach / inbox card / pending;
-      no-transaction path offers manual expense or bill.
+- [x] Heuristic + embedding match → auto-attach / inbox card / pending;
+      no-transaction path offers manual expense or bill — image OCR applies
+      deterministic amount/date/merchant matching first, then uses Bedrock
+      embeddings as a bounded tie-breaker across same-entity, same-amount/date
+      candidate transactions; manual match remains the fallback.
 - [x] Bills upload-PDF path reuses the same extraction.
 
 M11 integration note, 2026-06-11: shipped receipt/bill upload plus the Bedrock
 image-OCR attempt. Working: five deterministic PNG fixtures, Convex file
 storage, filename/manual metadata extraction with confidence display, Bedrock
 vision extraction for PNG/JPEG/WebP when Bedrock env/model is present,
-heuristic auto-match, receipt inbox queueing, and manual match from Bills.
-Still open: PDF OCR and embedding-assisted matching.
+heuristic auto-match, embedding-assisted match as a bounded tie-breaker,
+receipt inbox queueing, and manual match from Bills. Still open: PDF OCR.
 
 Done when: uploading 5 sample receipts auto-matches or sensibly queues ≥4.
 If extraction quality blocks this, ship upload + manual match and log the gap.

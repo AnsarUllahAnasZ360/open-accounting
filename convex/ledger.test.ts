@@ -242,6 +242,38 @@ describe("ledger core", () => {
     expect(snapshot.trialBalance.differenceMinor).toBe(0);
   });
 
+  it("creates one live sandbox entity with its own chart of accounts", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupLedger(t);
+    const session = authed(t, ids.userId);
+
+    const first = await session.mutation(api.ledger.ensureLiveSandboxEntity, {});
+    const second = await session.mutation(api.ledger.ensureLiveSandboxEntity, {});
+
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(second.entityId).toBe(first.entityId);
+
+    const verification = await t.run(async (ctx) => {
+      const entity = await ctx.db.get(first.entityId);
+      const accounts = await ctx.db
+        .query("ledgerAccounts")
+        .withIndex("by_entity", (q) => q.eq("entityId", first.entityId))
+        .collect();
+      const auditEvents = await ctx.db
+        .query("auditEvents")
+        .withIndex("by_workspace", (q) => q.eq("workspaceId", entity!.workspaceId))
+        .collect();
+      return { entity, accounts, auditEvents };
+    });
+
+    expect(verification.entity?.name).toBe("Live Sandbox");
+    expect(verification.entity?.slug).toBe("live-sandbox");
+    expect(verification.entity?.isDemo).toBe(false);
+    expect(verification.accounts.length).toBeGreaterThanOrEqual(30);
+    expect(verification.auditEvents.some((event) => event.action === "entity.live_sandbox.created")).toBe(true);
+  });
+
   it("requires an authorized workspace role to post", async () => {
     const t = convexTest(schema, modules);
     const ids = await setupLedger(t);

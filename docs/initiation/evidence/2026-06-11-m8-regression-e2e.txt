@@ -1,0 +1,11 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test tests/e2e/core-screens.spec.ts tests/e2e/ledger.spec.ts
+
+
+Running 2 tests using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/core-screens.spec.ts:39:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop (1.3m)
+  ✓  2 [chromium] › tests/e2e/ledger.spec.ts:37:5 › manual journal entry appears in GL and locked periods reject backdating (4.0s)
+
+  2 passed (1.4m)

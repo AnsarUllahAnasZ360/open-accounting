@@ -291,8 +291,8 @@ export const transactions = query({
       ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
       ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
       ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("journalEntries").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("auditEvents").withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId)).collect(),
+      ctx.db.query("journalEntries").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).order("desc").take(1000),
+      ctx.db.query("auditEvents").withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId)).order("desc").take(1000),
     ]);
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
     const bankAccountsById = new Map(bankAccounts.map((account) => [account._id, account]));

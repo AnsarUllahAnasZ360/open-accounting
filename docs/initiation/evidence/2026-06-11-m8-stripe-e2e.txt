@@ -1,0 +1,10 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test tests/e2e/stripe.spec.ts
+
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/stripe.spec.ts:46:5 › owner can run the M8 Stripe test-mode or fixture sync on Live Sandbox (1.0m)
+
+  1 passed (1.1m)

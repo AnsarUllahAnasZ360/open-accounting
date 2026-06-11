@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
   Archive,
   Building2,
@@ -50,6 +50,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { StripeConnectionPanel } from "@/components/openbooks/StripeConnectionPanel";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../convex/_generated/api";
 
 function useModuleOverview() {
@@ -727,14 +729,36 @@ function PayrollStatement({ data }: { data: ModuleOverview }) {
 
 export function RemainingSettingsScreens() {
   const data = useModuleOverview();
+  const ensureLiveSandboxEntity = useMutation(api.ledger.ensureLiveSandboxEntity);
   const [auditFilter, setAuditFilter] = useState("");
+  const [entityMessage, setEntityMessage] = useState("");
+  const [creatingEntity, setCreatingEntity] = useState(false);
 
   if (data === undefined) return <LoadingBlock label="settings modules" />;
   if (!data.entity) return <NoEntityState />;
 
+  const liveSandboxReady = data.settings.businesses.addEntity.status === "live_sandbox_ready";
+  const liveSandboxEntityId = data.settings.businesses.addEntity.liveSandboxEntityId as Id<"entities"> | null;
   const auditRows = data.settings.audit.rows.filter((row) =>
     `${row.actor} ${row.action} ${row.summary}`.toLowerCase().includes(auditFilter.trim().toLowerCase()),
   );
+
+  async function createLiveSandboxEntity() {
+    setCreatingEntity(true);
+    setEntityMessage("");
+    try {
+      const result = await ensureLiveSandboxEntity({});
+      setEntityMessage(
+        result.created
+          ? `Live Sandbox created with ${result.accountsCreated} chart accounts.`
+          : `Live Sandbox refreshed; ${result.accountsCreated} missing chart accounts added.`,
+      );
+    } catch (error) {
+      setEntityMessage(error instanceof Error ? error.message : "Could not create the Live Sandbox entity.");
+    } finally {
+      setCreatingEntity(false);
+    }
+  }
 
   return (
     <div className="space-y-5" data-testid="m6-settings-screen">
@@ -743,18 +767,43 @@ export function RemainingSettingsScreens() {
         description="Businesses, rules, and audit log are the trust/control surfaces that M8, M9, and M10 will depend on."
       />
 
+      <section className="space-y-4" data-testid="settings-connections">
+        <ModuleIntro
+          title="Connections"
+          description="Sandbox services attach to the Live Sandbox entity so test payments and bank imports never pollute the demo books."
+        />
+        {liveSandboxEntityId ? (
+          <StripeConnectionPanel entityId={liveSandboxEntityId} />
+        ) : (
+          <div className="rounded-lg border border-dashed bg-card p-4 text-sm text-muted-foreground shadow-xs">
+            Create the Live Sandbox business first, then Stripe test mode and Plaid sandbox controls attach here.
+          </div>
+        )}
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <Card className="shadow-xs">
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle className="text-base">Businesses</CardTitle>
-            <Button size="sm">
+            <Button
+              data-testid="live-sandbox-create"
+              size="sm"
+              onClick={createLiveSandboxEntity}
+              disabled={creatingEntity}
+            >
               <Plus className="size-4" />
-              Add business
+              {liveSandboxReady ? "Refresh Live Sandbox" : "Create Live Sandbox"}
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
+            {entityMessage ? (
+              <div className="flex items-start gap-2 rounded-lg border bg-primary/5 p-3 text-sm text-primary" data-testid="live-sandbox-message">
+                <CheckCircle2 className="mt-0.5 size-4" />
+                <span>{entityMessage}</span>
+              </div>
+            ) : null}
             {data.settings.businesses.rows.map((business) => (
-              <div key={business.id} className="rounded-lg border p-3">
+              <div key={business.id} className="rounded-lg border p-3" data-testid={`business-card-${business.slug}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="font-medium">{business.name}</div>
@@ -772,7 +821,9 @@ export function RemainingSettingsScreens() {
               </div>
             ))}
             <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-              Recommended next entity: {data.settings.businesses.addEntity.recommendedName} in {data.settings.businesses.addEntity.recommendedCurrency}.
+              {liveSandboxReady
+                ? `${data.settings.businesses.addEntity.recommendedName} is ready for sandbox Stripe and Plaid data.`
+                : `Recommended next entity: ${data.settings.businesses.addEntity.recommendedName} in ${data.settings.businesses.addEntity.recommendedCurrency}.`}
             </div>
           </CardContent>
         </Card>

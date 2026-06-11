@@ -140,6 +140,7 @@ export const overview = query({
       ctx.db.query("auditEvents").withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId)).take(200),
     ]);
 
+    const liveSandboxEntity = entities.find((row) => row.slug === "live-sandbox") ?? null;
     const contactsById = new Map(contacts.map((contact) => [contact._id, contact]));
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
     const documentsById = new Map(documents.map((document) => [document._id, document]));
@@ -458,9 +459,10 @@ export const overview = query({
               isActive: row._id === entity._id,
             })),
           addEntity: {
-            status: "ready_for_live_sandbox",
+            status: liveSandboxEntity ? "live_sandbox_ready" : "ready_for_live_sandbox",
             recommendedName: "Live Sandbox",
             recommendedCurrency: "USD",
+            liveSandboxEntityId: liveSandboxEntity?._id ?? null,
           },
         },
         rules: {

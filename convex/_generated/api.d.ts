@@ -22,6 +22,7 @@ import type * as reports from "../reports.js";
 import type * as requestAccess from "../requestAccess.js";
 import type * as seedDemo from "../seedDemo.js";
 import type * as session from "../session.js";
+import type * as stripe from "../stripe.js";
 
 import type {
   ApiFromModules,
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   requestAccess: typeof requestAccess;
   seedDemo: typeof seedDemo;
   session: typeof session;
+  stripe: typeof stripe;
 }>;
 
 /**

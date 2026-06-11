@@ -4,9 +4,9 @@ month,2026-12
 currency,USD
 
 metric,amount_minor,amount
-money_in,28438150,284381.50
-money_out,25030743,250307.43
-net_result,3407407,34074.07
+money_in,28486200,284862.00
+money_out,25045393,250453.93
+net_result,3440807,34408.07
 owed_to_you,2137500,21375.00
 you_owe,399000,3990.00
 payroll,11787648,117876.48
@@ -15,14 +15,14 @@ top_customers
 name,amount_minor,amount
 Atlas Advisory,4189200,41892.00
 Pine Street Coffee,3918700,39187.00
-Cedar Works,3737050,37370.50
+Cedar Works,3785100,37851.00
 Bright Path Therapy,3462900,34629.00
 Riverbend Fitness,3095700,30957.00
 
 top_expense_categories
 name,amount_minor,amount
-Payroll & Contractors,11794348,117943.48
-Rent,1631950,16319.50
-Software & SaaS,2713400,27134.00
+Payroll & Contractors,11787648,117876.48
+Rent,1680000,16800.00
+Software & SaaS,2686700,26867.00
 Cloud/Infrastructure,2247700,22477.00
 Marketing & Ads,2899400,28994.00

@@ -471,6 +471,66 @@ Next:
 
 - M8 — Stripe test-mode E2E on a Live Sandbox entity. M6 left Live Sandbox creation as a UI affordance; the next milestone needs either a dedicated entity-creation mutation with chart seeding or a fixture-backed Live Sandbox entity setup.
 
+### 2026-06-11 05:57 CDT — M8 Stripe test mode E2E
+
+What changed:
+
+- Added an idempotent `ledger.ensureLiveSandboxEntity` mutation and wired Settings → Businesses so the owner can create/refresh the non-demo "Live Sandbox" entity with its own services chart of accounts.
+- Added Settings → Connections with a Stripe test-mode panel bound explicitly to the Live Sandbox entity, not Acme Studio LLC.
+- Added `convex/stripe.ts`: environment key-state validation, live-key rejection, fixture fallback, Stripe test customer/payment/invoice seeding, sync/apply projection, clearing-account postings, payout reconciliation, payout mismatch inbox card creation, and Send via Stripe invoice action.
+- Seed/sync posts accounting impact only through `ledger.postEntry`; no Stripe path writes journal entries directly.
+- Fixed Stripe test PaymentIntent creation by disabling redirect payment methods for confirmed test card payments.
+- Fixed the Transactions read model after repeated Stripe runs exposed a Convex document-read limit: transaction activity now reads a capped recent workspace audit feed instead of collecting every workspace audit event.
+- Added M8 browser coverage for Live Sandbox creation and Stripe validation/seed/sync/invoice; tightened ledger e2e selectors after the new Stripe invoice form introduced another "Amount" field.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m8-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m8-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m8-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m8-stripe-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m8-live-sandbox-settings-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m8-stripe-settings-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m8-stripe-object-ids.json`
+- `docs/initiation/evidence/2026-06-11-m8-regression-e2e.txt`
+
+Stripe object IDs captured from test mode:
+
+- PaymentIntents: `pi_3Th6EWGzLxUQ7bIM1RyQJkm4`, `pi_3Th6EVGzLxUQ7bIM1saiWDhL`, `pi_3Th6EVGzLxUQ7bIM14xHsbuo`
+- Invoices: `in_1Th6EsGzLxUQ7bIMnFbmgyPV`, `in_1Th6EbGzLxUQ7bIMGxQ0DdIN`, `in_1Th6EZGzLxUQ7bIMtQ6zox8j`
+- Payouts listed from test mode: `po_1S0uXNGzLxUQ7bIMJe4GpGCY`, `po_1RqlGgGzLxUQ7bIMIuNMsRSG`, `po_1RfWS5GzLxUQ7bIM3QeFyYNc`
+
+Verification:
+
+- `npx convex dev --once` green after deploying the new ledger and Stripe functions.
+- `pnpm verify` green: typecheck, lint, Next.js production build, Vitest. Unit total is 9 files / 23 tests.
+- `pnpm test:e2e` green: 11 passing Playwright tests.
+- Targeted regression run green for the previously failing core Transactions and Ledger specs.
+- Secret scan over M8 files found no committed key values; the only match was the literal live-key rejection guard.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Live Sandbox entity | PASS | Settings → Businesses creates/refreshed `live-sandbox` as a non-demo services/USD entity with its own chart of accounts. |
+| Stripe env-key state | PASS | UI shows configured-from-environment state; backend rejects live keys and falls back to fixtures when no safe test key exists. |
+| Permission/checklist UI | PASS | Stripe panel shows workspace/entity/key/clearing/payout checklist and clear test/fixture state. |
+| Test account seed | PASS | Browser e2e seeds Stripe test customers, PaymentIntents, and invoices when a safe test key is present. |
+| Manual sync | PASS | Sync applies customers, income transactions, invoices, and payouts to the Live Sandbox entity. |
+| Clearing/payout reconciliation | PASS | Gross, fee, and payout movement post through `postEntry`; fixture and recorded payout drill-downs show $0 drift and mismatch behavior. |
+| Send via Stripe | PASS | Invoice composer creates/finalizes a Stripe-hosted invoice in test mode or returns a fixture result when Stripe is unavailable. |
+| Cron/webhook automation | PARTIAL | Manual sync works. The 4-hour cron and webhook HTTP registration remain M12/M8-follow-up work. |
+| Persistent payout line drilldown | PARTIAL | The panel shows fixture line drill-downs and recorded payout totals. Real payout line persistence needs a child table to avoid unbounded arrays. |
+
+Notes:
+
+- Per goal §5, no attempt was made to match Stripe payouts to Plaid deposits across sandboxes.
+- Full e2e logs include expected negative-test Convex errors for blocked self-registration and locked-period posting rejection.
+
+Next:
+
+- M9 — restore the Plaid worker slice from stash `m9-plaid-worker-output`, wire Settings → Connections → Bank to the same Live Sandbox entity, and add the durable Plaid item/cursor layer.
+
 ### 2026-06-11 00:44 CDT — Pre-goal access readiness
 
 What changed:

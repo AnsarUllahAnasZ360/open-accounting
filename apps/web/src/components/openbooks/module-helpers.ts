@@ -46,7 +46,12 @@ export type ModuleOverview = {
         archiveReason: string;
         isActive: boolean;
       }>;
-      addEntity: { status: string; recommendedName: string; recommendedCurrency: string };
+      addEntity: {
+        status: string;
+        recommendedName: string;
+        recommendedCurrency: string;
+        liveSandboxEntityId: string | null;
+      };
     };
     rules: {
       rows: Array<{

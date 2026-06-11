@@ -47,10 +47,11 @@ test("manual journal entry appears in GL and locked periods reject backdating", 
   await page.getByRole("button", { name: "Initialize chart" }).click();
   await expect(page.getByText(/Chart ready/)).toBeVisible({ timeout: 15000 });
 
-  await page.getByLabel("Date").fill(entryDate);
-  await page.getByLabel("Amount").fill("123.45");
-  await page.getByLabel("Memo").fill(memo);
-  await page.getByRole("button", { name: "Post entry" }).click();
+  const manualEntryForm = page.locator("form").filter({ hasText: "Manual journal entry" });
+  await manualEntryForm.getByLabel("Date").fill(entryDate);
+  await manualEntryForm.getByLabel("Amount").fill("123.45");
+  await manualEntryForm.getByLabel("Memo").fill(memo);
+  await manualEntryForm.getByRole("button", { name: "Post entry" }).click();
   await expect(page.getByText("Manual journal entry posted.")).toBeVisible({ timeout: 15000 });
   await expect(page.getByText(memo)).toBeVisible();
   await expect(page.getByText("$123.45").first()).toBeVisible();
@@ -59,16 +60,17 @@ test("manual journal entry appears in GL and locked periods reject backdating", 
   await expect(trialBalance).toContainText("Difference:");
   await expect(trialBalance).toContainText("$0.00");
 
-  await page.getByLabel("Locked through").fill("2026-03-31");
-  await page.getByRole("button", { name: "Update lock" }).click();
+  const periodLockForm = page.locator("form").filter({ hasText: "Period lock" });
+  await periodLockForm.getByLabel("Locked through").fill("2026-03-31");
+  await periodLockForm.getByRole("button", { name: "Update lock" }).click();
   await expect(page.getByText("Period locked through 2026-03-31.")).toBeVisible({
     timeout: 15000,
   });
 
-  await page.getByLabel("Date").fill("2026-03-15");
-  await page.getByLabel("Amount").fill("1.00");
-  await page.getByLabel("Memo").fill(`Backdated ${memo}`);
-  await page.getByRole("button", { name: "Post entry" }).click();
+  await manualEntryForm.getByLabel("Date").fill("2026-03-15");
+  await manualEntryForm.getByLabel("Amount").fill("1.00");
+  await manualEntryForm.getByLabel("Memo").fill(`Backdated ${memo}`);
+  await manualEntryForm.getByRole("button", { name: "Post entry" }).click();
   await expect(page.getByRole("main").getByText("Period is locked through 2026-03-31.")).toBeVisible({
     timeout: 15000,
   });

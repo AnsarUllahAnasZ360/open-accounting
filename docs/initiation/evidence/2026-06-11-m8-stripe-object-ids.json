@@ -1,0 +1,118 @@
+{
+  "capturedAt": "2026-06-11T10:57:21.361Z",
+  "mode": "stripe_test",
+  "paymentIntents": [
+    {
+      "id": "pi_3Th6EWGzLxUQ7bIM1RyQJkm4",
+      "status": "succeeded",
+      "amount": 99200,
+      "created": 1781175192
+    },
+    {
+      "id": "pi_3Th6EVGzLxUQ7bIM1saiWDhL",
+      "status": "succeeded",
+      "amount": 91900,
+      "created": 1781175192
+    },
+    {
+      "id": "pi_3Th6EVGzLxUQ7bIM14xHsbuo",
+      "status": "succeeded",
+      "amount": 84600,
+      "created": 1781175191
+    },
+    {
+      "id": "pi_3Th6EUGzLxUQ7bIM1TdVgtm2",
+      "status": "succeeded",
+      "amount": 77300,
+      "created": 1781175190
+    },
+    {
+      "id": "pi_3Th6ETGzLxUQ7bIM1YlwbsT2",
+      "status": "succeeded",
+      "amount": 70000,
+      "created": 1781175189
+    },
+    {
+      "id": "pi_3Th6ETGzLxUQ7bIM1GGxebPh",
+      "status": "succeeded",
+      "amount": 62700,
+      "created": 1781175189
+    },
+    {
+      "id": "pi_3Th6ESGzLxUQ7bIM0KCd3LrU",
+      "status": "succeeded",
+      "amount": 55400,
+      "created": 1781175188
+    },
+    {
+      "id": "pi_3Th6ERGzLxUQ7bIM1hb69IQm",
+      "status": "succeeded",
+      "amount": 48100,
+      "created": 1781175187
+    }
+  ],
+  "invoices": [
+    {
+      "id": "in_1Th6EsGzLxUQ7bIMnFbmgyPV",
+      "status": "paid",
+      "amount": 0,
+      "created": 1781175214
+    },
+    {
+      "id": "in_1Th6EbGzLxUQ7bIMGxQ0DdIN",
+      "status": "paid",
+      "amount": 0,
+      "created": 1781175197
+    },
+    {
+      "id": "in_1Th6EZGzLxUQ7bIMtQ6zox8j",
+      "status": "paid",
+      "amount": 0,
+      "created": 1781175195
+    },
+    {
+      "id": "in_1Th6EXGzLxUQ7bIMTgBXLbKd",
+      "status": "paid",
+      "amount": 0,
+      "created": 1781175193
+    },
+    {
+      "id": "in_1Th68RGzLxUQ7bIMVbia3uf2",
+      "status": "paid",
+      "amount": 0,
+      "created": 1781174815
+    }
+  ],
+  "payouts": [
+    {
+      "id": "po_1S0uXNGzLxUQ7bIMJe4GpGCY",
+      "status": "paid",
+      "amount": 29100,
+      "created": 1756344121
+    },
+    {
+      "id": "po_1RqlGgGzLxUQ7bIMIuNMsRSG",
+      "status": "paid",
+      "amount": 29100,
+      "created": 1753925210
+    },
+    {
+      "id": "po_1RfWS5GzLxUQ7bIM3QeFyYNc",
+      "status": "paid",
+      "amount": 58200,
+      "created": 1751246649
+    },
+    {
+      "id": "po_1Rf9wTGzLxUQ7bIMUejNacAD",
+      "status": "paid",
+      "amount": 134963,
+      "created": 1751160121
+    },
+    {
+      "id": "po_1RXXjuGzLxUQ7bIMvP7YA0RW",
+      "status": "paid",
+      "amount": 28610,
+      "created": 1749344974
+    }
+  ]
+}

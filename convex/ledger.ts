@@ -223,6 +223,68 @@ export const ensureDefaultEntity = mutation({
   },
 });
 
+export const ensureLiveSandboxEntity = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const { userId, membership } = await requireAnyWorkspaceRole(ctx, "admin");
+    const now = Date.now();
+    const slug = "live-sandbox";
+    let entity = await ctx.db
+      .query("entities")
+      .withIndex("by_workspace_and_slug", (q) =>
+        q.eq("workspaceId", membership.workspaceId).eq("slug", slug),
+      )
+      .unique();
+
+    const created = !entity;
+    if (entity) {
+      await ctx.db.patch(entity._id, {
+        name: "Live Sandbox",
+        businessType: "services",
+        currency: "USD",
+        isDemo: false,
+        updatedAt: now,
+      });
+      entity = (await ctx.db.get(entity._id))!;
+    } else {
+      const entityId = await ctx.db.insert("entities", {
+        workspaceId: membership.workspaceId,
+        name: "Live Sandbox",
+        slug,
+        businessType: "services",
+        currency: "USD",
+        isDemo: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+      entity = (await ctx.db.get(entityId))!;
+    }
+
+    const accountsCreated = await seedChartForEntity(ctx, entity);
+    await ctx.db.insert("auditEvents", {
+      workspaceId: entity.workspaceId,
+      actorUserId: userId,
+      action: created ? "entity.live_sandbox.created" : "entity.live_sandbox.refreshed",
+      entityType: "entity",
+      entityId: entity._id,
+      summary: created
+        ? "Created Live Sandbox entity with a services chart of accounts"
+        : "Refreshed Live Sandbox entity and chart of accounts",
+      createdAt: now,
+    });
+
+    return {
+      entityId: entity._id,
+      name: entity.name,
+      slug: entity.slug,
+      currency: entity.currency,
+      isDemo: entity.isDemo,
+      created,
+      accountsCreated,
+    };
+  },
+});
+
 export const postEntry = mutation({
   args: {
     entityId: v.id("entities"),

@@ -199,20 +199,20 @@ Evidence: exported CSVs in evidence folder + test output.
 
 ## M8 — Stripe test mode E2E (Live Sandbox entity)
 
-- [ ] Create the "Live Sandbox" entity (services, USD) via Settings →
+- [x] Create the "Live Sandbox" entity (services, USD) via Settings →
       Businesses; all M8/M9 connections attach to it.
-- [ ] Settings → Connections → Stripe: connect with key from env (UI shows
+- [x] Settings → Connections → Stripe: connect with key from env (UI shows
       "configured from environment" state per build-decision 9), permission
       validation checklist, clearing account auto-created.
-- [ ] Sync action: customers → contacts, charges/PIs → income transactions
+- [x] Sync action: customers → contacts, charges/PIs → income transactions
       with attribution, invoices → AR; cron + manual Sync now.
-- [ ] Seed the Stripe test account via API: ~10 customers, ~25 charges, 3
+- [x] Seed the Stripe test account via API: ~10 customers, ~25 charges, 3
       invoices (finalized/sent), then sync.
-- [ ] Payout reconciliation per spec §5.1: gross/fee postings to clearing,
+- [x] Payout reconciliation per spec §5.1: gross/fee postings to clearing,
       payout fetch + `balance_transactions` breakdown, $0-drift check,
       mismatch → inbox card, payout drill-down UI. Manual test payout if
       possible; fixtures otherwise (see goal §5).
-- [ ] Invoice composer "Send via Stripe": create/finalize → hosted invoice
+- [x] Invoice composer "Send via Stripe": create/finalize → hosted invoice
       URL + status timeline; webhook endpoint registered if `.convex.site`
       URL available (else cron polling).
 

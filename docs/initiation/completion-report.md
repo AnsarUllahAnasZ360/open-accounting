@@ -962,9 +962,13 @@ Evidence:
 - `docs/initiation/evidence/2026-06-11-landing-prototype-exact-copy-verify.txt`
 - `docs/initiation/evidence/2026-06-11-landing-prototype-exact-copy-desktop.png`
 - `docs/initiation/evidence/2026-06-11-landing-prototype-exact-copy-mobile.png`
+- `docs/initiation/evidence/2026-06-11-landing-prototype-exact-copy-vercel-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-landing-prototype-exact-copy-production-e2e.txt`
 
 Verification:
 
 - `pnpm test:e2e -- tests/e2e/landing.spec.ts` green: 2 passing tests.
 - `pnpm verify` green: typecheck, lint, Next.js production build, and 12 unit files / 42 tests.
 - Browser-rendered desktop and 390px mobile screenshots captured from the local Next.js page.
+- Vercel production deploy succeeded: `https://openbooks-2xbdz2f99-ansar-ullah-anas-projects.vercel.app`, aliased to `https://openbooks-flax.vercel.app`.
+- Custom-domain landing spec green: `PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm test:e2e -- tests/e2e/landing.spec.ts`.

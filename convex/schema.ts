@@ -17,6 +17,18 @@ export default defineSchema({
     fiscalYearStartMonth: v.number(),
     updatedAt: v.number(),
   }).index("by_workspace", ["workspaceId"]),
+  entities: defineTable({
+    workspaceId: v.id("workspaces"),
+    name: v.string(),
+    slug: v.string(),
+    businessType: v.string(),
+    currency: v.string(),
+    isDemo: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_workspace_and_slug", ["workspaceId", "slug"]),
   workspaceMembers: defineTable({
     workspaceId: v.id("workspaces"),
     userId: v.id("users"),
@@ -61,4 +73,66 @@ export default defineSchema({
   })
     .index("by_email", ["email"])
     .index("by_status", ["status"]),
+  ledgerAccounts: defineTable({
+    entityId: v.id("entities"),
+    name: v.string(),
+    type: v.union(
+      v.literal("asset"),
+      v.literal("liability"),
+      v.literal("equity"),
+      v.literal("income"),
+      v.literal("expense"),
+    ),
+    subtype: v.string(),
+    number: v.string(),
+    currency: v.string(),
+    isSystem: v.boolean(),
+    archived: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_entity_and_number", ["entityId", "number"]),
+  journalEntries: defineTable({
+    entityId: v.id("entities"),
+    date: v.string(),
+    memo: v.string(),
+    source: v.union(
+      v.literal("bank"),
+      v.literal("stripe"),
+      v.literal("manual"),
+      v.literal("payroll"),
+      v.literal("invoice"),
+      v.literal("bill"),
+      v.literal("ai"),
+      v.literal("rule"),
+    ),
+    sourceId: v.optional(v.string()),
+    reversesEntryId: v.optional(v.id("journalEntries")),
+    postedByUserId: v.id("users"),
+    locked: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_entity_and_date", ["entityId", "date"]),
+  journalLines: defineTable({
+    entityId: v.id("entities"),
+    entryId: v.id("journalEntries"),
+    accountId: v.id("ledgerAccounts"),
+    debitMinor: v.number(),
+    creditMinor: v.number(),
+    currency: v.string(),
+    fxRate: v.optional(v.number()),
+    contactId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_entry", ["entryId"])
+    .index("by_account", ["accountId"]),
+  periodLocks: defineTable({
+    entityId: v.id("entities"),
+    lockedThroughDate: v.string(),
+    updatedAt: v.number(),
+    updatedByUserId: v.id("users"),
+  }).index("by_entity", ["entityId"]),
 });

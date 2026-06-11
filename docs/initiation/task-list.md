@@ -86,16 +86,16 @@ Evidence: Playwright spec for the gate + screenshots.
 
 ## M3 — Ledger core (the foundation — do not rush)
 
-- [ ] Schema per product spec §7: `ledgerAccounts`, `journalEntries`,
+- [x] Schema per product spec §7: `ledgerAccounts`, `journalEntries`,
       `journalLines`, plus `workspaces/entities/users` alignment.
-- [ ] CoA seeding by business type (~30 accounts, 5 types + system accounts).
-- [ ] `postEntry` mutation: Σdebits=Σcredits or reject; immutability;
+- [x] CoA seeding by business type (~30 accounts, 5 types + system accounts).
+- [x] `postEntry` mutation: Σdebits=Σcredits or reject; immutability;
       `reversesEntryId` reversal+repost flow; period soft-lock; auditLog write
       on every post.
-- [ ] Accountant drawer v1 under Settings → Accounting: CoA editor
+- [x] Accountant drawer v1 under Settings → Accounting: CoA editor
       (friendly/accountant modes), manual journal entry form, General Ledger
       view, Trial Balance view.
-- [ ] Tests: balance invariant, reversal flow, lock behavior, property-style
+- [x] Tests: balance invariant, reversal flow, lock behavior, property-style
       random-sequence trial-balance-always-zero, authorization guard.
 
 Done when: tests green; manual JE → appears in GL; Trial Balance difference is

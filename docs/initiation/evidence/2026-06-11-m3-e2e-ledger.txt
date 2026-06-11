@@ -1,0 +1,18 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test -- tests/e2e/ledger.spec.ts
+
+
+Running 1 test using 1 worker
+
+(node:86325) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:86325) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] [browser] [CONVEX M(ledger:postEntry)] [Request ID: da9ea6c1d79b8771] Server Error
+[WebServer] Uncaught Error: Period is locked through 2026-03-31.
+[WebServer]     at handler (../convex/ledger.ts:257:21)
+[WebServer]
+  ✓  1 [chromium] › tests/e2e/ledger.spec.ts:37:5 › manual journal entry appears in GL and locked periods reject backdating (3.1s)
+
+  1 passed (5.3s)

@@ -1,0 +1,12 @@
+
+> openbooks@0.0.0 test:unit /Users/ansarullahanas/Documents/OpenBooks
+> vitest run --passWithNoTests -- convex/ledger.test.ts
+
+
+ RUN  v4.1.8 /Users/ansarullahanas/Documents/OpenBooks
+
+
+ Test Files  4 passed (4)
+      Tests  10 passed (10)
+   Start at  02:29:50
+   Duration  381ms (transform 223ms, setup 0ms, import 419ms, tests 288ms, environment 107ms)

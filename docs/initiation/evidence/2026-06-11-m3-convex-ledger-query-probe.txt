@@ -1,0 +1,6 @@
+✖ Failed to run function "ledger:accountingSnapshot":
+Error: [Request ID: 50f27ad8b19c3b61] Server Error
+Uncaught Error: OpenBooks requires sign-in.
+    at requireUserId (../../convex/authz.ts:26:9)
+    at async requireAnyWorkspaceRole (../../convex/authz.ts:64:6)
+    at async handler (../convex/ledger.ts:385:9)

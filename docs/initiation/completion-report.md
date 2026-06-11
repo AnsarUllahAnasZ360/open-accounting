@@ -220,6 +220,58 @@ Next:
 
 - M3 — ledger core: chart of accounts, single `postEntry` mutation, immutability, reversal/repost, period lock, audit events, and invariant tests.
 
+### 2026-06-11 02:30 CDT — M3 Ledger core
+
+What changed:
+
+- Added the ledger foundation schema: `entities`, `ledgerAccounts`, `journalEntries`, `journalLines`, and `periodLocks`, tied back to workspace authorization.
+- Added chart-of-accounts seeding for the demo services entity with 30+ asset, liability, equity, income, expense, and system accounts.
+- Added the single ledger write path: `ledger.postEntry`. It rejects unbalanced entries, requires at least two lines, stores integer minor-unit debits/credits, blocks locked periods, records `reversesEntryId` reversals, and writes audit events.
+- Added `ledger.setPeriodLock` and `ledger.updateAccount` for setup/accounting controls without creating posted ledger activity outside `postEntry`.
+- Added Settings → Accounting with chart initialization, a minimal CoA editor, manual journal entry form, General Ledger view, Trial Balance view, and period lock control.
+- Added ledger invariant tests for balance rejection, balanced posting, reversal + repost, locked-period rejection, randomized balanced sequences, and authorization.
+- Added Playwright acceptance for manual JE → GL → Trial Balance difference $0.00, plus locked-period backdating rejection.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m3-ledger-unit-focused.txt`
+- `docs/initiation/evidence/2026-06-11-m3-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m3-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m3-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m3-convex-ledger-query-probe.txt`
+- `docs/initiation/evidence/2026-06-11-m3-accounting-gl-tb-desktop.png`
+- `docs/initiation/evidence/2026-06-11-m3-accounting-mobile.png`
+- `docs/initiation/evidence/2026-06-11-m3-period-lock-desktop.png`
+
+Verification:
+
+- `pnpm verify` green: typecheck, lint, Next.js production build, Vitest.
+- `pnpm test:unit -- convex/ledger.test.ts` green.
+- `pnpm test:e2e -- tests/e2e/landing.spec.ts tests/e2e/auth.spec.ts tests/e2e/ledger.spec.ts` green with 6 passing tests.
+- Convex dev deployment was updated with the ledger functions; an unauthenticated probe now fails with `OpenBooks requires sign-in`, proving the function exists and the guard is active.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Ledger schema | PASS | Core entity/account/entry/line/lock tables added with workspace alignment. |
+| Chart of accounts seed | PASS | Services/demo entity seeds 30+ accounts across all required account types plus system accounts. |
+| Single `postEntry` write path | PASS | Only `postEntry` inserts journal entries/lines; setup mutations do not post ledger activity. |
+| Balanced invariant | PASS | Unit tests reject unbalanced entries and randomized balanced sequences keep Trial Balance difference at 0. |
+| Posted immutability | PASS | No edit mutation exists for posted entries; corrections are represented as reversing entries plus reposts. |
+| Reversal + repost | PASS | Reversal lines must exactly invert the original entry and are linked by `reversesEntryId`. |
+| Period lock | PASS | Backdated posts at or before the lock date are rejected in unit and browser acceptance. |
+| Audit trail | PASS | Entry posting, account edits, CoA seed, and period-lock changes write audit events. |
+| Settings → Accounting UI | PASS | CoA editor, manual JE, GL, TB, and period lock controls are present. |
+
+Notes:
+
+- The cloud dev ledger has accumulated harmless M3 manual test entries and request-access test leads. M4 owns idempotent demo reset/reseed.
+
+Next:
+
+- M4 — pipeline stages 1-3 and deterministic 12-month demo seed, with all seeded numbers flowing through `postEntry`.
+
 ### 2026-06-11 00:44 CDT — Pre-goal access readiness
 
 What changed:

@@ -9,6 +9,7 @@ import {
   Sparkline,
   StatCard,
 } from "@/components/openbooks/primitives";
+import { AccountingPanel } from "@/components/openbooks/AccountingPanel";
 import { LeadsPanel } from "@/components/openbooks/LeadsPanel";
 import { accountIcon, bankStatus, emptyStateRows, type AppRoute } from "@/lib/openbooks/content";
 
@@ -94,7 +95,12 @@ export function AppScreen({ route }: { route: AppRoute }) {
         </div>
       </section>
 
-      {route.href === "/settings" ? <LeadsPanel /> : null}
+      {route.href === "/settings" ? (
+        <>
+          <AccountingPanel />
+          <LeadsPanel />
+        </>
+      ) : null}
     </div>
   );
 }

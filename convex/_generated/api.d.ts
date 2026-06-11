@@ -13,6 +13,7 @@ import type * as authAdmin from "../authAdmin.js";
 import type * as authz from "../authz.js";
 import type * as bootstrap from "../bootstrap.js";
 import type * as http from "../http.js";
+import type * as ledger from "../ledger.js";
 import type * as requestAccess from "../requestAccess.js";
 import type * as session from "../session.js";
 
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   authz: typeof authz;
   bootstrap: typeof bootstrap;
   http: typeof http;
+  ledger: typeof ledger;
   requestAccess: typeof requestAccess;
   session: typeof session;
 }>;

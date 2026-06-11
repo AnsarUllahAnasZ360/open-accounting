@@ -46,7 +46,10 @@ The mandatory v1 loop is:
 
 Read these before feature work:
 
-- `docs/initiation/goal.md` — the active completion contract
+- `docs/finishing/implementation-plan.md` — the active work contract (epics A–H)
+- `docs/finishing/audit-report.md` — verified state of the codebase at handoff
+- `docs/finishing/opus-launch-prompt.md` — execution protocol for this branch
+- `docs/initiation/goal.md` — the prior run's completion contract (history)
 - `docs/initiation/task-list.md` — milestones M0–M13
 - `docs/initiation/access-and-questions.md` — env/key runbook + answered decisions
 - `docs/initiation/acceptance.md` — the verification walkthrough
@@ -93,8 +96,14 @@ Read these before feature work:
 
 ## Current Branch Objective
 
-The `initiation` branch should make the project executable by an overnight goal:
-clear docs, clear build sequence, clear access list, and a verified baseline.
+The `finishing` branch closes the gap between the initiation run's strong
+accounting foundation and the finished product: prototype-faithful UI (shell,
+Income/Expenses, Reports, Settings, Ask AI rebuilt on Convex Agent + AI
+Elements), the missing mutations (invoice draft save, bill mark-paid, payroll
+approve/pay), real Plaid sandbox + event-driven Stripe, onboarding/workspace/
+profile/team, and a verification suite that asserts behavior, not text
+presence. The contract is `docs/finishing/implementation-plan.md`; done means
+its §0 north star, evidenced in `docs/finishing/completion-report.md`.
 
 <!-- convex-ai-start -->
 

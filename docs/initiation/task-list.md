@@ -275,6 +275,14 @@ open: real AI SDK provider registry, Convex vector index/embeddings, batched
 Bedrock LLM categorization, full-page/streaming `useChat`, full server-side chat
 tool set, and authenticated live 120-row eval scoring.
 
+M10 follow-up note, 2026-06-11: added a real `bedrockCategorizer` Convex action
+that signs Bedrock Runtime requests, parses structured JSON, resolves the model
+choice against active ledger accounts, and routes through `pipeline.routeTransaction`
+with `aiProposal`; degraded mode still falls back to stages 1-5 without a model
+call. Still open: vector memory/embeddings, batched categorization over sync/import
+queues, AI SDK provider registry, streaming/full-page chat, and live authenticated
+eval scoring.
+
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules
 after confirmation; eval accuracy logged.

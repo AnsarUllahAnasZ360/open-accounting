@@ -60,7 +60,8 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 
 | Spec section | Deviation | Why | Restore plan |
 |---|---|---|---|
-| Product spec §4 / §6.8 | M10 ships a report-backed deterministic chat and AI proposal pipeline, not full Vercel AI SDK streaming with Bedrock tool calls. | The safe increment proves confirm-first actions, provider/degraded state, and ledger-safe routing without introducing unverified model writes. | Add the AI SDK provider registry, Bedrock model actions, streaming `useChat`, and server-side read/action tools before marking M10 fully complete. |
+| Product spec §4 / §6.8 | M10 ships a real Bedrock categorization action plus a report-backed deterministic chat, not full Vercel AI SDK streaming with Bedrock chat/tool calls. | The safe increment proves confirm-first actions, provider/degraded state, and ledger-safe routing; the Bedrock categorizer now produces structured proposals but chat remains deterministic/report-backed. | Add the AI SDK provider registry, streaming `useChat`, server-side read/action tools, and route chat tool calls through Bedrock before marking M10 fully complete. |
+| Product spec §4 | Bedrock categorization is available as a single-transaction Convex action, not yet a batched worker over sync/import queues. | This gets the model proposal path real without changing Plaid/Stripe/CSV sync semantics late in the acceptance run. | Feed uncategorized imported transactions through the action in controlled batches with job status and retry/degraded handling. |
 | Product spec §4 | Correction memory is table-backed by merchant/category; it is not yet a Convex vector index over embeddings. | This keeps the ledger/pipeline invariant testable while avoiding a fake embedding implementation. | Add embedding generation in Convex actions, store vectors in a vector-indexed memory table, and use top-k memory in the LLM categorizer. |
 | Goal §2 categorization eval | Recorded 5-row backend fixture accuracy, not the full seeded >=100-row live eval. | CLI execution lacks the signed-in owner workspace context required by authorization. | Add an authenticated eval runner and record the full seeded eval before final acceptance. |
 | Product spec §5.2 / M11 | Receipt extraction is filename/manual metadata with confidence, not Bedrock vision OCR. | The milestone explicitly allows degradation to upload + manual match; this keeps receipt intake usable without unverified model extraction. | Wire Bedrock vision extraction in a Convex action, then keep the current manual review/match UI as fallback. |
@@ -941,7 +942,7 @@ Verification:
 
 Remaining partials:
 
-- M10 AI remains report-backed/deterministic rather than full AI SDK streaming + Bedrock tool-call implementation.
+- M10 chat remains report-backed/deterministic rather than full AI SDK streaming + Bedrock tool-call implementation; categorization now has a real Bedrock Runtime action for structured proposals.
 - Correction memory is table-backed, not vector/embedding-backed.
 - Live seeded >=100-row eval still needs an authenticated owner-context runner; fixture eval remains 5/5 = 100.0%.
 - Receipts remain upload + filename/manual extraction + heuristic/manual match; Bedrock OCR and embedding match remain open.
@@ -972,3 +973,35 @@ Verification:
 - Browser-rendered desktop and 390px mobile screenshots captured from the local Next.js page.
 - Vercel production deploy succeeded: `https://openbooks-2xbdz2f99-ansar-ullah-anas-projects.vercel.app`, aliased to `https://openbooks-flax.vercel.app`.
 - Custom-domain landing spec green: `PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm test:e2e -- tests/e2e/landing.spec.ts`.
+
+### 2026-06-11 09:45 CDT — M10 Bedrock categorizer action
+
+What changed:
+
+- Added `convex/bedrockCategorizer.ts`, a Convex action that signs Bedrock Runtime `InvokeModel` HTTP requests with AWS SigV4, asks the configured Bedrock model for a structured categorization proposal, parses JSON, resolves the result against active ledger accounts, and calls `pipeline.routeTransaction` with `aiProposal`.
+- Added `ai:categorizationContext`, which re-checks workspace/entity authorization and returns only the entity, bank account, provider status, and allowed income/expense account candidates needed by the action.
+- Preserved the ledger invariant: the action never writes journal entries directly; posting still happens only inside `pipeline.routeTransaction` -> `ledger.postEntry` when autonomy thresholds allow it.
+- Preserved degraded mode: absent/incomplete Bedrock env routes through deterministic stages and Inbox review without a network call.
+- Added parser/prompt/degraded-route tests so model output has to map back to real ledger accounts.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m10-bedrock-categorizer-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m10-bedrock-categorizer-convex-dev-once.txt`
+
+Verification:
+
+- `pnpm verify` green: typecheck, lint, Next.js production build, and 12 unit files / 45 tests.
+- `npx convex dev --once` green: Convex functions ready on the dev deployment.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Bedrock LLM proposal action | PASS | Single-transaction Convex action signs Bedrock Runtime requests and feeds structured proposals into the existing pipeline. |
+| Ledger write path | PASS | The action does not write ledger rows; auto-posting remains gated through `pipeline.routeTransaction` and `ledger.postEntry`. |
+| Degraded mode | PASS | Missing AI env routes without a model call and leaves the transaction in deterministic review. |
+| Account safety | PASS | Model output is accepted only when it resolves to an active candidate ledger account returned by an authorized query. |
+| Batched categorization | PARTIAL | The action is not yet wired as a queued/batched worker over imported uncategorized transactions. |
+| Vector memory | PARTIAL | Correction memory remains table-backed; embeddings/vector search remain open. |
+| Streaming Bedrock chat/tools | PARTIAL | Chat is still report-backed/deterministic, not Bedrock streaming with server-side tool calls. |

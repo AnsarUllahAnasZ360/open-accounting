@@ -4,6 +4,12 @@ import { convexTest } from "convex-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import {
+  buildCategorizationPrompt,
+  normalizeBedrockCategorizationProposal,
+  parseBedrockCategorizationText,
+} from "./bedrockCategorizer";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -20,6 +26,38 @@ const providerStatus = makeFunctionReference<
     thresholds: { suggest: null; balanced: number; autopilot: number };
   }
 >("ai:providerStatus");
+
+const categorizeAndRouteTransaction = makeFunctionReference<
+  "action",
+  {
+    entityId: string;
+    bankAccountId: string;
+    date: string;
+    amountMinor: number;
+    currency: string;
+    merchant: string;
+    rawDescription: string;
+    status: "pending" | "posted";
+    source: "bank" | "stripe" | "manual";
+    externalId: string;
+  },
+  {
+    mode: "bedrock" | "degraded" | "fallback";
+    proposal: {
+      categoryAccountId: string;
+      accountNumber: string;
+      categoryName: string;
+      confidence: number;
+      needsHuman: boolean;
+    } | null;
+    route: {
+      status: "posted" | "needs_review" | "duplicate";
+      transactionId: string;
+      entryId: string | null;
+      stage: string;
+    };
+  }
+>("bedrockCategorizer:categorizeAndRouteTransaction");
 
 async function setupAIBackend(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {
@@ -124,6 +162,66 @@ afterEach(() => {
 });
 
 describe("M10 AI backend", () => {
+  it("builds a bounded Bedrock categorization prompt from ledger accounts", () => {
+    const prompt = buildCategorizationPrompt({
+      entityName: "Acme Studio LLC",
+      amountMinor: -9900,
+      currency: "USD",
+      merchant: "Figma",
+      rawDescription: "Figma monthly subscription",
+      date: "2026-05-14",
+      accounts: [
+        {
+          id: "software-account" as Id<"ledgerAccounts">,
+          number: "5200",
+          name: "Software & SaaS",
+          type: "expense",
+          subtype: "software",
+        },
+      ],
+    });
+
+    expect(prompt).toContain("Figma monthly subscription");
+    expect(prompt).toContain("5200 | Software & SaaS | expense/software");
+    expect(prompt).toContain("Return only JSON");
+    expect(prompt).not.toContain("AWS_SECRET_ACCESS_KEY");
+  });
+
+  it("parses Bedrock JSON and resolves the proposal against allowed accounts", () => {
+    const raw = parseBedrockCategorizationText(`
+      Here is the answer:
+      \`\`\`json
+      {"accountNumber":"5200","categoryName":"Software & SaaS","confidence":86,"needsHuman":false,"reasoning":"Figma is recurring design software.","question":null}
+      \`\`\`
+    `);
+    const normalized = normalizeBedrockCategorizationProposal(raw, [
+      {
+        id: "software-account" as Id<"ledgerAccounts">,
+        number: "5200",
+        name: "Software & SaaS",
+        type: "expense",
+        subtype: "software",
+      },
+      {
+        id: "meals-account" as Id<"ledgerAccounts">,
+        number: "5800",
+        name: "Meals",
+        type: "expense",
+        subtype: "meals",
+      },
+    ]);
+
+    expect(normalized).toMatchObject({
+      account: { number: "5200", name: "Software & SaaS" },
+      aiProposal: {
+        categoryAccountId: "software-account",
+        confidence: 0.86,
+        needsHuman: false,
+        reasoning: "Figma is recurring design software.",
+      },
+    });
+  });
+
   it("reports degraded provider status when Bedrock env is absent", async () => {
     vi.stubEnv("AI_PROVIDER", "");
     vi.stubEnv("AWS_ACCESS_KEY_ID", "");
@@ -333,5 +431,38 @@ describe("M10 AI backend", () => {
         categoryAccountId: ids.mealsAccountId,
       });
     });
+  });
+
+  it("routes through deterministic stages when Bedrock env is absent", async () => {
+    vi.stubEnv("AI_PROVIDER", "");
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "");
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
+    vi.stubEnv("AWS_REGION", "");
+    vi.stubEnv("AI_MODEL", "");
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const session = authed(t, ids.userId);
+
+    const result = await session.action(categorizeAndRouteTransaction, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      date: "2026-05-14",
+      amountMinor: -9900,
+      currency: "USD",
+      merchant: "Figma",
+      rawDescription: "Figma monthly subscription",
+      status: "posted",
+      source: "bank",
+      externalId: "txn-bedrock-degraded-1",
+    });
+
+    expect(result).toMatchObject({
+      mode: "degraded",
+      proposal: null,
+      route: { status: "needs_review", entryId: null, stage: "needs_review" },
+    });
+    const verification = await session.query(api.reports.seedVerification, { entityId: ids.entityId });
+    expect(verification.openInboxCount).toBe(1);
+    expect(verification.trialBalanceDifferenceMinor).toBe(0);
   });
 });

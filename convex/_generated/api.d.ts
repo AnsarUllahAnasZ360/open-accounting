@@ -12,6 +12,7 @@ import type * as ai from "../ai.js";
 import type * as auth from "../auth.js";
 import type * as authAdmin from "../authAdmin.js";
 import type * as authz from "../authz.js";
+import type * as bedrockCategorizer from "../bedrockCategorizer.js";
 import type * as coreViews from "../coreViews.js";
 import type * as http from "../http.js";
 import type * as ledger from "../ledger.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authAdmin: typeof authAdmin;
   authz: typeof authz;
+  bedrockCategorizer: typeof bedrockCategorizer;
   coreViews: typeof coreViews;
   http: typeof http;
   ledger: typeof ledger;

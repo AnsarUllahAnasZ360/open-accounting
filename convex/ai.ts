@@ -177,6 +177,65 @@ export const providerStatus = query({
   },
 });
 
+export const categorizationContext = query({
+  args: {
+    entityId: v.id("entities"),
+    bankAccountId: v.id("bankAccounts"),
+    amountMinor: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new ConvexError("OpenBooks entity not found.");
+    }
+    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+
+    const bankAccount = await ctx.db.get(args.bankAccountId);
+    if (!bankAccount || bankAccount.entityId !== entity._id) {
+      throw new ConvexError("Transaction account does not belong to this entity.");
+    }
+
+    const config = await ctx.db
+      .query("aiConfigs")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId))
+      .unique();
+    const env = bedrockEnvironmentStatus();
+    const accountType = args.amountMinor >= 0 ? "income" : "expense";
+    const accounts = await ctx.db
+      .query("ledgerAccounts")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .take(200);
+
+    return {
+      entity: {
+        id: entity._id,
+        name: entity.name,
+        currency: entity.currency,
+      },
+      bankAccount: {
+        id: bankAccount._id,
+        name: bankAccount.name,
+      },
+      provider: {
+        mode: env.mode,
+        activeProvider: env.activeProvider,
+        model: config?.categorizeModel ?? env.model,
+        region: env.region,
+        autonomy: configAutonomy(config),
+      },
+      candidateAccounts: accounts
+        .filter((account) => account.type === accountType && !account.archived)
+        .map((account) => ({
+          id: account._id,
+          number: account.number,
+          name: account.name,
+          type: account.type,
+          subtype: account.subtype,
+        })),
+    };
+  },
+});
+
 export const setConfig = mutation({
   args: {
     workspaceId: v.id("workspaces"),

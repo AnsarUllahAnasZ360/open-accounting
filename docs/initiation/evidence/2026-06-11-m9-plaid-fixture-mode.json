@@ -1,0 +1,7 @@
+{
+  "mode": "fixture",
+  "transactionCount": 3,
+  "coversInflow": true,
+  "coversOutflow": true,
+  "capturesPersonalFinanceCategory": true
+}

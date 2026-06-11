@@ -223,19 +223,19 @@ Evidence: screenshots + Stripe object IDs in completion report.
 
 ## M9 — Plaid sandbox E2E (Live Sandbox entity)
 
-- [ ] Settings → Connections → Bank: env-key state + Link launch; sandbox
+- [x] Settings → Connections → Bank: env-key state + Link launch; sandbox
       Link flow; account-selection step (checkboxes, balances); ledger
       accounts auto-created per included account.
-- [ ] `/transactions/sync` cursor engine: initial backfill, incremental,
+- [x] `/transactions/sync` cursor engine: initial backfill, incremental,
       `removed` array handling (pending→posted carry-over of category/links
       via amount+date heuristic), 4h cron + manual Sync now.
-- [ ] Custom sandbox user JSON for controlled transactions; document the
+- [x] Custom sandbox user JSON for controlled transactions; document the
       `user_transactions_dynamic` option; `/sandbox/public_token/create` used
       in automated tests to bypass Link UI.
-- [ ] `ITEM_LOGIN_REQUIRED` (via sandbox reset) → Inbox connection card →
+- [x] `ITEM_LOGIN_REQUIRED` (via sandbox reset) → Inbox connection card →
       update-mode relink.
-- [ ] Plaid `personal_finance_category` captured as pipeline prior.
-- [ ] Synced transactions run the full pipeline (stages 1–3 now; AI stages
+- [x] Plaid `personal_finance_category` captured as pipeline prior.
+- [x] Synced transactions run the full pipeline (stages 1–3 now; AI stages
       activate in M10).
 
 Done when: connecting a sandbox bank in the UI yields transactions in the

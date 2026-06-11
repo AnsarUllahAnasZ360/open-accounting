@@ -529,7 +529,56 @@ Notes:
 
 Next:
 
-- M9 — restore the Plaid worker slice from stash `m9-plaid-worker-output`, wire Settings → Connections → Bank to the same Live Sandbox entity, and add the durable Plaid item/cursor layer.
+- M10 — AI on Bedrock: pipeline stages 4-6, categorization eval, degraded mode, and chat panel.
+
+### 2026-06-11 06:27 CDT — M9 Plaid sandbox E2E
+
+What changed:
+
+- Added Settings → Connections → Bank beside the Stripe panel, bound to the same non-demo Live Sandbox entity.
+- Added `convex/plaid.ts` and `convex/plaid.test.ts` with Plaid sandbox env-state checks, Link-token preparation, `/sandbox/public_token/create` bypass, account preview/selection, idempotent Plaid bank-account creation, manual fixture sync, `removed` transaction handling, posted-entry reversal for removed Plaid items, pending→posted carry-over heuristics, `ITEM_LOGIN_REQUIRED` connection inbox cards, and Plaid personal finance category priors.
+- Added a fixture fallback when Plaid sandbox calls return runtime credential errors. The local Plaid env names were present, but Plaid returned `INVALID_CREDENTIALS`, so the browser acceptance path ran in fixture mode without printing or committing any key values.
+- Added a compact "Recent bank imports" proof list in the Bank connection panel so synced Plaid-shaped transactions are visible immediately with review status and "Plaid prior" metadata.
+- Added `tests/e2e/plaid.spec.ts` covering fixture data, owner sign-in, Live Sandbox creation/refresh, Link preparation, sandbox public-token bypass, account selection, manual sync, recent imported transactions, and relink simulation.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m9-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m9-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m9-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m9-plaid-fixture-mode.json`
+- `docs/initiation/evidence/2026-06-11-m9-plaid-settings-e2e.png`
+
+Verification:
+
+- `npx convex dev --once` green after deploying the Plaid functions.
+- `pnpm verify` green: typecheck, lint, Next.js production build, Vitest. Unit total is 10 files / 33 tests.
+- `pnpm test:e2e -- plaid` green: 2 passing Plaid Playwright tests.
+- Full `pnpm test:e2e` green: 13 passing Playwright tests.
+- Secret scan over M9 implementation/evidence found no committed key values. Matches were documented placeholder names in `access-and-questions.md` and generated Playwright report code.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Bank connection UI | PASS | Settings renders Bank connection next to Stripe for the Live Sandbox entity. |
+| Env-key state | PASS | UI reports configured/missing/fixture state without exposing values. Runtime `INVALID_CREDENTIALS` falls back to fixtures and is logged here as a credential blocker. |
+| Link launch | PARTIAL | Link token preparation works. Full embedded Plaid Link UI is not mounted; automated tests use the allowed sandbox public-token bypass. |
+| Account selection | PASS | Preview accounts show checkboxes, masks, balances, and create/refresh ledger-backed bank accounts idempotently. |
+| Manual sync now | PASS | Manual fixture sync creates transactions through `pipeline.routeTransaction`; the panel shows recent imports with Plaid prior metadata. |
+| Cursor/removed engine | PASS | Unit coverage normalizes cursor responses, handles `removed`, and reverses posted ledger entries through `postEntry` when needed. |
+| 4-hour cron | PARTIAL | Not enabled. Current ledger posting requires an authenticated actor; adding a safe system actor for scheduled posting is a separate design decision. |
+| Custom sandbox user JSON | PASS | `openbooks_user_transactions_dynamic` is documented in code and used for sandbox public-token request construction. |
+| `ITEM_LOGIN_REQUIRED` relink | PASS | Simulated relink creates/dedupes a connection inbox card and renders in the Bank panel. |
+| Plaid PFC prior | PASS | `personal_finance_category` is captured into transaction rawDescription/pipeline metadata and verified by unit + browser evidence. |
+| Pipeline stages 1-3 | PASS | Synced items route through the existing dedupe/match/rule pipeline and never write journal entries directly. |
+| Durable Plaid access token storage | PARTIAL | Real access tokens are not stored. This avoids introducing unencrypted bank credentials before the encrypted-token storage decision is implemented. |
+| Transactions register | PARTIAL | Live Sandbox Plaid imports are visible in the Bank panel's recent imports. A full app-wide entity switcher so `/transactions` can view Live Sandbox instead of Acme remains a product gap. |
+
+Notes:
+
+- The Plaid sandbox credentials present in local env returned `INVALID_CREDENTIALS`; dependent real-sandbox Link/sync behavior is fixture-mode until valid sandbox credentials are provided.
+- Full e2e logs include expected negative-test Convex errors for blocked self-registration and locked-period posting rejection.
 
 ### 2026-06-11 00:44 CDT — Pre-goal access readiness
 

@@ -50,6 +50,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PlaidConnectionPanel } from "@/components/openbooks/PlaidConnectionPanel";
 import { StripeConnectionPanel } from "@/components/openbooks/StripeConnectionPanel";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../convex/_generated/api";
@@ -773,7 +774,10 @@ export function RemainingSettingsScreens() {
           description="Sandbox services attach to the Live Sandbox entity so test payments and bank imports never pollute the demo books."
         />
         {liveSandboxEntityId ? (
-          <StripeConnectionPanel entityId={liveSandboxEntityId} />
+          <div className="grid gap-4 xl:grid-cols-2">
+            <StripeConnectionPanel entityId={liveSandboxEntityId} />
+            <PlaidConnectionPanel entityId={liveSandboxEntityId} />
+          </div>
         ) : (
           <div className="rounded-lg border border-dashed bg-card p-4 text-sm text-muted-foreground shadow-xs">
             Create the Live Sandbox business first, then Stripe test mode and Plaid sandbox controls attach here.

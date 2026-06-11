@@ -18,6 +18,7 @@ import {
   type AiAnswer,
   type AiStatus,
 } from "@/lib/openbooks/ai";
+import { openBooksDevAuthBypassEnabled } from "@/lib/openbooks/dev-mode";
 import type { ReportPack } from "@/lib/openbooks/reports-export";
 import { cn } from "@/lib/utils";
 
@@ -86,7 +87,7 @@ async function streamLiveAnswer({
   question: string;
   workspaceId: Id<"workspaces">;
   entityId?: Id<"entities">;
-  token: string;
+  token?: string;
   onChunk: (text: string) => void;
 }) {
   const siteUrl = convexSiteUrl();
@@ -94,12 +95,16 @@ async function streamLiveAnswer({
     throw new Error("Convex HTTP endpoint is not configured.");
   }
 
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${siteUrl}/ai/chat`, {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-    },
+    headers,
     body: JSON.stringify({ workspaceId, entityId, question }),
   });
 
@@ -244,6 +249,7 @@ export function OpenBooksAIChat({
   onClose?: () => void;
 }) {
   const authToken = useAuthToken();
+  const devAuthBypass = openBooksDevAuthBypassEnabled();
   const createConfirmedRule = useMutation(api.ai.createConfirmedRule);
   const categorizeTransactions = useMutation(api.aiChatActions.categorizeTransactions);
   const draftInvoice = useMutation(api.aiChatActions.draftInvoice);
@@ -271,8 +277,8 @@ export function OpenBooksAIChat({
     const localAnswer = answerOpenBooksQuestion(trimmed, reportPack);
     const useLiveRuntime = Boolean(
       aiStatus.configured &&
-        authToken &&
         workspaceId &&
+        (authToken || devAuthBypass) &&
         shouldUseLiveRuntime(trimmed, localAnswer),
     );
     setMessages((current) => [
@@ -288,13 +294,13 @@ export function OpenBooksAIChat({
     ]);
     setInput("");
 
-    if (useLiveRuntime && authToken && workspaceId) {
+    if (useLiveRuntime && workspaceId) {
       try {
         const text = await streamLiveAnswer({
           question: trimmed,
           workspaceId,
           entityId: reportPack?.entity.id as Id<"entities"> | undefined,
-          token: authToken,
+          token: authToken ?? undefined,
           onChunk: (text) => {
             setMessages((current) =>
               current.map((message) =>
@@ -345,7 +351,7 @@ export function OpenBooksAIChat({
         ),
       );
     }, 320);
-  }, [aiStatus.configured, authToken, booksContextReady, reportPack, workspaceId]);
+  }, [aiStatus.configured, authToken, booksContextReady, devAuthBypass, reportPack, workspaceId]);
 
   const confirmProposal = useCallback(async (messageId: string, answer: ProposalAnswer) => {
     const entityId = reportPack?.entity.id as Id<"entities"> | undefined;

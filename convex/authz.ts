@@ -19,9 +19,39 @@ export function ownerEmail() {
   return value ? normalizeEmail(value) : null;
 }
 
+export function isDevAuthBypassEnabled() {
+  if (process.env.OPENBOOKS_DEV_AUTH_BYPASS !== "1") return false;
+  const siteUrl = process.env.SITE_URL;
+  if (!siteUrl) return false;
+
+  try {
+    const { hostname } = new URL(siteUrl);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+async function devAuthBypassUserId(ctx: QueryCtx | MutationCtx) {
+  if (!isDevAuthBypassEnabled()) return null;
+  const email = normalizeEmail(process.env.OPENBOOKS_DEV_OWNER_EMAIL ?? process.env.OWNER_EMAIL ?? "");
+  if (!email) {
+    throw new Error("OpenBooks dev auth bypass needs OPENBOOKS_DEV_OWNER_EMAIL or OWNER_EMAIL.");
+  }
+
+  const users = await ctx.db.query("users").collect();
+  const user = users.find((candidate) => candidate.email && normalizeEmail(candidate.email) === email);
+  if (!user) {
+    throw new Error("OpenBooks dev auth bypass needs a bootstrapped owner account. Run `npx convex run authAdmin:bootstrapOwner`.");
+  }
+  return user._id;
+}
+
 export async function requireUserId(ctx: QueryCtx | MutationCtx) {
   const userId = await getAuthUserId(ctx);
   if (!userId) {
+    const devUserId = await devAuthBypassUserId(ctx);
+    if (devUserId) return devUserId;
     throw new Error("OpenBooks requires sign-in.");
   }
   return userId as Id<"users">;

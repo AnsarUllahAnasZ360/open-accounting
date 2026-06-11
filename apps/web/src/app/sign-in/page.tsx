@@ -2,9 +2,11 @@ import Link from "next/link";
 
 import { SignInForm } from "@/components/openbooks/SignInForm";
 import { Button } from "@/components/ui/button";
+import { openBooksDevAuthBypassEnabled } from "@/lib/openbooks/dev-mode";
 
 export default function SignInPage() {
   const convexConfigured = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
+  const devAuthBypass = openBooksDevAuthBypassEnabled();
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -35,7 +37,7 @@ export default function SignInPage() {
           </p>
         </div>
         {convexConfigured ? (
-          <SignInForm />
+          <SignInForm devAuthBypass={devAuthBypass} />
         ) : (
           <div className="rounded-lg border bg-card p-5 text-sm text-muted-foreground shadow-xs">
             Configure `NEXT_PUBLIC_CONVEX_URL` to activate sign-in locally.

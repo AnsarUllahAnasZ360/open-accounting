@@ -12,6 +12,7 @@ import { OpenBooksAIChat } from "@/components/openbooks/OpenBooksAIChat";
 import { Button } from "@/components/ui/button";
 import { frontendAiStatus, OPENBOOKS_AI_EVENT } from "@/lib/openbooks/ai";
 import { appRoutes, mobileRoutes } from "@/lib/openbooks/content";
+import { openBooksDevAuthBypassEnabled } from "@/lib/openbooks/dev-mode";
 import type { ReportPack } from "@/lib/openbooks/reports-export";
 import { cn } from "@/lib/utils";
 
@@ -47,8 +48,10 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const devAuthBypass = openBooksDevAuthBypassEnabled();
+  const sessionReady = isAuthenticated || devAuthBypass;
   const { signOut } = useAuthActions();
-  const viewer = useQuery(api.session.viewer, isAuthenticated ? {} : "skip");
+  const viewer = useQuery(api.session.viewer, sessionReady ? {} : "skip");
   const reportArgs = useMemo(
     () => ({
       startDate: "2026-01-01",
@@ -59,10 +62,10 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     }),
     [],
   );
-  const reportPack = useQuery(api.reportViews.reportPack, isAuthenticated ? reportArgs : "skip") as ReportPack | undefined;
+  const reportPack = useQuery(api.reportViews.reportPack, sessionReady ? reportArgs : "skip") as ReportPack | undefined;
   const aiProviderStatus = useQuery(
     api.ai.providerStatus,
-    isAuthenticated && viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
+    sessionReady && viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
   );
   const aiStatus = frontendAiStatus(aiProviderStatus);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -82,7 +85,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(OPENBOOKS_AI_EVENT, handleAskAi);
   }, []);
 
-  if (isLoading) {
+  if (isLoading && !devAuthBypass) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm text-muted-foreground">
         Checking your open books session...
@@ -90,7 +93,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!sessionReady) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="w-full max-w-sm rounded-lg border bg-card p-5 shadow-xs">
@@ -229,7 +232,9 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
               size="icon-sm"
               variant="ghost"
               onClick={async () => {
-                await signOut();
+                if (!devAuthBypass) {
+                  await signOut();
+                }
                 router.push("/sign-in");
               }}
             >

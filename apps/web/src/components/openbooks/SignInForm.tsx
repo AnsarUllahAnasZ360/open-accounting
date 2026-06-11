@@ -13,7 +13,7 @@ type State = "idle" | "submitting" | "error";
 
 const INVITE_ONLY_MESSAGE = "OpenBooks is invite-only. Request access from the landing page.";
 
-export function SignInForm() {
+export function SignInForm({ devAuthBypass = false }: { devAuthBypass?: boolean }) {
   const router = useRouter();
   const { signIn } = useAuthActions();
   const [state, setState] = useState<State>("idle");
@@ -66,6 +66,22 @@ export function SignInForm() {
           </p>
         </div>
       </div>
+      {devAuthBypass ? (
+        <div className="mb-4 rounded-lg border border-[#dcefd2] bg-[#f1f8ee] p-3">
+          <div className="text-sm font-medium text-[#17540f]">Local dev mode is enabled.</div>
+          <p className="mt-1 text-sm text-[#3b6f32]">
+            Continue as the bootstrapped owner workspace without entering a password.
+          </p>
+          <Button
+            className="mt-3 w-full"
+            type="button"
+            onClick={() => router.push("/dashboard")}
+          >
+            Continue as local dev owner
+            <ArrowRight className="size-4" />
+          </Button>
+        </div>
+      ) : null}
       <div className="grid gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor="email">Work email</Label>

@@ -7,14 +7,16 @@ import { api } from "../../../../../convex/_generated/api";
 import { OpenBooksAIChat } from "@/components/openbooks/OpenBooksAIChat";
 import { CategoryChip, PageHeader } from "@/components/openbooks/primitives";
 import { frontendAiStatus } from "@/lib/openbooks/ai";
+import { openBooksDevAuthBypassEnabled } from "@/lib/openbooks/dev-mode";
 import type { ReportPack } from "@/lib/openbooks/reports-export";
 
 export function AskAIScreen() {
   const { isAuthenticated } = useConvexAuth();
-  const viewer = useQuery(api.session.viewer, isAuthenticated ? {} : "skip");
+  const sessionReady = isAuthenticated || openBooksDevAuthBypassEnabled();
+  const viewer = useQuery(api.session.viewer, sessionReady ? {} : "skip");
   const reportPack = useQuery(
     api.reportViews.reportPack,
-    isAuthenticated
+    sessionReady
       ? {
           startDate: "2026-01-01",
           endDate: "2026-12-31",
@@ -26,7 +28,7 @@ export function AskAIScreen() {
   ) as ReportPack | undefined;
   const aiProviderStatus = useQuery(
     api.ai.providerStatus,
-    isAuthenticated && viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
+    sessionReady && viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
   );
   const aiStatus = frontendAiStatus(aiProviderStatus);
 

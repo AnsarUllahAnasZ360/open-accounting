@@ -3,6 +3,7 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { auth } from "./auth";
+import { isDevAuthBypassEnabled } from "./authz";
 import { normalizeStripeWebhookEvent, verifyStripeWebhookSignature } from "./stripeWebhook";
 
 const http = httpRouter();
@@ -89,7 +90,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const headers = corsHeaders(request);
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    if (!identity && !isDevAuthBypassEnabled()) {
       return jsonResponse({ ok: false, error: "unauthenticated" }, { status: 401, headers });
     }
 

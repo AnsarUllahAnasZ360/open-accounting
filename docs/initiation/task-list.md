@@ -354,6 +354,14 @@ Convex action; when env is absent, it degrades without calling a model. The
 provider-layer checkbox is now complete. Still open: streaming chat/tool calls
 and automatic post-sync batch scheduling.
 
+M10 chat read-tools note, 2026-06-11: added server-authorized Convex read
+queries with the spec tool names: `queryTransactions`, `getReport`,
+`getBalances`, `searchContacts`, and `getPayrollRuns`. Each resolves the
+authorized entity, returns bounded snapshots, and rejects unauthenticated
+access. This completes the backend read-tool layer, but the chat checkbox stays
+open until these tools are called by the streaming AI SDK chat runtime and the
+remaining confirm-card action tools are wired.
+
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules
 after confirmation; eval accuracy logged.

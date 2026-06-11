@@ -1,0 +1,10 @@
+Command:
+
+`npx convex deploy --yes --typecheck=disable`
+
+Result:
+
+- PASS at 2026-06-11 13:44 CDT.
+- Deployed Convex functions to production deployment `perceptive-guanaco-487`.
+- Production Convex URL: `https://perceptive-guanaco-487.convex.cloud`.
+- Schema validation completed and no indexes were deleted.

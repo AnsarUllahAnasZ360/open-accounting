@@ -1,0 +1,10 @@
+Command:
+
+`npx convex dev --once --typecheck=disable`
+
+Result:
+
+- PASS at 2026-06-11 13:42 CDT.
+- Convex developed against the dev deployment `ceaseless-mandrill-524`.
+- Convex functions prepared successfully in 2.96s.
+- The CLI repeated the existing duplicate `NEXT_PUBLIC_CONVEX_URL` warning from `.env.local`; no env values were printed or changed.

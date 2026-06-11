@@ -137,7 +137,7 @@ What changed:
 - Built the shared app shell: left navigation for Dashboard, Inbox, Transactions, Invoices, Bills, Contacts, Payroll, Reports, Settings; entity switcher; search stub; Ask AI drawer; sync footer; and mobile bottom tabs for Dashboard, Inbox, Transactions, and Ask AI.
 - Added all M1 routes with first-class responsive placeholder surfaces. These are shell/structure only; M3-M7 replace the placeholders with ledger-backed data and real workflows.
 - Added request-access intake with `accessLeads` storage in Convex. The browser calls a Convex action that stores the lead through the mutation and sends Plunk notification only when Plunk server env is configured.
-- Corrected an initial drift: the first landing implementation was an approximation. It has been replaced with content and screenshot assets ported from `OpenBook - Prototype/Landing.dc.html`: "Your books, always done.", the whole-loop section, Inbox, Ask AI, tour, reports, mobile, roadmap, why-free, compare, FAQ, and CTA sections. The repo license text is aligned to AGPL where the prototype copy conflicted with the project contract.
+- Corrected an initial drift: the first landing implementation was an approximation. It has been replaced with content and screenshot assets ported from `OpenBook - Prototype/Landing.dc.html`: "Your books, always done.", the whole-loop section, Inbox, Ask AI, tour, reports, mobile, roadmap, why-free, compare, FAQ, and CTA sections. A later correction restored the visible landing license copy to match the prototype exactly.
 
 Evidence:
 
@@ -683,7 +683,7 @@ What changed:
 
 - Restored the landing page's final CTA/footer shape to match the `OpenBook - Prototype/Landing.dc.html` content flow instead of the custom two-column remix.
 - Kept the required invite-only request-access intake, but moved it into a contained block below the prototype CTA so the prototype content stays intact.
-- Aligned visible license copy with the repo contract (`AGPL-3.0-only`) while preserving the prototype's landing content and section order.
+- At this point visible license copy was aligned with the repo contract (`AGPL-3.0-only`); this was superseded by the 09:31 CDT correction that restored the landing copy to the prototype wording exactly.
 
 Evidence:
 
@@ -946,3 +946,25 @@ Remaining partials:
 - Live seeded >=100-row eval still needs an authenticated owner-context runner; fixture eval remains 5/5 = 100.0%.
 - Receipts remain upload + filename/manual extraction + heuristic/manual match; Bedrock OCR and embedding match remain open.
 - Stripe webhook registration remains open; payout E2E remains fixture-backed per sandbox-reality notes.
+
+### 2026-06-11 09:31 CDT — M1 landing prototype exact-copy correction
+
+What changed:
+
+- Restored the visible landing-page narrative copy to match `OpenBook - Prototype/Landing.dc.html` directly instead of applying a repo-license rewrite on top of the prototype.
+- Updated the hero proof point, compare table, why-free section, FAQ answers, and footer from AGPL wording back to the prototype's MIT wording.
+- Added Playwright assertions so the MIT prototype copy cannot silently drift again.
+- Preserved the required invite-only request-access form below the prototype CTA; prototype and design-system folders remained read-only.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-landing-prototype-exact-copy-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-landing-prototype-exact-copy-verify.txt`
+- `docs/initiation/evidence/2026-06-11-landing-prototype-exact-copy-desktop.png`
+- `docs/initiation/evidence/2026-06-11-landing-prototype-exact-copy-mobile.png`
+
+Verification:
+
+- `pnpm test:e2e -- tests/e2e/landing.spec.ts` green: 2 passing tests.
+- `pnpm verify` green: typecheck, lint, Next.js production build, and 12 unit files / 42 tests.
+- Browser-rendered desktop and 390px mobile screenshots captured from the local Next.js page.

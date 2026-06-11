@@ -11,6 +11,9 @@ test("landing shell renders the OpenBooks bootstrap surface", async ({ page }) =
   await expect(page.getByRole("heading", { name: "Ask your books anything." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Every screen money touches." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "The whole business, in your pocket." })).toBeVisible();
+  await expect(page.getByText("MIT licensed", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Open source, MIT licensed")).toBeVisible();
+  await expect(page.getByText("The software is free and MIT-licensed, forever.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Nobody else combines all five." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Honest answers" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Work email" })).toBeVisible();

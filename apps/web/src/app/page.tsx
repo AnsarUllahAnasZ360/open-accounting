@@ -73,7 +73,7 @@ const compareRows = [
   ["Bank sync", "BYO Plaid", "yes", "yes", "no"],
   ["AI categorization + inbox", "BYO model", "yes", "yes", "no"],
   ["Stripe payout reconciliation", "yes", "partial", "yes", "no"],
-  ["Open source", "AGPL", "no", "no", "AGPL"],
+  ["Open source", "MIT", "no", "no", "AGPL"],
   ["Self-hosted, you own the data", "yes", "no", "no", "yes"],
   ["Price per month", "$0", "$38–275", "$0–200", "$0"],
 ];
@@ -198,7 +198,7 @@ export default function Home() {
             <span className="money-figures font-semibold text-foreground">15 min</span> to first dashboard
           </span>
           <span>
-            <span className="money-figures font-semibold text-foreground">AGPL</span> licensed
+            <span className="money-figures font-semibold text-foreground">MIT</span> licensed
           </span>
         </div>
 
@@ -429,8 +429,8 @@ export default function Home() {
                   "Your books live on your machine as data you can always export. No vendor can shut down overnight and take your records with it.",
                 ],
                 [
-                  "Open source, AGPL-3.0",
-                  "The ledger engine is public and auditable. No ads, no upsells, no payments funnel disguised as bookkeeping software.",
+                  "Open source, MIT licensed",
+                  "The ledger engine is public, auditable, and free to use anywhere — even inside your own products. No ads, no upsells, no payments funnel disguised as bookkeeping software.",
                 ],
               ].map(([title, body]) => (
                 <div key={title} className="flex gap-3.5">
@@ -535,7 +535,7 @@ export default function Home() {
           open books
         </span>
         <span>·</span>
-        <span>AGPL-3.0</span>
+        <span>MIT licensed</span>
         <span>·</span>
         <a className="hover:text-foreground" href="https://github.com/AnsarUllahAnasZ360/open-accounting" rel="noreferrer" target="_blank">
           GitHub

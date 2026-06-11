@@ -1,0 +1,117 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test
+
+[2m[WebServer] [22m(node:94095) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94113) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94120) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 15 tests using 1 worker
+
+(node:94123) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:94123) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94133) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94156) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94282) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94327) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first (1.3m)
+[2m[WebServer] [22m(node:94329) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   2 [chromium] › tests/e2e/auth.spec.ts:34:5 › owner can sign in and land on the dashboard (1.1s)
+[2m[WebServer] [22m[browser] [CONVEX A(auth:signIn)] [Request ID: b992c74f865e177d] Server Error
+[2m[WebServer] [22mUncaught Error: InvalidAccountId
+[2m[WebServer] [22m    at retrieveAccount (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/index.ts:602:9)
+[2m[WebServer] [22m    at async authorize [as authorize] (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/providers/Password.ts:157:10)
+[2m[WebServer] [22m    at async handleCredentials (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/signIn.ts:191:6)
+[2m[WebServer] [22m    at async handler (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/index.ts:416:26)
+[2m[WebServer] [22m
+[2m[WebServer] [22m[browser] [CONVEX A(auth:signIn)] [Request ID: bfc21097356658fe] Server Error
+[2m[WebServer] [22mUncaught ConvexError: Uncaught ConvexError: OpenBooks is invite-only. Request access from the landing page.
+[2m[WebServer] [22m    at createOrUpdateUser [as createOrUpdateUser] (../../convex/auth.ts:45:18)
+[2m[WebServer] [22m    at async defaultCreateOrUpdateUser (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/users.ts:60:6)
+[2m[WebServer] [22m    at async upsertUserAndAccount (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/users.ts:41:11)
+[2m[WebServer] [22m    at async createAccountFromCredentialsImpl (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/mutations/createAccountFromCredentials.ts:72:12)
+[2m[WebServer] [22m
+[2m[WebServer] [22m    at async createAccount (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/index.ts:558:0)
+[2m[WebServer] [22m    at async authorize [as authorize] (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/providers/Password.ts:145:10)
+[2m[WebServer] [22m    at async handleCredentials (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/signIn.ts:191:6)
+[2m[WebServer] [22m    at async handler (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/index.ts:416:26)
+[2m[WebServer] [22m
+  ✓   3 [chromium] › tests/e2e/auth.spec.ts:43:5 › random email cannot self-register (1.1s)
+[2m[WebServer] [22m(node:94335) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94336) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   4 [chromium] › tests/e2e/auth.spec.ts:54:5 › owner can review request-access leads in settings (3.0s)
+[2m[WebServer] [22m(node:94338) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94361) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94442) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94465) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94466) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94471) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   5 [chromium] › tests/e2e/core-screens.spec.ts:39:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop (1.3m)
+  ✓   6 [chromium] › tests/e2e/landing.spec.ts:3:5 › landing shell renders the OpenBooks bootstrap surface (351ms)
+[2m[WebServer] [22m(node:94496) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   7 [chromium] › tests/e2e/landing.spec.ts:20:5 › app shell routes are gated for signed-out visitors (258ms)
+[2m[WebServer] [22m(node:94498) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94499) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   8 [chromium] › tests/e2e/ledger.spec.ts:37:5 › manual journal entry appears in GL and locked periods reject backdating (4.7s)
+[2m[WebServer] [22m(node:94523) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   9 [chromium] › tests/e2e/live-sandbox.spec.ts:37:5 › owner can create the Live Sandbox entity from Settings Businesses (1.1m)
+[2m[WebServer] [22m(node:94645) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94646) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94647) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94648) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94671) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94673) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94674) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  10 [chromium] › tests/e2e/modules.spec.ts:44:5 › owner can browse M6 contacts, AR, AP, payroll, and settings modules (9.1s)
+  ✓  11 [chromium] › tests/e2e/plaid.spec.ts:59:5 › Plaid fixture mode has sandbox-safe transaction coverage (2ms)
+[2m[WebServer] [22m(node:94677) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  12 [chromium] › tests/e2e/plaid.spec.ts:86:5 › owner can connect Plaid sandbox bypass, select accounts, sync, and simulate relink (6.1s)
+[2m[WebServer] [22m(node:94702) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94725) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94741) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  13 [chromium] › tests/e2e/receipts.spec.ts:40:5 › M11 receipt fixtures upload, extract metadata, queue, and manually match (10.7s)
+[2m[WebServer] [22m(node:94766) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94769) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  14 [chromium] › tests/e2e/reports.spec.ts:39:5 › owner can render ledger-backed reports and export from reports/settings (5.6s)
+[2m[WebServer] [22m(node:94793) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:94794) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  15 [chromium] › tests/e2e/stripe.spec.ts:46:5 › owner can run the M8 Stripe test-mode or fixture sync on Live Sandbox (1.0m)
+
+  15 passed (5.4m)

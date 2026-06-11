@@ -561,7 +561,7 @@ export const listConnectionState = query({
       .query("transactions")
       .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
       .order("desc")
-      .take(100);
+      .take(1000);
     const inboxItems = await ctx.db
       .query("inboxItems")
       .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))

@@ -1,0 +1,88 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test -- tests/e2e/ai-chat.spec.ts tests/e2e/core-screens.spec.ts tests/e2e/plaid.spec.ts
+
+[2m[WebServer] [22m(node:83236) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83254) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83260) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 4 tests using 1 worker
+
+(node:83263) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:83263) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83272) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83295) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83296) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83298) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first (7.9s)
+[2m[WebServer] [22m(node:83323) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83324) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83488) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83490) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83491) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83540) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  2 [chromium] › tests/e2e/core-screens.spec.ts:44:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop (1.3m)
+  ✓  3 [chromium] › tests/e2e/plaid.spec.ts:59:5 › Plaid fixture mode has sandbox-safe transaction coverage (2ms)
+[2m[WebServer] [22m(node:83544) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:83545) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  4 [chromium] › tests/e2e/plaid.spec.ts:86:5 › owner can connect Plaid sandbox bypass, select accounts, sync, and simulate relink (36.5s)
+
+
+  1) [chromium] › tests/e2e/plaid.spec.ts:86:5 › owner can connect Plaid sandbox bypass, select accounts, sync, and simulate relink
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: getByTestId('plaid-recent-transactions')
+    Expected pattern: [32m/Notion|Client ACH|Plaid Sandbox Bank/i[39m
+    Timeout: 30000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 30000ms[22m
+    [2m  - waiting for getByTestId('plaid-recent-transactions')[22m
+
+
+      114 |     timeout: 120000,
+      115 |   });
+    > 116 |   await expect(page.getByTestId("plaid-recent-transactions")).toContainText(/Notion|Client ACH|Plaid Sandbox Bank/i, {
+          |                                                               ^
+      117 |     timeout: 30000,
+      118 |   });
+      119 |   await expect(page.getByTestId("plaid-recent-transactions")).toContainText("Plaid prior");
+        at /Users/ansarullahanas/Documents/OpenBooks/tests/e2e/plaid.spec.ts:116:63
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    docs/initiation/evidence/playwright-results/plaid-owner-can-connect-Pl-20187-ts-sync-and-simulate-relink-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: docs/initiation/evidence/playwright-results/plaid-owner-can-connect-Pl-20187-ts-sync-and-simulate-relink-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    docs/initiation/evidence/playwright-results/plaid-owner-can-connect-Pl-20187-ts-sync-and-simulate-relink-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace docs/initiation/evidence/playwright-results/plaid-owner-can-connect-Pl-20187-ts-sync-and-simulate-relink-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests/e2e/plaid.spec.ts:86:5 › owner can connect Plaid sandbox bypass, select accounts, sync, and simulate relink
+  3 passed (2.1m)
+ ELIFECYCLE  Command failed with exit code 1.

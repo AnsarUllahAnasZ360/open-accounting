@@ -19,6 +19,9 @@ const modules = import.meta.glob("./**/*.ts");
 const plaidEnvState = makeFunctionReference<"query", Record<string, never>, PlaidEnvState>(
   "plaid:envState",
 );
+const listConnectionState = makeFunctionReference<"query", { entityId: string }, PlaidConnectionState>(
+  "plaid:listConnectionState",
+);
 const stageFixtureTransactions = makeFunctionReference<"mutation", StageFixtureArgs, StageFixtureResult>(
   "plaid:stageFixtureTransactions",
 );
@@ -35,6 +38,13 @@ type PlaidEnvState = {
   hasSecret: boolean;
   ready: boolean;
   problems: string[];
+};
+
+type PlaidConnectionState = {
+  recentTransactions: Array<{
+    merchant: string;
+    plaidPriorCaptured: boolean;
+  }>;
 };
 
 type StageFixtureArgs = {
@@ -385,6 +395,54 @@ describe("Plaid Convex primitives", () => {
       needsReviewCount: 1,
       plaidPriorCount: 2,
     });
+  });
+
+  it("keeps older Plaid imports visible when newer non-Plaid rows exist", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.insert("transactions", {
+        entityId: ids.entityId,
+        bankAccountId: ids.bankAccountId,
+        date: "2026-06-10",
+        amountMinor: -4999,
+        currency: "USD",
+        merchant: "Notion",
+        rawDescription: "Notion subscription | Plaid prior: GENERAL_SERVICES/GENERAL_SERVICES_OTHER_GENERAL_SERVICES (HIGH)",
+        status: "posted",
+        review: "needs_review",
+        source: "bank",
+        externalId: "plaid:older-visible-fixture",
+        evalSet: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+      for (let index = 0; index < 120; index += 1) {
+        await ctx.db.insert("transactions", {
+          entityId: ids.entityId,
+          bankAccountId: ids.bankAccountId,
+          date: "2026-06-11",
+          amountMinor: -100 - index,
+          currency: "USD",
+          merchant: `Stripe import ${index}`,
+          rawDescription: `Stripe import ${index}`,
+          status: "posted",
+          review: "auto",
+          source: "stripe",
+          externalId: `stripe:noise:${index}`,
+          evalSet: false,
+          createdAt: now + index + 1,
+          updatedAt: now + index + 1,
+        });
+      }
+    });
+
+    const state = await session.query(listConnectionState, { entityId: ids.entityId });
+    expect(state.recentTransactions.some((transaction) => transaction.merchant === "Notion")).toBe(true);
+    expect(state.recentTransactions.some((transaction) => transaction.plaidPriorCaptured)).toBe(true);
   });
 
   it("handles Plaid cursor sync removals by excluding and reversing posted entries", async () => {

@@ -67,4 +67,29 @@ describe("demo seed engine", () => {
     expect(second.trialBalanceDifferenceMinor).toBe(0);
     expect(second.may2026).toEqual(first.may2026);
   });
+
+  it("joins overlapping reset requests into one seed job", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupWorkspace(t);
+    const session = authed(t, ids.userId);
+
+    const [first, second] = await Promise.all([
+      session.action(api.seedDemo.resetAndSeed, {}),
+      session.action(api.seedDemo.resetAndSeed, {}),
+    ]);
+
+    expect(first.transactionCount).toBe(demoGoldenSeedSummary.transactionCount);
+    expect(second.transactionCount).toBe(first.transactionCount);
+    expect(second.entityId).toBe(first.entityId);
+    expect(second.trialBalanceDifferenceMinor).toBe(0);
+
+    const persisted = await t.run(async (ctx) => {
+      const runs = await ctx.db.query("demoSeedRuns").collect();
+      const jobs = await ctx.db.query("demoSeedJobs").collect();
+      return { runs, jobs };
+    });
+    expect(persisted.runs).toHaveLength(1);
+    expect(persisted.jobs).toHaveLength(1);
+    expect(persisted.jobs[0]?.status).toBe("succeeded");
+  });
 });

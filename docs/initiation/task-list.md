@@ -327,7 +327,7 @@ Evidence: live URL screenshots incl. mobile.
 
 ## M13 — Acceptance run + honest report
 
-- [ ] Full `pnpm verify` + `pnpm test:e2e` green; run the e2e suite against
+- [x] Full `pnpm verify` + `pnpm test:e2e` green; run the e2e suite against
       production if practical.
 - [x] Walk `docs/initiation/acceptance.md` in the browser; capture a
       screenshot per checkpoint into `docs/initiation/evidence/`.
@@ -340,11 +340,12 @@ Evidence: live URL screenshots incl. mobile.
       completion report).
 
 M13 integration note, 2026-06-11: `pnpm verify` is green, production is live,
-and the acceptance table is filled. Full `pnpm test:e2e` is intentionally left
-unchecked: after three attempts, repeated browser-triggered demo resets still
-conflict with long-running seed actions. Final local/dev e2e was 12/15; final
-production e2e was 11/15. The completion report records the blocker and exact
-next engineering input.
+and the acceptance table is filled. The seed-reset blocker was resolved with a
+workspace-scoped seed job lock plus a production-safe reset harness. Final
+local/dev `pnpm test:e2e` is 15/15 and final production-domain
+`pnpm test:e2e` is 15/15. The completion report still records product-level
+partials such as full Bedrock/vector AI depth, receipt OCR/embedding matching,
+and Stripe webhook registration.
 
 Done when: every acceptance row has a status and evidence; the outcome in
 goal.md §1 is satisfied per the verification surface in goal.md §2, or

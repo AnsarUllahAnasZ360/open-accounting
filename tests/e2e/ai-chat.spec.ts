@@ -37,7 +37,7 @@ async function signInOwner(page: Page) {
 test.describe.configure({ mode: "serial" });
 
 test("M10 AI chat answers read questions and keeps actions confirm-first", async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
 
   await signInOwner(page);
 
@@ -45,24 +45,11 @@ test("M10 AI chat answers read questions and keeps actions confirm-first", async
   await expect(page.getByTestId("demo-data-panel")).toBeVisible({ timeout: 15000 });
   const demoExport = page.getByTestId("demo-data-panel").getByRole("button", { name: "Export CSV bundle" });
   await expect(demoExport).toBeVisible();
-  let seedState = "loading";
-  await expect
-    .poll(
-      async () => {
-        seedState = await demoExport.isEnabled()
-          ? "ready"
-          : await page.getByText("Demo books have not been seeded in this workspace yet.").isVisible()
-            ? "missing"
-            : "loading";
-        return seedState;
-      },
-      { timeout: 30000 },
-    )
-    .not.toBe("loading");
-  if (seedState === "missing") {
-    await page.getByRole("button", { name: "Reset demo data" }).click();
-    await expect(demoExport).toBeEnabled({ timeout: 120000 });
-  }
+  await page.getByRole("button", { name: "Reset demo data" }).click();
+  await expect(page.getByTestId("demo-seed-message")).toContainText("Demo seed complete.", {
+    timeout: 180_000,
+  });
+  await expect(demoExport).toBeEnabled({ timeout: 30_000 });
   const aiSettings = page.getByTestId("m10-ai-settings");
   await expect(aiSettings).toBeVisible({ timeout: 15000 });
   await expect(aiSettings.getByText(/AI provider is not configured|Bedrock provider is configured/)).toBeVisible();

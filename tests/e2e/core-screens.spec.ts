@@ -36,26 +36,15 @@ async function signInOwner(page: Page) {
 
 test.describe.configure({ mode: "serial" });
 
-function runsAgainstExternalBaseUrl() {
-  const baseUrl = process.env.PLAYWRIGHT_BASE_URL?.trim();
-  return Boolean(baseUrl && !/^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(baseUrl));
-}
-
 test("owner can run the M5 dashboard, inbox, transactions, split, and CSV loop", async ({ page }) => {
   test.setTimeout(360_000);
 
   await signInOwner(page);
   await page.goto("/settings");
-  if (runsAgainstExternalBaseUrl()) {
-    await expect(page.getByTestId("demo-data-panel").getByRole("button", { name: "Export CSV bundle" })).toBeEnabled({
-      timeout: 30_000,
-    });
-  } else {
-    await page.getByRole("button", { name: "Reset demo data" }).click();
-    await expect(page.getByTestId("demo-seed-message")).toContainText("Demo seed complete.", {
-      timeout: 180_000,
-    });
-  }
+  await page.getByRole("button", { name: "Reset demo data" }).click();
+  await expect(page.getByTestId("demo-seed-message")).toContainText("Demo seed complete.", {
+    timeout: 180_000,
+  });
 
   await page.goto("/dashboard");
   await expect(page.getByTestId("dashboard-screen")).toBeVisible();

@@ -1,0 +1,28 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test
+
+
+Running 15 tests using 1 worker
+
+(node:93224) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:93224) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first (1.2m)
+  ✓   2 [chromium] › tests/e2e/auth.spec.ts:34:5 › owner can sign in and land on the dashboard (1.3s)
+  ✓   3 [chromium] › tests/e2e/auth.spec.ts:43:5 › random email cannot self-register (1.3s)
+  ✓   4 [chromium] › tests/e2e/auth.spec.ts:54:5 › owner can review request-access leads in settings (2.7s)
+  ✓   5 [chromium] › tests/e2e/core-screens.spec.ts:39:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop (1.3m)
+  ✓   6 [chromium] › tests/e2e/landing.spec.ts:3:5 › landing shell renders the OpenBooks bootstrap surface (494ms)
+  ✓   7 [chromium] › tests/e2e/landing.spec.ts:20:5 › app shell routes are gated for signed-out visitors (398ms)
+  ✓   8 [chromium] › tests/e2e/ledger.spec.ts:37:5 › manual journal entry appears in GL and locked periods reject backdating (4.4s)
+  ✓   9 [chromium] › tests/e2e/live-sandbox.spec.ts:37:5 › owner can create the Live Sandbox entity from Settings Businesses (1.1m)
+  ✓  10 [chromium] › tests/e2e/modules.spec.ts:44:5 › owner can browse M6 contacts, AR, AP, payroll, and settings modules (8.4s)
+  ✓  11 [chromium] › tests/e2e/plaid.spec.ts:59:5 › Plaid fixture mode has sandbox-safe transaction coverage (1ms)
+  ✓  12 [chromium] › tests/e2e/plaid.spec.ts:86:5 › owner can connect Plaid sandbox bypass, select accounts, sync, and simulate relink (7.0s)
+  ✓  13 [chromium] › tests/e2e/receipts.spec.ts:40:5 › M11 receipt fixtures upload, extract metadata, queue, and manually match (10.4s)
+  ✓  14 [chromium] › tests/e2e/reports.spec.ts:39:5 › owner can render ledger-backed reports and export from reports/settings (6.4s)
+  ✓  15 [chromium] › tests/e2e/stripe.spec.ts:46:5 › owner can run the M8 Stripe test-mode or fixture sync on Live Sandbox (59.4s)
+
+  15 passed (5.3m)

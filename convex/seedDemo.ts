@@ -2,10 +2,13 @@ import { ConvexError, v } from "convex/values";
 
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { action, internalMutation, query } from "./_generated/server";
+import { action, type ActionCtx, internalMutation, internalQuery, query } from "./_generated/server";
 import { requireAnyWorkspaceRole } from "./authz";
 
 const DEMO_SEED = "openbooks-demo-v1-2026-06-11";
+const DEMO_SEED_JOB_KIND = "demo" as const;
+const SEED_JOB_STALE_MS = 10 * 60 * 1000;
+const SEED_JOB_WAIT_MS = 10 * 60 * 1000;
 const months = [
   "2025-07",
   "2025-08",
@@ -122,6 +125,31 @@ type SeedResult = {
   payoutEntryCount: number;
 };
 
+const seedResultValidator = v.object({
+  seed: v.string(),
+  entityId: v.id("entities"),
+  transactionCount: v.number(),
+  postedCount: v.number(),
+  inboxCount: v.number(),
+  evalCount: v.number(),
+  trialBalanceDifferenceMinor: v.number(),
+  may2026: v.object({
+    incomeMinor: v.number(),
+    expenseMinor: v.number(),
+    netIncomeMinor: v.number(),
+    assetMinor: v.number(),
+    liabilityMinor: v.number(),
+    equityMinor: v.number(),
+    currentEarningsMinor: v.number(),
+    balanceSheetDifferenceMinor: v.number(),
+  }),
+  payoutEntryCount: v.number(),
+});
+
+type SeedJobLease =
+  | { acquired: true; operationId: string }
+  | { acquired: false; operationId: string; status: "running" };
+
 function isRetryableSeedResetError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /conflict|write conflict|optimistic concurrency|document.*changed|transient|retry/i.test(message);
@@ -131,6 +159,38 @@ async function pauseForRetry(attempt: number) {
   await new Promise((resolve) => setTimeout(resolve, 350 * attempt));
 }
 
+function seedOperationId() {
+  return `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function waitForSeedJob(
+  ctx: ActionCtx,
+  args: { workspaceId: Id<"workspaces">; operationId: string },
+): Promise<SeedResult> {
+  const startedAt = Date.now();
+  let attempt = 1;
+  while (Date.now() - startedAt < SEED_JOB_WAIT_MS) {
+    const job: { status: "running" | "succeeded" | "failed"; operationId: string; result?: SeedResult; message?: string } | null =
+      await ctx.runQuery(internal.seedDemo.getSeedJob, { workspaceId: args.workspaceId });
+    if (!job || job.operationId !== args.operationId) {
+      throw new ConvexError("Demo seed job changed before this request could join it. Try reset again.");
+    }
+    if (job.status === "succeeded" && job.result) {
+      return job.result;
+    }
+    if (job.status === "failed") {
+      throw new ConvexError(job.message ?? "Demo seed failed before this request could join it.");
+    }
+    await pauseForRetry(Math.min(attempt, 8));
+    attempt += 1;
+  }
+  throw new ConvexError("Demo seed is still running. Wait for the current reset to finish, then refresh.");
+}
+
 export const resetAndSeed = action({
   args: {},
   handler: async (ctx): Promise<SeedResult> => {
@@ -138,32 +198,51 @@ export const resetAndSeed = action({
     if (!viewer.workspace?.id) {
       throw new ConvexError("OpenBooks requires a workspace before seeding demo data.");
     }
-
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      try {
-        await ctx.runMutation(internal.seedDemo.resetDemoEntity, {
-          workspaceId: viewer.workspace.id,
-        });
-        break;
-      } catch (error) {
-        if (attempt === 3 || !isRetryableSeedResetError(error)) {
-          throw new ConvexError("Demo reset could not finish cleanly. Try reset again after the current sync settles.");
-        }
-        await pauseForRetry(attempt);
-      }
+    const workspaceId = viewer.workspace.id;
+    const operationId = seedOperationId();
+    const lease: SeedJobLease = await ctx.runMutation(internal.seedDemo.beginSeedJob, {
+      workspaceId,
+      operationId,
+    });
+    if (!lease.acquired) {
+      return await waitForSeedJob(ctx, {
+        workspaceId,
+        operationId: lease.operationId,
+      });
     }
-    const entityResult: { entityId: Id<"entities">; accountsCreated: number } = await ctx.runMutation(
-      api.ledger.ensureDefaultEntity,
-      {},
-    );
-    const entityId = entityResult.entityId;
-    await ctx.runMutation(api.ledger.setPeriodLock, {
-      entityId,
-      lockedThroughDate: null,
-    });
-    const setup: DemoSetup = await ctx.runMutation(internal.seedDemo.setupDemoOperationTables, {
-      entityId,
-    });
+
+    const heartbeat = async () => {
+      await ctx.runMutation(internal.seedDemo.heartbeatSeedJob, { workspaceId, operationId });
+    };
+
+    try {
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          await ctx.runMutation(internal.seedDemo.resetDemoEntity, {
+            workspaceId,
+          });
+          break;
+        } catch (error) {
+          if (attempt === 3 || !isRetryableSeedResetError(error)) {
+            throw new ConvexError("Demo reset could not finish cleanly. Try reset again after the current sync settles.");
+          }
+          await pauseForRetry(attempt);
+        }
+      }
+      await heartbeat();
+      const entityResult: { entityId: Id<"entities">; accountsCreated: number } = await ctx.runMutation(
+        api.ledger.ensureDefaultEntity,
+        {},
+      );
+      const entityId = entityResult.entityId;
+      await ctx.runMutation(api.ledger.setPeriodLock, {
+        entityId,
+        lockedThroughDate: null,
+      });
+      const setup: DemoSetup = await ctx.runMutation(internal.seedDemo.setupDemoOperationTables, {
+        entityId,
+      });
+      await heartbeat();
 
     const next = rng(DEMO_SEED);
     let transactionCount = 0;
@@ -236,7 +315,7 @@ export const resetAndSeed = action({
       ["Upwork", setup.accounts.professional],
     ] as const;
 
-    for (let index = 0; index < 14; index += 1) {
+      for (let index = 0; index < 14; index += 1) {
       const month = months[index % months.length];
       const amountMinor = cents(1800 + index * 225);
       const contactId = setup.contacts[index % 8];
@@ -263,9 +342,10 @@ export const resetAndSeed = action({
         amountPaidMinor: status === "paid" ? amountMinor : 0,
         entryIds: [posted.entryId],
       });
-    }
+      }
+      await heartbeat();
 
-    for (let index = 0; index < 10; index += 1) {
+      for (let index = 0; index < 10; index += 1) {
       const month = months[(index + 2) % months.length];
       const amountMinor = cents(650 + index * 85);
       const vendorId = setup.contacts[8 + (index % 10)];
@@ -301,9 +381,10 @@ export const resetAndSeed = action({
           matchAccountId: setup.accounts.ap,
         });
       }
-    }
+      }
+      await heartbeat();
 
-    for (const month of months) {
+      for (const month of months) {
       const runTotal = setup.employees.reduce(
         (sum: number, employee: { baseSalaryMinor: number }) => sum + employee.baseSalaryMinor,
         0,
@@ -334,10 +415,12 @@ export const resetAndSeed = action({
         rawDescription: `Payroll settlement ${month}`,
         matchAccountId: setup.accounts.payrollPayable,
       });
-    }
+      }
+      await heartbeat();
 
-    for (let monthIndex = 0; monthIndex < months.length; monthIndex += 1) {
+      for (let monthIndex = 0; monthIndex < months.length; monthIndex += 1) {
       const month = months[monthIndex];
+      await heartbeat();
       await route({
         month,
         index: 1,
@@ -514,34 +597,151 @@ export const resetAndSeed = action({
           evalExpectedAccountId: paidInvoice === null ? setup.accounts.services : setup.accounts.ar,
         });
       }
+      }
+
+      await ctx.runMutation(internal.seedDemo.recordDocumentsAndInbox, {
+        entityId,
+        matchedReceiptTransactionIds,
+      });
+
+      const snapshot: SeedVerificationSnapshot = await ctx.runQuery(api.reports.seedVerification, { entityId });
+      await ctx.runMutation(internal.seedDemo.recordSeedRun, {
+        entityId,
+        transactionCount,
+        postedCount,
+        inboxCount: snapshot.openInboxCount,
+        evalCount,
+        trialBalanceDifferenceMinor: snapshot.trialBalanceDifferenceMinor,
+      });
+
+      const result = {
+        seed: DEMO_SEED,
+        entityId,
+        transactionCount,
+        postedCount,
+        inboxCount: snapshot.openInboxCount,
+        evalCount,
+        trialBalanceDifferenceMinor: snapshot.trialBalanceDifferenceMinor,
+        may2026: snapshot.may2026,
+        payoutEntryCount: payoutEntryIds.length,
+      };
+      await ctx.runMutation(internal.seedDemo.finishSeedJob, {
+        workspaceId,
+        operationId,
+        status: "succeeded",
+        message: "Demo seed complete.",
+        result,
+      });
+      return result;
+    } catch (error) {
+      const message = errorMessage(error);
+      await ctx.runMutation(internal.seedDemo.finishSeedJob, {
+        workspaceId,
+        operationId,
+        status: "failed",
+        message,
+      });
+      if (error instanceof ConvexError) {
+        throw error;
+      }
+      throw new ConvexError(message);
+    }
+  },
+});
+
+export const beginSeedJob = internalMutation({
+  args: { workspaceId: v.id("workspaces"), operationId: v.string() },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("demoSeedJobs")
+      .withIndex("by_workspace_and_kind", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("kind", DEMO_SEED_JOB_KIND),
+      )
+      .unique();
+    if (existing?.status === "running" && now - existing.heartbeatAt < SEED_JOB_STALE_MS) {
+      return { acquired: false as const, operationId: existing.operationId, status: "running" as const };
     }
 
-    await ctx.runMutation(internal.seedDemo.recordDocumentsAndInbox, {
-      entityId,
-      matchedReceiptTransactionIds,
-    });
-
-    const snapshot: SeedVerificationSnapshot = await ctx.runQuery(api.reports.seedVerification, { entityId });
-    await ctx.runMutation(internal.seedDemo.recordSeedRun, {
-      entityId,
-      transactionCount,
-      postedCount,
-      inboxCount: snapshot.openInboxCount,
-      evalCount,
-      trialBalanceDifferenceMinor: snapshot.trialBalanceDifferenceMinor,
-    });
-
-    return {
-      seed: DEMO_SEED,
-      entityId,
-      transactionCount,
-      postedCount,
-      inboxCount: snapshot.openInboxCount,
-      evalCount,
-      trialBalanceDifferenceMinor: snapshot.trialBalanceDifferenceMinor,
-      may2026: snapshot.may2026,
-      payoutEntryCount: payoutEntryIds.length,
+    const nextJob = {
+      workspaceId: args.workspaceId,
+      kind: DEMO_SEED_JOB_KIND as "demo",
+      status: "running" as const,
+      operationId: args.operationId,
+      startedAt: now,
+      heartbeatAt: now,
+      message: "Demo seed is running.",
     };
+    if (existing) {
+      await ctx.db.replace(existing._id, nextJob);
+    } else {
+      await ctx.db.insert("demoSeedJobs", nextJob);
+    }
+    return { acquired: true as const, operationId: args.operationId };
+  },
+});
+
+export const heartbeatSeedJob = internalMutation({
+  args: { workspaceId: v.id("workspaces"), operationId: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("demoSeedJobs")
+      .withIndex("by_workspace_and_kind", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("kind", DEMO_SEED_JOB_KIND),
+      )
+      .unique();
+    if (!existing || existing.operationId !== args.operationId || existing.status !== "running") {
+      return { updated: false };
+    }
+    await ctx.db.patch(existing._id, { heartbeatAt: Date.now() });
+    return { updated: true };
+  },
+});
+
+export const finishSeedJob = internalMutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    operationId: v.string(),
+    status: v.union(v.literal("succeeded"), v.literal("failed")),
+    message: v.string(),
+    result: v.optional(seedResultValidator),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("demoSeedJobs")
+      .withIndex("by_workspace_and_kind", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("kind", DEMO_SEED_JOB_KIND),
+      )
+      .unique();
+    if (!existing || existing.operationId !== args.operationId) {
+      return { updated: false };
+    }
+    const now = Date.now();
+    const nextJob = {
+      workspaceId: args.workspaceId,
+      kind: DEMO_SEED_JOB_KIND as "demo",
+      status: args.status,
+      operationId: args.operationId,
+      startedAt: existing.startedAt,
+      heartbeatAt: now,
+      finishedAt: now,
+      message: args.message,
+      ...(args.result ? { result: args.result } : {}),
+    };
+    await ctx.db.replace(existing._id, nextJob);
+    return { updated: true };
+  },
+});
+
+export const getSeedJob = internalQuery({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("demoSeedJobs")
+      .withIndex("by_workspace_and_kind", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("kind", DEMO_SEED_JOB_KIND),
+      )
+      .unique();
   },
 });
 

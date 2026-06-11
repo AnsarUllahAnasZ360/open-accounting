@@ -1,0 +1,123 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test
+
+
+Running 15 tests using 1 worker
+
+(node:90514) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:90514) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   1 [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first (22.6s)
+(node:90588) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:90588) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   2 [chromium] › tests/e2e/auth.spec.ts:34:5 › owner can sign in and land on the dashboard (2.0s)
+  ✓   3 [chromium] › tests/e2e/auth.spec.ts:43:5 › random email cannot self-register (1.3s)
+  ✓   4 [chromium] › tests/e2e/auth.spec.ts:54:5 › owner can review request-access leads in settings (3.2s)
+  ✘   5 [chromium] › tests/e2e/core-screens.spec.ts:44:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop (31.4s)
+(node:90664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:90664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   6 [chromium] › tests/e2e/landing.spec.ts:3:5 › landing shell renders the OpenBooks bootstrap surface (547ms)
+  ✓   7 [chromium] › tests/e2e/landing.spec.ts:20:5 › app shell routes are gated for signed-out visitors (498ms)
+  ✓   8 [chromium] › tests/e2e/ledger.spec.ts:37:5 › manual journal entry appears in GL and locked periods reject backdating (5.9s)
+  ✓   9 [chromium] › tests/e2e/live-sandbox.spec.ts:37:5 › owner can create the Live Sandbox entity from Settings Businesses (14.1s)
+  ✓  10 [chromium] › tests/e2e/modules.spec.ts:44:5 › owner can browse M6 contacts, AR, AP, payroll, and settings modules (9.6s)
+  ✓  11 [chromium] › tests/e2e/plaid.spec.ts:59:5 › Plaid fixture mode has sandbox-safe transaction coverage (2ms)
+  ✓  12 [chromium] › tests/e2e/plaid.spec.ts:86:5 › owner can connect Plaid sandbox bypass, select accounts, sync, and simulate relink (7.3s)
+  ✓  13 [chromium] › tests/e2e/receipts.spec.ts:40:5 › M11 receipt fixtures upload, extract metadata, queue, and manually match (10.2s)
+  ✓  14 [chromium] › tests/e2e/reports.spec.ts:39:5 › owner can render ledger-backed reports and export from reports/settings (6.1s)
+  ✓  15 [chromium] › tests/e2e/stripe.spec.ts:46:5 › owner can run the M8 Stripe test-mode or fixture sync on Live Sandbox (59.0s)
+
+
+  1) [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: getByTestId('m10-ai-chat-drawer').getByTestId('ai-proposal-result')
+    Timeout: 15000ms
+    Expected pattern: [32m/Rule (created|updated); Uber/[39m
+    Received string:  [31m"[CONVEX M(ai:createConfirmedRule)] [Request ID: 5e5c3fa3a03ed2fb] Server Error[39m
+    [31m  Called by client"[39m
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 15000ms[22m
+    [2m  - waiting for getByTestId('m10-ai-chat-drawer').getByTestId('ai-proposal-result')[22m
+    [2m    2 × locator resolved to <div data-testid="ai-proposal-result" class="mt-3 rounded-lg border p-2 text-xs border-primary/30 text-primary">Creating the rule after your confirmation...</div>[22m
+    [2m      - unexpected value "Creating the rule after your confirmation..."[22m
+    [2m    32 × locator resolved to <div data-testid="ai-proposal-result" class="mt-3 rounded-lg border p-2 text-xs border-destructive/30 text-destructive">[CONVEX M(ai:createConfirmedRule)] [Request ID: 5…</div>[22m
+    [2m       - unexpected value "[CONVEX M(ai:createConfirmedRule)] [Request ID: 5e5c3fa3a03ed2fb] Server Error[22m
+    [2m  Called by client"[22m
+
+
+      100 |   await expect(chatDrawer.getByText("Nothing has been posted or written yet.")).toBeVisible();
+      101 |   await chatDrawer.getByRole("button", { name: "Confirm rule" }).click();
+    > 102 |   await expect(chatDrawer.getByTestId("ai-proposal-result")).toContainText(/Rule (created|updated); Uber/, {
+          |                                                              ^
+      103 |     timeout: 15000,
+      104 |   });
+      105 |   await page.screenshot({
+        at /Users/ansarullahanas/Documents/OpenBooks/tests/e2e/ai-chat.spec.ts:102:62
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    docs/initiation/evidence/playwright-results/ai-chat-M10-AI-chat-answer-0f780-keeps-actions-confirm-first-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: docs/initiation/evidence/playwright-results/ai-chat-M10-AI-chat-answer-0f780-keeps-actions-confirm-first-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    docs/initiation/evidence/playwright-results/ai-chat-M10-AI-chat-answer-0f780-keeps-actions-confirm-first-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace docs/initiation/evidence/playwright-results/ai-chat-M10-AI-chat-answer-0f780-keeps-actions-confirm-first-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › tests/e2e/core-screens.spec.ts:44:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeEnabled[2m([22m[2m)[22m failed
+
+    Locator:  getByTestId('demo-data-panel').getByRole('button', { name: 'Export CSV bundle' })
+    Expected: enabled
+    Received: disabled
+    Timeout:  30000ms
+
+    Call log:
+    [2m  - Expect "toBeEnabled" with timeout 30000ms[22m
+    [2m  - waiting for getByTestId('demo-data-panel').getByRole('button', { name: 'Export CSV bundle' })[22m
+    [2m    63 × locator resolved to <button disabled data-slot="button" data-size="default" data-variant="outline" class="group/button inline-flex shrink-0 items-center justify-center rounded-lg border bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive…>Export CSV bundle</button>[22m
+    [2m       - unexpected value "disabled"[22m
+
+
+      48 |   await page.goto("/settings");
+      49 |   if (runsAgainstExternalBaseUrl()) {
+    > 50 |     await expect(page.getByTestId("demo-data-panel").getByRole("button", { name: "Export CSV bundle" })).toBeEnabled({
+         |                                                                                                          ^
+      51 |       timeout: 30_000,
+      52 |     });
+      53 |   } else {
+        at /Users/ansarullahanas/Documents/OpenBooks/tests/e2e/core-screens.spec.ts:50:106
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    docs/initiation/evidence/playwright-results/core-screens-owner-can-run-7524b-sactions-split-and-CSV-loop-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: docs/initiation/evidence/playwright-results/core-screens-owner-can-run-7524b-sactions-split-and-CSV-loop-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    docs/initiation/evidence/playwright-results/core-screens-owner-can-run-7524b-sactions-split-and-CSV-loop-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace docs/initiation/evidence/playwright-results/core-screens-owner-can-run-7524b-sactions-split-and-CSV-loop-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first
+    [chromium] › tests/e2e/core-screens.spec.ts:44:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop
+  13 passed (2.9m)
+ ELIFECYCLE  Command failed with exit code 1.

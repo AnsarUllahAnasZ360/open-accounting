@@ -31,3 +31,12 @@ Verification:
   - lint: PASS
   - build: PASS
   - unit tests: 16 files / 70 tests PASS
+
+Production deployment:
+- vercel deploy --prod --yes: PASS
+- Deployment: dpl_4tEmcA1c2teWejieRrdumEKf9tYR
+- URL: https://openbooks-g56paxy97-ansar-ullah-anas-projects.vercel.app
+- Alias: https://openbooks-flax.vercel.app
+- Custom domain: https://openbooks.ansarullahanas.com returned HTTP 200.
+- Production browser check confirmed the same prototype phrases and request-access copy.
+- Production screenshot: docs/initiation/evidence/2026-06-11-prototype-copy-production-render.png

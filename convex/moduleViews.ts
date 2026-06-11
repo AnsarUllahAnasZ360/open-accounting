@@ -74,6 +74,28 @@ function ruleSummary(rule: Doc<"rules">, accountName: string) {
   return `If ${conditions.join(" and ")} -> ${accountName}${rule.autoPost ? ", auto-post" : ", send to Inbox"}`;
 }
 
+function auditActorLabel(event: Doc<"auditEvents">, entry?: Doc<"journalEntries">) {
+  const action = event.action.toLowerCase();
+  const summary = event.summary.toLowerCase();
+
+  if (
+    action.startsWith("ai.") ||
+    entry?.source === "ai" ||
+    summary.includes("pipeline ai") ||
+    summary.includes("pipeline memory") ||
+    summary.includes("ai-confirmed") ||
+    summary.includes("ai drafted")
+  ) {
+    return "ai";
+  }
+
+  if (action.startsWith("rule.") || entry?.source === "rule" || summary.includes("rule:")) {
+    return "rule";
+  }
+
+  return event.actorUserId ? "user" : "system";
+}
+
 function baseMinorForEmployee(employee: Doc<"employees">, baseCurrency: string) {
   if (employee.currency === baseCurrency) return employee.monthlySalaryMinor;
   const conversionDenominator: Record<string, number> = {
@@ -131,6 +153,7 @@ export const overview = query({
       payrollRuns,
       documents,
       auditEvents,
+      journalEntries,
     ] = await Promise.all([
       ctx.db.query("entities").withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId)).take(50),
       ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
@@ -142,7 +165,8 @@ export const overview = query({
       ctx.db.query("employees").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
       ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(60),
       ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
-      ctx.db.query("auditEvents").withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId)).take(200),
+      ctx.db.query("auditEvents").withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId)).order("desc").take(200),
+      ctx.db.query("journalEntries").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).order("desc").take(1000),
     ]);
 
     const liveSandboxEntity = entities.find((row) => row.slug === "live-sandbox") ?? null;
@@ -150,6 +174,7 @@ export const overview = query({
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
     const documentsById = new Map(documents.map((document) => [document._id, document]));
     const transactionsById = new Map(transactions.map((transaction) => [transaction._id, transaction]));
+    const journalEntriesById = new Map(journalEntries.map((entry) => [entry._id as string, entry]));
 
     const invoicesByContact = new Map<Id<"contacts">, Doc<"invoices">[]>();
     for (const invoice of invoices) {
@@ -540,15 +565,20 @@ export const overview = query({
             .filter((event) => event.entityId === entity._id || event.workspaceId === entity.workspaceId)
             .sort((a, b) => b.createdAt - a.createdAt)
             .slice(0, 80)
-            .map((event) => ({
-              id: event._id,
-              when: event.createdAt,
-              actor: event.actorUserId ? "user" : "system",
-              action: event.action,
-              entityType: event.entityType,
-              summary: event.summary,
-              beforeAfter: `Before: previous recorded state. After: ${event.summary}`,
-            })),
+            .map((event) => {
+              const entry = event.entityType === "journalEntry" && event.entityId
+                ? journalEntriesById.get(event.entityId)
+                : undefined;
+              return {
+                id: event._id,
+                when: event.createdAt,
+                actor: auditActorLabel(event, entry),
+                action: event.action,
+                entityType: event.entityType,
+                summary: event.summary,
+                beforeAfter: `Before: previous recorded state. After: ${event.summary}`,
+              };
+            }),
         },
       },
     };

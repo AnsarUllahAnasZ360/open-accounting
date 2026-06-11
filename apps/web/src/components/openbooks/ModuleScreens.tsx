@@ -1263,7 +1263,11 @@ export function RemainingSettingsScreens() {
               {auditRows.map((row) => (
                 <TableRow key={row.id} data-testid="audit-row">
                   <TableCell className="money-figures">{new Date(row.when).toLocaleDateString("en-US")}</TableCell>
-                  <TableCell className="capitalize">{row.actor}</TableCell>
+                  <TableCell>
+                    <Badge className="capitalize" data-testid={`audit-actor-${row.actor}`} variant="outline">
+                      {row.actor}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <History className="size-4 text-muted-foreground" />

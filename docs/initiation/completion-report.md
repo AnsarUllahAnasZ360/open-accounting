@@ -30,10 +30,10 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png`; `docs/initiation/evidence/2026-06-11-m10-semantic-memory-focused-e2e.txt` | Report-backed chat, confirmed Uber rule, Bedrock categorizer, and vector-backed semantic correction memory pass. Full streaming/tool-call chat and live five-question semantic verification remain partial. |
 | 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-e2e.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Image uploads attempt Bedrock vision OCR, deterministic matching, and embedding-assisted transaction matching as a bounded tie-breaker, then fall back to manual match. PDF OCR remains an allowed degradation. |
 | 16 | Mobile usability (4 core surfaces) | WORKING | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-mobile.png`; `docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile.png`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-production-e2e.txt` | Dashboard, Inbox/Transactions responsive coverage, and mobile chat drawer evidence are present, including a production-domain mobile chat run. |
-| 17 | Audit log attribution (user/rule/AI) | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png` | User/rule ledger history and confirmed AI rule evidence are present. Full audit attribution matrix remains partial. |
+| 17 | Audit log attribution (user/rule/AI) | WORKING | `docs/initiation/evidence/2026-06-11-m13-audit-attribution.png`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-e2e.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-production-ai-e2e.txt` | Settings audit log now shows user, rule, and AI actor badges. AI-confirmed rules write audit events, and rule-routed ledger postings derive rule attribution from the posted journal entry. |
 | 18 | Honesty check — this table complete with evidence (acceptance #18) | WORKING | `docs/initiation/completion-report.md` | This table separates working, partial, and blocked rows and names next steps. |
-| 19 | `pnpm verify` + `pnpm test:e2e` green; eval accuracy reported (goal.md §2; ≥80% is a target, not a blocker) | WORKING | `docs/initiation/evidence/2026-06-11-m13-verify-after-production-reset-harness.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-local-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-mobile-chat-verify.txt`; `docs/initiation/evidence/2026-06-11-m13-mobile-chat-full-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-production-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-categorization-eval.json` | `pnpm verify` is green, local/dev e2e is 16/16 after adding mobile chat coverage, production-domain e2e was 15/15 before the added local mobile test, the production-domain AI chat focused run is 2/2, and fixture eval is reported at 100.0%. |
-| 20 | Production URL live, owner login in prod (goal.md §1.9) | WORKING | `docs/initiation/evidence/2026-06-11-m13-http-checks-after-seed-job-and-plaid-fixes.txt`; `docs/initiation/evidence/2026-06-11-m13-vercel-deploy-after-seed-job-and-plaid-fixes.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt` | `https://openbooks.ansarullahanas.com` is live and owner login is evidenced. |
+| 19 | `pnpm verify` + `pnpm test:e2e` green; eval accuracy reported (goal.md §2; ≥80% is a target, not a blocker) | WORKING | `docs/initiation/evidence/2026-06-11-m13-verify-after-production-reset-harness.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-local-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-mobile-chat-verify.txt`; `docs/initiation/evidence/2026-06-11-m13-mobile-chat-full-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-production-e2e.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-verify.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-full-e2e.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-production-ai-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-categorization-eval.json` | `pnpm verify` is green, local/dev e2e is 16/16 after adding mobile chat and audit attribution coverage, production-domain e2e was 15/15 before the added local tests, production-domain AI chat focused runs are 2/2, and fixture eval is reported at 100.0%. |
+| 20 | Production URL live, owner login in prod (goal.md §1.9) | WORKING | `docs/initiation/evidence/2026-06-11-m13-http-checks-after-seed-job-and-plaid-fixes.txt`; `docs/initiation/evidence/2026-06-11-m13-vercel-deploy-after-seed-job-and-plaid-fixes.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-vercel-deploy.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-http-check.txt` | `https://openbooks.ansarullahanas.com` is live, owner login is evidenced, and the custom domain still serves the prototype landing copy/assets after the audit attribution redeploy. |
 
 ## Run metadata (fill at start and end of the overnight run)
 
@@ -1162,3 +1162,38 @@ Verification:
 - `pnpm verify` green: typecheck, lint, production build, and 12 unit files / 52 tests.
 - `pnpm test:e2e` green: 16/16 passed locally after adding the mobile chat spec.
 - `PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm test:e2e -- tests/e2e/ai-chat.spec.ts -g "M10 mobile chat drawer"` green: 2/2 passed on the production custom domain.
+
+### 2026-06-11 11:04 CDT — M13 audit attribution evidence follow-up
+
+What changed:
+
+- Added explicit audit actor attribution for user, rule, and AI activity in the Settings audit log.
+- AI-confirmed rules now write audit events when they are created or updated. AI-drafted rules from correction memory also write audit events, so later review can distinguish model suggestions from human confirmations.
+- The audit view now derives rule/AI attribution from linked immutable journal entries when the audit event itself was created by the ledger post path.
+- Added focused browser evidence that confirms the Settings audit log renders user, rule, and AI badges, while keeping the landing page prototype-aligned on the production custom domain.
+- Updated acceptance row 17 from PARTIAL to WORKING.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m13-audit-attribution.png`
+- `docs/initiation/evidence/2026-06-11-m13-audit-attribution-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m13-audit-attribution-ledger-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m13-audit-attribution-full-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m13-audit-attribution-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m13-audit-attribution-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m13-audit-attribution-convex-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-m13-audit-attribution-vercel-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-m13-audit-attribution-http-check.txt`
+- `docs/initiation/evidence/2026-06-11-m13-audit-attribution-production-ai-e2e.txt`
+
+Verification:
+
+- `pnpm test:unit -- convex/moduleViews.test.ts convex/ai.test.ts` green.
+- `npx convex dev --once` green.
+- `pnpm test:e2e -- tests/e2e/ai-chat.spec.ts` green: 2/2 passed.
+- `pnpm test:e2e -- tests/e2e/ledger.spec.ts` green after scoping ledger assertions away from the audit log copy.
+- `pnpm verify` green: typecheck, lint, production build, and 12 unit files / 52 tests.
+- `pnpm test:e2e` green locally: 16/16 passed.
+- `npx convex deploy --yes` green for production Convex.
+- `vercel deploy --prod` green; `https://openbooks.ansarullahanas.com` returned HTTP 200 and served the prototype landing headline/assets.
+- `PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm test:e2e -- tests/e2e/ai-chat.spec.ts` green: 2/2 passed on the production custom domain.

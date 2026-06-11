@@ -20,7 +20,7 @@ type ModuleOverview = {
   settings: {
     businesses: { rows: Array<{ name: string; canArchive: boolean }> };
     rules: { rows: Array<{ summary: string; hitCount: number; active: boolean }>; pendingSuggestion: { status: string } };
-    audit: { rows: Array<{ action: string; beforeAfter: string }> };
+    audit: { rows: Array<{ actor: string; action: string; beforeAfter: string }> };
   };
 };
 
@@ -70,7 +70,11 @@ describe("M6 module view model", () => {
     const ids = await setupWorkspace(t);
     const session = authed(t, ids.userId);
 
-    await session.action(api.seedDemo.resetAndSeed, {});
+    const seed = await session.action(api.seedDemo.resetAndSeed, {});
+    await session.mutation(api.ai.createConfirmedRule, {
+      entityId: seed.entityId,
+      merchantContains: "Uber",
+    });
     const overview = await session.query(moduleOverview, {});
 
     expect(overview.entity?.name).toBe("Acme Studio LLC");
@@ -88,10 +92,14 @@ describe("M6 module view model", () => {
       name: "Acme Studio LLC",
       canArchive: false,
     });
-    expect(overview.settings.rules.rows).toHaveLength(6);
+    expect(overview.settings.rules.rows.length).toBeGreaterThanOrEqual(6);
     expect(overview.settings.rules.rows[0].summary).toContain("If");
     expect(overview.settings.rules.pendingSuggestion.status).toBe("waiting_for_ai_stage");
     expect(overview.settings.audit.rows.length).toBeGreaterThan(0);
     expect(overview.settings.audit.rows[0].beforeAfter).toContain("After:");
+    expect(overview.settings.audit.rows.map((row) => row.actor)).toEqual(
+      expect.arrayContaining(["ai", "rule", "user"]),
+    );
+    expect(overview.settings.audit.rows.some((row) => row.action === "ai.rule.confirmed")).toBe(true);
   });
 });

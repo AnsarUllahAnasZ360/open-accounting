@@ -1,0 +1,25 @@
+URL: https://openbooks.ansarullahanas.com
+Checked: 2026-06-11 11:03:24 CDT
+
+Headers:
+HTTP/2 200 
+accept-ranges: bytes
+access-control-allow-origin: *
+age: 184
+cache-control: public, max-age=0, must-revalidate
+content-disposition: inline
+content-type: text/html; charset=utf-8
+date: Thu, 11 Jun 2026 16:03:24 GMT
+etag: "bc79c48e437575867ca8ad139e416891"
+server: Vercel
+strict-transport-security: max-age=63072000
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+x-matched-path: /
+x-nextjs-prerender: 1
+
+Prototype landing content checks:
+headline Your books, always done: PASS
+prototype dashboard asset: PASS
+prototype inbox asset: PASS
+request-access section: PASS
+OpenBooks compare copy: PASS

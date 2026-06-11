@@ -342,6 +342,14 @@ async function recordCorrectionMemory(
       createdAt: args.now,
       updatedAt: args.now,
     });
+    await ctx.db.insert("auditEvents", {
+      workspaceId: args.entity.workspaceId,
+      action: "ai.rule.drafted",
+      entityType: "rule",
+      entityId: suggestedRuleId,
+      summary: `AI drafted a rule for ${args.transaction.merchant} after repeated corrections`,
+      createdAt: args.now,
+    });
     status = "rule_suggested";
   }
 

@@ -53,8 +53,9 @@ test("manual journal entry appears in GL and locked periods reject backdating", 
   await manualEntryForm.getByLabel("Memo").fill(memo);
   await manualEntryForm.getByRole("button", { name: "Post entry" }).click();
   await expect(page.getByText("Manual journal entry posted.")).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText(memo)).toBeVisible();
-  await expect(page.getByText("$123.45").first()).toBeVisible();
+  const generalLedger = page.getByRole("heading", { name: "General Ledger" }).locator("../..");
+  await expect(generalLedger.getByText(memo, { exact: true })).toBeVisible();
+  await expect(generalLedger.getByText("$123.45").first()).toBeVisible();
 
   const trialBalance = page.getByRole("heading", { name: "Trial Balance" }).locator("..");
   await expect(trialBalance).toContainText("Difference:");

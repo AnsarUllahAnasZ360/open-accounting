@@ -76,8 +76,8 @@ async function requireEntityAccess(ctx: MutationCtx, entityId: Id<"entities">) {
   if (!entity) {
     throw new ConvexError("OpenBooks entity not found.");
   }
-  await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
-  return entity;
+  const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+  return { entity, userId };
 }
 
 async function pickRuleCategory(
@@ -312,7 +312,7 @@ export const createConfirmedRule = mutation({
     autoPost: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const entity = await requireEntityAccess(ctx, args.entityId);
+    const { entity, userId } = await requireEntityAccess(ctx, args.entityId);
     const merchant = args.merchantContains.trim();
     if (merchant.length < 2) {
       throw new ConvexError("Enter a merchant name for the AI rule.");
@@ -336,6 +336,15 @@ export const createConfirmedRule = mutation({
         autoPost: Boolean(args.autoPost),
         updatedAt: now,
       });
+      await ctx.db.insert("auditEvents", {
+        workspaceId: entity.workspaceId,
+        actorUserId: userId,
+        action: "ai.rule.updated",
+        entityType: "rule",
+        entityId: existing._id,
+        summary: `AI-confirmed rule updated for ${merchant} -> ${account.name}`,
+        createdAt: now,
+      });
       return { ruleId: existing._id, status: "updated" as const, categoryName: account.name };
     }
 
@@ -352,6 +361,15 @@ export const createConfirmedRule = mutation({
       createdBy: "ai",
       createdAt: now,
       updatedAt: now,
+    });
+    await ctx.db.insert("auditEvents", {
+      workspaceId: entity.workspaceId,
+      actorUserId: userId,
+      action: "ai.rule.confirmed",
+      entityType: "rule",
+      entityId: ruleId,
+      summary: `AI-confirmed rule created for ${merchant} -> ${account.name}`,
+      createdAt: now,
     });
     return { ruleId, status: "created" as const, categoryName: account.name };
   },

@@ -96,6 +96,13 @@ test("M10 AI chat answers read questions and keeps actions confirm-first", async
 
   await page.goto("/settings");
   await expect(page.getByText("AI confirmed: Uber")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("audit-actor-ai").first()).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("audit-actor-rule").first()).toBeVisible();
+  await expect(page.getByTestId("audit-actor-user").first()).toBeVisible();
+  await page.screenshot({
+    path: "docs/initiation/evidence/2026-06-11-m13-audit-attribution.png",
+    fullPage: true,
+  });
 });
 
 test("M10 mobile chat drawer answers a ledger-backed question", async ({ page }) => {

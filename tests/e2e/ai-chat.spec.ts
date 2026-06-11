@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 function readLocalEnv(names: string[]) {
@@ -62,6 +62,25 @@ test("M10 AI chat answers read questions and keeps actions confirm-first", async
   await expect(
     aiSettings.getByText(/Bedrock provider is configured|Bedrock env is absent|AI provider is not configured/),
   ).toBeVisible();
+  await aiSettings.getByRole("button", { name: "Run eval" }).click();
+  await expect(page.getByTestId("m10-ai-eval-result")).toContainText(/120 rows, \d+\.\d% accuracy/, {
+    timeout: 15000,
+  });
+  writeFileSync(
+    "docs/initiation/evidence/2026-06-11-m10-live-eval-result.json",
+    JSON.stringify(
+      {
+        milestone: "M10 live seeded categorization eval",
+        result: await page.getByTestId("m10-ai-eval-result").textContent(),
+      },
+      null,
+      2,
+    ),
+  );
+  await page.screenshot({
+    path: "docs/initiation/evidence/2026-06-11-m10-live-eval-settings.png",
+    fullPage: true,
+  });
   await page.screenshot({
     path: "docs/initiation/evidence/2026-06-11-m10-ai-settings.png",
     fullPage: true,

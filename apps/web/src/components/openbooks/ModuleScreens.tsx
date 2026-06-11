@@ -938,11 +938,14 @@ export function RemainingSettingsScreens() {
   );
   const ensureLiveSandboxEntity = useMutation(api.ledger.ensureLiveSandboxEntity);
   const setAiConfig = useMutation(api.ai.setConfig);
+  const recordCategorizationEvalRun = useMutation(api.ai.recordCategorizationEvalRun);
   const testAiConnection = useAction(api.ai.testProviderConnection);
   const [auditFilter, setAuditFilter] = useState("");
   const [entityMessage, setEntityMessage] = useState("");
   const [aiAutonomyOverride, setAiAutonomyOverride] = useState<AiAutonomyMode | null>(null);
   const [aiTestMessage, setAiTestMessage] = useState("");
+  const [aiEvalMessage, setAiEvalMessage] = useState("");
+  const [runningAiEval, setRunningAiEval] = useState(false);
   const [creatingEntity, setCreatingEntity] = useState(false);
   const aiStatus = frontendAiStatus(aiProviderStatus);
   const aiAutonomy = aiAutonomyOverride ?? aiProviderStatus?.autonomy ?? "balanced";
@@ -978,6 +981,25 @@ export function RemainingSettingsScreens() {
       setAiTestMessage(result.message);
     } catch (error) {
       setAiTestMessage(error instanceof Error ? error.message : "AI connection test failed.");
+    }
+  }
+
+  async function runCategorizationEval() {
+    if (!data?.entity?.id) {
+      setAiEvalMessage("Demo entity is still loading; try again in a moment.");
+      return;
+    }
+    setRunningAiEval(true);
+    setAiEvalMessage("Scoring the seeded eval set...");
+    try {
+      const result = await recordCategorizationEvalRun({ entityId: data.entity.id as Id<"entities"> });
+      setAiEvalMessage(
+        `${result.evaluatedCount} rows, ${(result.accuracy * 100).toFixed(1)}% accuracy. ${result.finding}`,
+      );
+    } catch (error) {
+      setAiEvalMessage(error instanceof Error ? error.message : "Could not record the categorization eval.");
+    } finally {
+      setRunningAiEval(false);
     }
   }
 
@@ -1062,6 +1084,29 @@ export function RemainingSettingsScreens() {
           >
             <Sparkles className="size-4" />
             Test AI connection
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-medium">Categorization eval</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Scores the seeded labeled transactions using the current posted categories.
+            </p>
+            {aiEvalMessage ? (
+              <p className="mt-2 text-sm text-primary" data-testid="m10-ai-eval-result">
+                {aiEvalMessage}
+              </p>
+            ) : null}
+          </div>
+          <Button
+            className="shrink-0"
+            disabled={!data?.entity?.id || runningAiEval}
+            variant="outline"
+            onClick={() => void runCategorizationEval()}
+          >
+            <CheckCircle2 className="size-4" />
+            {runningAiEval ? "Running eval" : "Run eval"}
           </Button>
         </div>
       </CardContent>

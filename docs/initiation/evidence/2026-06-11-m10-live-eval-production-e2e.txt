@@ -1,0 +1,15 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test -- tests/e2e/ai-chat.spec.ts
+
+
+Running 2 tests using 1 worker
+
+(node:5139) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:5139) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first (1.7m)
+  ✓  2 [chromium] › tests/e2e/ai-chat.spec.ts:127:5 › M10 mobile chat drawer answers a ledger-backed question (3.8s)
+
+  2 passed (1.8m)

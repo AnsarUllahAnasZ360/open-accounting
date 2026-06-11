@@ -255,7 +255,7 @@ Evidence: Playwright spec using sandbox token + screenshots of Link flow.
       question}`, Plaid prior, routing by autonomy threshold; corrections
       write memory; 3 identical corrections → AI-drafted rule pending
       approval in Rules manager.
-- [ ] Run the pipeline over the demo eval set; record accuracy (target ≥80%).
+- [x] Run the pipeline over the demo eval set; record accuracy (target ≥80%).
 - [ ] Chat panel per spec §6.8: streaming drawer + full-page mode; read tools
       (queryTransactions, getReport, getBalances, searchContacts,
       getPayrollRuns); action tools behind confirm cards
@@ -270,18 +270,17 @@ M10 integration note, 2026-06-11: shipped and committed as a green partial
 increment. Working: backend provider/env status, persisted autonomy thresholds,
 memory/Plaid-prior/AI-proposal routing with threshold gates, correction memory,
 AI-drafted/confirmed rules, report-backed chat drawer, report explain button,
-confirm-first rule creation, fixture eval output, and degraded-mode UI. Still
-open: real AI SDK provider registry, Convex vector index/embeddings, batched
-Bedrock LLM categorization, full-page/streaming `useChat`, full server-side chat
-tool set, and authenticated live 120-row eval scoring.
+confirm-first rule creation, fixture eval output, and degraded-mode UI. Current
+remaining gaps are the AI SDK provider registry, batched Bedrock categorization
+over sync/import queues, and full-page/streaming chat with the full server-side
+tool set.
 
 M10 follow-up note, 2026-06-11: added a real `bedrockCategorizer` Convex action
 that signs Bedrock Runtime requests, parses structured JSON, resolves the model
 choice against active ledger accounts, and routes through `pipeline.routeTransaction`
 with `aiProposal`; degraded mode still falls back to stages 1-5 without a model
-call. Still open: vector memory/embeddings, batched categorization over sync/import
-queues, AI SDK provider registry, streaming/full-page chat, and live authenticated
-eval scoring.
+call. Current remaining gaps are batched categorization over sync/import queues,
+AI SDK provider registry, and streaming/full-page chat.
 
 M10 semantic-memory note, 2026-06-11: added `aiMemoryEmbeddings` with a Convex
 vector index, Bedrock Titan embedding payload/response validation, embedding-aware
@@ -289,8 +288,13 @@ Inbox/Transactions confirmation actions, and a pre-LLM semantic-memory lookup in
 the Bedrock categorizer. Exact merchant memory still wins first, and semantic
 memory routes through the existing pipeline memory stage rather than writing
 ledger rows directly. Still open: batched categorization over sync/import queues,
-AI SDK provider registry, streaming/full-page chat, live authenticated eval
-scoring, and receipt-specific embedding-assisted transaction matching.
+AI SDK provider registry, and streaming/full-page chat.
+
+M10 live-eval note, 2026-06-11: added an owner-authenticated Settings eval
+runner that calls the existing authorized Convex eval mutation from the signed-in
+app session. Production evidence records the seeded eval at 120/120 = 100.0%,
+above the 80.0% target. Still open: batched categorization over sync/import
+queues, AI SDK provider registry, and streaming/full-page chat tool calls.
 
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules

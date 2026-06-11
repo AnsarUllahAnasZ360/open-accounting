@@ -1,0 +1,15 @@
+Vercel CLI 54.11.1 (Node.js 22.19.0)
+Retrieving project…
+Fetching deployments in ansar-ullah-anas-projects
+> Deployments for ansar-ullah-anas-projects/openbooks [177ms]
+
+  Age     Project                                 Deployment                                                           Status      Environment     Duration     Username
+  4m      ansar-ullah-anas-projects/openbooks     https://openbooks-8mjbirte5-ansar-ullah-anas-projects.vercel.app     ● Ready     Production      37s          hello-88313507
+  11m     ansar-ullah-anas-projects/openbooks     https://openbooks-kyfmlvmpo-ansar-ullah-anas-projects.vercel.app     ● Ready     Production      38s          hello-88313507
+  16m     ansar-ullah-anas-projects/openbooks     https://openbooks-72j010ode-ansar-ullah-anas-projects.vercel.app     ● Ready     Production      55s          hello-88313507
+  7h      ansar-ullah-anas-projects/openbooks     https://openbooks-g8tpr412j-ansar-ullah-anas-projects.vercel.app     ● Ready     Production      8s           hello-88313507
+
+https://openbooks-8mjbirte5-ansar-ullah-anas-projects.vercel.app
+https://openbooks-kyfmlvmpo-ansar-ullah-anas-projects.vercel.app
+https://openbooks-72j010ode-ansar-ullah-anas-projects.vercel.app
+https://openbooks-g8tpr412j-ansar-ullah-anas-projects.vercel.app

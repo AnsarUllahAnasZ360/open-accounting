@@ -1,0 +1,5 @@
+| Variable | Status | Detail |
+|---|---:|---|
+| JWT_PRIVATE_KEY | PASS | set in Convex prod |
+| JWKS | PASS | set in Convex prod |
+| CONVEX_SITE_URL | FAIL | ✖ Error fetching POST https://perceptive-guanaco-487.convex.cloud/api/update_environment_variables 400 Bad Request: EnvVarNameForbidden: Environment variable with name "CONVEX_SITE |

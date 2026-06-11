@@ -1,0 +1,14 @@
+Vercel CLI 54.11.1 (Node.js 22.19.0)
+Fetching aliases under ansar-ullah-anas-projects
+> aliases found under ansar-ullah-anas-projects [441ms]
+  source                                                           url                                                                       age
+  openbooks-72j010ode-ansar-ullah-anas-projects.vercel.app         openbooks.ansarullahanas.com                                               6h
+  openbooks-72j010ode-ansar-ullah-anas-projects.vercel.app         openbooks-hello-88313507-ansar-ullah-anas-projects.vercel.app              6h
+  openbooks-72j010ode-ansar-ullah-anas-projects.vercel.app         openbooks-ansar-ullah-anas-projects.vercel.app                             6h
+  openbooks-72j010ode-ansar-ullah-anas-projects.vercel.app         openbooks-flax.vercel.app                                                  6h
+  ansarullahanas-65xza0f8b-ansar-ullah-anas-projects.vercel.app    www.ansarullahanas.com                                                    29d
+  ansarullahanas-65xza0f8b-ansar-ullah-anas-projects.vercel.app    ansarullahanas.com                                                        29d
+  ansarullahanas-jgc54q1we-ansar-ullah-anas-projects.vercel.app    ansarullahanas-com-git-main-ansar-ullah-anas-projects.vercel.app          29d
+  ansarullahanas-65xza0f8b-ansar-ullah-anas-projects.vercel.app    ansarullahanas-com-hello-88313507-ansar-ullah-anas-projects.vercel.app    29d
+  ansarullahanas-65xza0f8b-ansar-ullah-anas-projects.vercel.app    ansarullahanas-com.vercel.app                                             29d
+  ansarullahanas-65xza0f8b-ansar-ullah-anas-projects.vercel.app    ansarullahanas-com-ansar-ullah-anas-projects.vercel.app                   29d

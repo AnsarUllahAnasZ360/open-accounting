@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx } from "./_generated/server";
 import { requireWorkspaceRole } from "./authz";
+import { assertNonNegativeMinorUnit } from "./money";
 
 const documentKindValidator = v.union(v.literal("receipt"), v.literal("bill"));
 
@@ -138,6 +139,7 @@ export const recordUpload = mutation({
     const vendor = args.vendor?.trim() || extracted.vendor || "Uploaded receipt";
     const date = args.date?.trim() || extracted.date || new Date().toISOString().slice(0, 10);
     const totalMinor = args.totalMinor ?? extracted.totalMinor ?? 0;
+    assertNonNegativeMinorUnit(totalMinor, "Receipt total");
     const currency = args.currency?.trim().toUpperCase() || entity.currency;
     const source = args.vendor || args.date || args.totalMinor !== undefined ? "manual" as const : extracted.source;
     const confidence = source === "manual" ? 0.95 : extracted.confidence;

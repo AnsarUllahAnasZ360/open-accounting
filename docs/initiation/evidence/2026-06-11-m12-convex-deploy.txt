@@ -1,0 +1,71 @@
+▌ Deploying code to deployment:
+▌ [Production] z360:openbooks:production (prod) (dashboard: https://dashboard.convex.dev/t/z360/openbooks/perceptive-guanaco-487)
+▌ └─ https://perceptive-guanaco-487.convex.cloud
+- Running 'node -e "console.log(process.env.NEXT_PUBLIC_CONVEX_URL)"' with environment variables "NEXT_PUBLIC_CONVEX_URL" and "NEXT_PUBLIC_CONVEX_SITE_URL" set...
+
+https://perceptive-guanaco-487.convex.cloud
+✔ Ran "node -e "console.log(process.env.NEXT_PUBLIC_CONVEX_URL)"" with environment variables "NEXT_PUBLIC_CONVEX_URL" and "NEXT_PUBLIC_CONVEX_SITE_URL" set
+- Deploying to https://perceptive-guanaco-487.convex.cloud...
+
+[36mA minor update is available for Convex[39m [2m(1.40.0 → 1.41.0)[22m
+[2mChangelog:[22m [4mhttps://github.com/get-convex/convex-js/blob/main/CHANGELOG.md#changelog[24m
+✔ No indexes are deleted by this push
+Uploading functions to Convex...
+Generating TypeScript bindings...
+Running TypeScript...
+Pushing code to your Convex deployment...
+Schema validation complete.
+Finalizing push...
+✔ Added table indexes:
+  [+] accessLeads.by_email   email, _creationTime
+  [+] accessLeads.by_status   status, _creationTime
+  [+] aiConfigs.by_workspace   workspaceId, _creationTime
+  [+] aiCorrectionMemories.by_entity   entityId, _creationTime
+  [+] aiCorrectionMemories.by_entity_and_merchant_key_and_direction   entityId, merchantKey, direction, _creationTime
+  [+] aiEvalRuns.by_entity   entityId, _creationTime
+  [+] auditEvents.by_actor   actorUserId, _creationTime
+  [+] auditEvents.by_workspace   workspaceId, _creationTime
+  [+] authAccounts.providerAndAccountId   provider, providerAccountId, _creationTime
+  [+] authAccounts.userIdAndProvider   userId, provider, _creationTime
+  [+] authRateLimits.identifier   identifier, _creationTime
+  [+] authRefreshTokens.sessionId   sessionId, _creationTime
+  [+] authRefreshTokens.sessionIdAndParentRefreshTokenId   sessionId, parentRefreshTokenId, _creationTime
+  [+] authSessions.userId   userId, _creationTime
+  [+] authVerificationCodes.accountId   accountId, _creationTime
+  [+] authVerificationCodes.code   code, _creationTime
+  [+] authVerifiers.signature   signature, _creationTime
+  [+] bankAccounts.by_entity   entityId, _creationTime
+  [+] bills.by_entity   entityId, _creationTime
+  [+] contacts.by_entity   entityId, _creationTime
+  [+] demoSeedRuns.by_entity   entityId, _creationTime
+  [+] documents.by_entity   entityId, _creationTime
+  [+] employees.by_entity   entityId, _creationTime
+  [+] entities.by_workspace   workspaceId, _creationTime
+  [+] entities.by_workspace_and_slug   workspaceId, slug, _creationTime
+  [+] inboxItems.by_entity   entityId, _creationTime
+  [+] invites.by_email   email, _creationTime
+  [+] invites.by_status   status, _creationTime
+  [+] invoices.by_entity   entityId, _creationTime
+  [+] journalEntries.by_entity   entityId, _creationTime
+  [+] journalEntries.by_entity_and_date   entityId, date, _creationTime
+  [+] journalLines.by_account   accountId, _creationTime
+  [+] journalLines.by_entity   entityId, _creationTime
+  [+] journalLines.by_entry   entryId, _creationTime
+  [+] ledgerAccounts.by_entity   entityId, _creationTime
+  [+] ledgerAccounts.by_entity_and_number   entityId, number, _creationTime
+  [+] payrollRuns.by_entity   entityId, _creationTime
+  [+] periodLocks.by_entity   entityId, _creationTime
+  [+] rules.by_entity   entityId, _creationTime
+  [+] stripeAccounts.by_entity   entityId, _creationTime
+  [+] stripePayouts.by_entity   entityId, _creationTime
+  [+] transactions.by_entity   entityId, _creationTime
+  [+] transactions.by_entry   entryId, _creationTime
+  [+] transactions.by_external_id   externalId, _creationTime
+  [+] users.email   email, _creationTime
+  [+] users.phone   phone, _creationTime
+  [+] workspaceMembers.by_user   userId, _creationTime
+  [+] workspaceMembers.by_user_and_workspace   userId, workspaceId, _creationTime
+  [+] workspaceMembers.by_workspace   workspaceId, _creationTime
+  [+] workspaceSettings.by_workspace   workspaceId, _creationTime
+  [+] workspaces.by_slug   slug, _creationTime
+✔ Deployed Convex functions to https://perceptive-guanaco-487.convex.cloud

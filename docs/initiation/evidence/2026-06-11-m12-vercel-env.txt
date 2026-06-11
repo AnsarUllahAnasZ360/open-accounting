@@ -1,0 +1,22 @@
+Setting Vercel production public runtime env:
+Vercel CLI 54.11.1 (Node.js 22.19.0)
+Retrieving project…
+WARNING! NEXT_PUBLIC_ variables can be seen by anyone visiting your site
+Retrieving project…
+Saving
+Overrode Environment Variable NEXT_PUBLIC_CONVEX_URL to Project openbooks [155ms]
+Common next commands:
+- `vercel env ls`
+- `vercel env pull`
+
+Production env names after update:
+Vercel CLI 54.11.1 (Node.js 22.19.0)
+Retrieving project…
+> Environment Variables found for ansar-ullah-anas-projects/openbooks [271ms]
+Common next commands:
+- `vercel env add`
+- `vercel env rm`
+- `vercel env pull`
+
+ name                       value               environments        created
+ NEXT_PUBLIC_CONVEX_URL     Encrypted           Production          7h ago

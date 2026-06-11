@@ -38,8 +38,8 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 ## Run metadata (fill at start and end of the overnight run)
 
 - Goal started (timestamp):
-- Convex dev deployment: z360/openbooks dev/ansar-ullah-anas (ceaseless-mandrill-524) / prod deployment:
-- Vercel project: ansar-ullah-anas-projects/openbooks / production URL: https://openbooks-flax.vercel.app
+- Convex dev deployment: z360/openbooks dev/ansar-ullah-anas (ceaseless-mandrill-524) / prod deployment: z360/openbooks production (perceptive-guanaco-487) / https://perceptive-guanaco-487.convex.cloud
+- Vercel project: ansar-ullah-anas-projects/openbooks / production URL: https://openbooks.ansarullahanas.com (stable Vercel URL: https://openbooks-flax.vercel.app)
 - Owner credential location (never the secret itself): `.env.local` plus macOS Keychain item `OpenBooks_OWNER_PASSWORD`
 - Categorization eval accuracy: M10 backend fixture eval 5/5 = 100.0%; live seeded >=100-row eval not run because the available CLI path has no signed-in workspace context.
 - Goal ended (timestamp): / stop reason (complete / budget / blocked):
@@ -50,8 +50,10 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 |---|---|---|---|---|
 | 2026-06-11 00:44 CDT | Vercel linked locally under the wrong `z360` scope, and GitHub auto-attach failed there. | M12 production deploy + domain | Use the `ansar-ullah-anas-projects` Vercel scope instead. | Resolved at 2026-06-11 01:00 CDT: linked/deployed `ansar-ullah-anas-projects/openbooks`; GitHub connection succeeded. |
 | 2026-06-11 00:48 CDT | `ansarullahanas.com` was not listed under the active Vercel `z360` scope. | M12 custom domain | Confirm which Vercel scope owns `ansarullahanas.com`. | Resolved at 2026-06-11 01:00 CDT: domain is listed under `ansar-ullah-anas-projects`. |
-| 2026-06-11 01:00 CDT | `openbooks.ansarullahanas.com` is attached to Vercel but DNS does not resolve yet. | M12 custom domain | In Hostinger DNS, add `A openbooks.ansarullahanas.com 76.76.21.21` (or host/name `openbooks`, value `76.76.21.21`), then wait for propagation and Vercel verification. | Vercel production URL works now: https://openbooks-flax.vercel.app. |
+| 2026-06-11 01:00 CDT | `openbooks.ansarullahanas.com` is attached to Vercel but DNS does not resolve yet. | M12 custom domain | In Hostinger DNS, add `A openbooks.ansarullahanas.com 76.76.21.21` (or host/name `openbooks`, value `76.76.21.21`), then wait for propagation and Vercel verification. | Resolved by M12: DNS now returns `76.76.21.21` and `https://openbooks.ansarullahanas.com` returns HTTP 200. |
 | 2026-06-11 06:52 CDT | Live seeded categorization eval cannot be run through `npx convex run` because the eval/status functions correctly require a signed-in workspace role. | M10 live eval | Add a safe owner-authenticated eval UI/action or an admin-only eval runner that derives the owner workspace without exposing secrets. | Recorded fixture/backend eval and saved the failed auth probe in evidence; continued with browser-verified chat and pipeline tests. |
+| 2026-06-11 07:31 CDT | First M12 production login failed because Convex Auth prod env was missing `JWT_PRIVATE_KEY`/`JWKS`. | M12 owner login | Generate Convex Auth signing keys for the production deployment. | Resolved at 2026-06-11 07:33 CDT; keys were generated in memory and set in Convex prod with evidence showing names/status only. |
+| 2026-06-11 07:34 CDT | Production dashboard crashed on first login because report queries threw when the owner workspace existed before an entity was seeded. | M12 owner login + prod seed | Make report queries return a zeroed first-run report pack when no entity exists yet. | Resolved at 2026-06-11 07:39 CDT; first-run fallback deployed to Convex/Vercel and prod seed completed. |
 
 ## Deviations from product spec (append as made)
 
@@ -62,6 +64,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | Goal §2 categorization eval | Recorded 5-row backend fixture accuracy, not the full seeded >=100-row live eval. | CLI execution lacks the signed-in owner workspace context required by authorization. | Add an authenticated eval runner and record the full seeded eval before final acceptance. |
 | Product spec §5.2 / M11 | Receipt extraction is filename/manual metadata with confidence, not Bedrock vision OCR. | The milestone explicitly allows degradation to upload + manual match; this keeps receipt intake usable without unverified model extraction. | Wire Bedrock vision extraction in a Convex action, then keep the current manual review/match UI as fallback. |
 | Product spec §5.2 / M11 | Matching is heuristic by amount/date/merchant plus manual match, not embedding-assisted. | Embedding memory remains part of the open M10/M11 AI gap. | Add embedding generation/search for receipts once the vector memory layer is in place. |
+| Product spec §5.1 / M12 | No Stripe webhook was registered against the production `.convex.site` URL. | The current codebase exposes Convex Auth HTTP routes only; the Stripe slice uses manual sync and fixture-backed payout evidence. | Add a Stripe webhook HTTP action, signature verification, and webhook registration before marking webhooks complete. |
 
 ---
 
@@ -793,3 +796,62 @@ PASS/PARTIAL table:
 Next:
 
 - M12 deploy can proceed independently. Keep the M10/M11 AI gaps visible for final acceptance: Bedrock vision OCR, embedding matching, and full vector memory.
+
+### 2026-06-11 07:43 CDT — M12 Production deploy
+
+What changed:
+
+- Deployed Convex production functions to `perceptive-guanaco-487` and synced server-side env from `.env.local` into Convex prod without printing values.
+- Generated Convex Auth production signing keys in memory (`JWT_PRIVATE_KEY` + `JWKS`) after live auth logs exposed the missing-key failure; evidence records names/status only.
+- Deployed Vercel production to `ansar-ullah-anas-projects/openbooks`, attached aliases including `openbooks.ansarullahanas.com`, and verified both custom-domain and stable Vercel URLs return HTTP 200.
+- Hardened production before calling M12 done: removed the unused public workspace bootstrap mutation, moved owner bootstrap out of the public API, removed the unused Plunk magic-link auth provider, and added shared integer minor-unit validation at transaction/receipt/Stripe boundaries.
+- Fixed the first-run production crash by returning a zeroed report pack when a signed-in workspace has no entity yet, so owner login can reach Settings/Data and seed demo books.
+- Seeded Acme Studio LLC demo books in production through the live browser flow: 922 transactions, 915 posted, 12 inbox, 120 eval labels, trial balance difference $0.00.
+- Updated deployment docs with current Convex/Vercel production URLs, password-only auth reality, request-access email env, and rollback command.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m12-convex-deploy-after-empty-report-fix.txt`
+- `docs/initiation/evidence/2026-06-11-m12-convex-env-set.txt`
+- `docs/initiation/evidence/2026-06-11-m12-convex-auth-env-set.txt`
+- `docs/initiation/evidence/2026-06-11-m12-vercel-deploy-after-empty-report-fix.txt`
+- `docs/initiation/evidence/2026-06-11-m12-vercel-inspect-after-empty-report-fix.txt`
+- `docs/initiation/evidence/2026-06-11-m12-http-checks-after-invariant-fix.txt`
+- `docs/initiation/evidence/2026-06-11-m12-dns-check-after-invariant-fix.txt`
+- `docs/initiation/evidence/2026-06-11-m12-prod-seed-demo-after-empty-report-fix.txt`
+- `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-desktop.png`
+- `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-mobile.png`
+- `docs/initiation/evidence/2026-06-11-m12-prod-request-access-smoke.txt`
+- `docs/initiation/evidence/2026-06-11-m12-prod-request-access.png`
+- `docs/initiation/evidence/2026-06-11-m12-client-secret-spot-check.txt`
+- `docs/initiation/evidence/2026-06-11-m12-vercel-ls-for-rollback.txt`
+
+Verification:
+
+- `npx convex dev --once` green after invariant hardening and after the empty-report first-run fix.
+- `pnpm verify` green after invariant hardening and after the empty-report first-run fix: typecheck, lint, Next.js production build, Vitest. Unit total remains 12 files / 40 tests.
+- Production browser smoke: owner login reached Dashboard on `https://openbooks.ansarullahanas.com`; desktop and 390px mobile screenshots captured.
+- Production request-access smoke: public form accepted a lead on the custom domain.
+- Client bundle spot-check: 16 live HTML/static assets checked; no private env values or forbidden secret patterns found.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Vercel production deploy | PASS | Latest ready deployment: `https://openbooks-8mjbirte5-ansar-ullah-anas-projects.vercel.app`; stable alias `https://openbooks-flax.vercel.app`. |
+| Custom domain | PASS | `https://openbooks.ansarullahanas.com` returns HTTP 200; DNS A record returns `76.76.21.21`. |
+| Convex production deploy | PASS | Prod deployment `perceptive-guanaco-487` is live at `https://perceptive-guanaco-487.convex.cloud`. |
+| Convex prod env | PASS | Required server env names set in Convex prod; evidence is names/status only. |
+| Convex Auth prod | PASS | Missing `JWT_PRIVATE_KEY`/`JWKS` was found via logs, generated, set, and owner login passed afterward. |
+| Prod frontend points at prod Convex | PASS | Vercel production env `NEXT_PUBLIC_CONVEX_URL` set to the prod Convex URL and deployed. |
+| Owner login + dashboard | PASS | Browser smoke reached Dashboard on the custom domain after production auth/env fixes. |
+| Demo seed in prod | PASS | Live browser seed completed with trial balance difference $0.00. |
+| Request access in prod | PASS | Public form accepted a smoke lead on the custom domain. |
+| No client secrets | PASS | Live HTML/static spot-check found no private env values or secret-like key prefixes. |
+| Rollback doc | PASS | Previous ready deployment recorded; rollback command documented in `docs/deployment/vercel.md`. |
+| Stripe webhook registration | PARTIAL | No Stripe webhook HTTP route exists yet; current Stripe slice remains manual sync/fixture-backed as previously recorded. |
+| Independent invariant review | PARTIAL | Review caught and M12 fixed public bootstrap, auth provider, and money-validation issues. It also confirmed Plaid durable access-token storage remains fixture-mode from M9. |
+
+Next:
+
+- M13 acceptance run: full `pnpm verify`, full `pnpm test:e2e`, production walkthrough screenshots, and final WORKING/PARTIAL/BLOCKED acceptance table.

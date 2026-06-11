@@ -1,0 +1,15 @@
+| Variable | Status | Detail |
+|---|---:|---|
+| OWNER_EMAIL | PASS | set in Convex prod |
+| OWNER_PASSWORD | PASS | set in Convex prod |
+| PLAID_CLIENT_ID | PASS | set in Convex prod |
+| PLAID_SECRET | PASS | set in Convex prod |
+| PLAID_ENV | PASS | set in Convex prod |
+| STRIPE_SECRET_KEY | PASS | set in Convex prod |
+| AI_PROVIDER | PASS | set in Convex prod |
+| AWS_ACCESS_KEY_ID | PASS | set in Convex prod |
+| AWS_SECRET_ACCESS_KEY | PASS | set in Convex prod |
+| AWS_REGION | PASS | set in Convex prod |
+| AI_MODEL | PASS | set in Convex prod |
+| AI_EMBEDDINGS_MODEL | PASS | set in Convex prod |
+| SITE_URL | PASS | set in Convex prod |

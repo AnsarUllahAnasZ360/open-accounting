@@ -1,0 +1,2 @@
+Vercel CLI 54.11.1 (Node.js 22.19.0)
+Error: Invalid number of arguments. Usage: `vercel domains ls`

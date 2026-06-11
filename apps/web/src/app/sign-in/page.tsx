@@ -30,8 +30,8 @@ export default function SignInPage() {
             Your books stay private until the ledger is ready.
           </h1>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-            OpenBooks keeps public sign-up disabled. The owner account is bootstrapped from the configured env
-            credential, and every other user must be invited or request access first.
+            OpenBooks keeps public sign-up disabled. The configured owner email can create the first account, and every
+            other user must be invited or request access first.
           </p>
         </div>
         {convexConfigured ? (

@@ -304,15 +304,22 @@ Evidence: inbox receipt-card screenshot.
 
 ## M12 — Deploy to production
 
-- [ ] Vercel production deploy of `apps/web`; attach
+- [x] Vercel production deploy of `apps/web`; attach
       `openbooks.ansarullahanas.com`; set Vercel env (public vars only where
       `NEXT_PUBLIC_*`).
-- [ ] Convex production deployment; `npx convex env set --prod` for all
+- [x] Convex production deployment; `npx convex env set --prod` for all
       server keys; point the prod frontend at it; re-register webhooks
       against the prod `.convex.site` URL.
-- [ ] Seed demo entity in prod; verify owner login + dashboard on the live
+- [x] Seed demo entity in prod; verify owner login + dashboard on the live
       URL; request-access form works in prod.
-- [ ] Document rollback: previous Vercel deployment + `vercel rollback`.
+- [x] Document rollback: previous Vercel deployment + `vercel rollback`.
+
+M12 integration note, 2026-06-11: shipped production deploy with custom-domain
+HTTP 200, Convex prod env synced, production auth signing keys generated, live
+owner login verified, Acme demo seeded in prod, and request-access verified on
+the custom domain. Stripe webhook registration is not applicable in the current
+code path because no Stripe webhook HTTP route exists yet; the Stripe slice
+still uses manual sync/fixtures as recorded in M8/M13 deviations.
 
 Done when: live URL serves the app over the custom domain; owner can log in;
 demo entity renders; no secrets in client bundles (spot-check page source).

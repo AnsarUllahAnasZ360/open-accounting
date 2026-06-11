@@ -1,0 +1,31 @@
+Vercel CLI 54.11.1 (Node.js 22.19.0)
+Fetching deployment "openbooks-kyfmlvmpo-ansar-ullah-anas-projects.vercel.app" in ansar-ullah-anas-projects
+> Fetched deployment "openbooks-kyfmlvmpo-ansar-ullah-anas-projects.vercel.app" in ansar-ullah-anas-projects [418ms]
+
+  General
+
+    id		dpl_ojyNfdJdHPDyAew6XZPXtEGbVvDx
+    name	openbooks
+    target	production
+    status	● Ready
+    url		https://openbooks-kyfmlvmpo-ansar-ullah-anas-projects.vercel.app
+    created	Thu Jun 11 2026 07:29:47 GMT-0500 (Central Daylight Time) [55s ago]
+
+
+  Aliases
+
+    ╶ https://openbooks-flax.vercel.app
+    ╶ https://openbooks.ansarullahanas.com
+    ╶ https://openbooks-ansar-ullah-anas-projects.vercel.app
+    ╶ https://openbooks-hello-88313507-ansar-ullah-anas-projects.vercel.app
+
+
+  Builds
+
+    ┌ .        [0ms]
+    ├── λ index (948.19KB) [iad1]
+    ├── λ _global-error (948.19KB) [iad1]
+    ├── λ _global-error.rsc (948.19KB) [iad1]
+    ├── λ _global-error.segments/__PAGE__.segment.rsc (948.19KB) [iad1]
+    ├── λ _global-error.segments/_full.segment.rsc (948.19KB) [iad1]
+    └── 95 output items hidden

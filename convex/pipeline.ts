@@ -5,6 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx } from "./_generated/server";
 import { type AIAutonomy, shouldAutoPostAI } from "./ai";
 import { requireWorkspaceRole } from "./authz";
+import { assertSignedMinorUnit } from "./money";
 
 const sourceValidator = v.union(v.literal("bank"), v.literal("stripe"), v.literal("manual"));
 const aiProposalValidator = v.object({
@@ -389,6 +390,8 @@ export const routeTransaction = mutation({
     aiProposal: v.optional(aiProposalValidator),
   },
   handler: async (ctx, args) => {
+    assertSignedMinorUnit(args.amountMinor, "Transaction amount");
+
     const entity = await requireEntity(ctx, args.entityId);
     const bankAccount = await ctx.db.get(args.bankAccountId);
     if (!bankAccount || bankAccount.entityId !== args.entityId) {

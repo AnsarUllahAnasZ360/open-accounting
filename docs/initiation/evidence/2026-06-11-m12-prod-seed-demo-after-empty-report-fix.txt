@@ -1,0 +1,5 @@
+
+> openbooks@0.0.0 seed:demo /Users/ansarullahanas/Documents/OpenBooks
+> node scripts/seed-demo.mjs
+
+Demo seed complete | transactions=922 | posted=915 | inbox=12 | evalLabels=120 | trialBalance=Trial balance difference$0.00

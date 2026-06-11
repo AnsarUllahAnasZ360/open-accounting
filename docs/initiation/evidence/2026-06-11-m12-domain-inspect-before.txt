@@ -1,0 +1,24 @@
+Vercel CLI 54.11.1 (Node.js 22.19.0)
+Fetching Domain openbooks.ansarullahanas.com under ansar-ullah-anas-projects
+> Domain openbooks.ansarullahanas.com found under ansar-ullah-anas-projects [8s]
+
+  General
+
+    Name			ansarullahanas.com
+    Registrar			Third Party
+    Expiration Date		-
+    Creator			hello-88313507
+    Created At			13 May 2026 02:24:04 [29d ago]
+    Edge Network		yes
+    Renewal Price		-
+
+  Nameservers
+
+    Intended Nameservers    Current Nameservers
+    ns1.vercel-dns.com      ns1.dns-parking.com    ✘
+    ns2.vercel-dns.com      ns2.dns-parking.com    ✘
+
+  Projects
+
+    Project            Domains
+    openbooks          openbooks.ansarullahanas.com

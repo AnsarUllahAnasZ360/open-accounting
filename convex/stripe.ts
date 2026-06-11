@@ -5,6 +5,7 @@ import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { action, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import { assertNonNegativeMinorUnit } from "./money";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const STRIPE_API_VERSION = "2026-02-25.clover";
@@ -251,12 +252,6 @@ function normalizeInvoiceStatus(status: string | null | undefined): StripeInvoic
     return status;
   }
   return "open";
-}
-
-function assertMinorUnit(value: number, label: string) {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`${label} must be a non-negative integer minor-unit amount.`);
-  }
 }
 
 function stripeKeyState(value: string | undefined) {
@@ -774,8 +769,8 @@ export const applyProjection = mutation({
     }
 
     for (const item of args.projection.income) {
-      assertMinorUnit(item.amountMinor, "Stripe income amount");
-      assertMinorUnit(item.feeMinor, "Stripe fee amount");
+      assertNonNegativeMinorUnit(item.amountMinor, "Stripe income amount");
+      assertNonNegativeMinorUnit(item.feeMinor, "Stripe fee amount");
       const duplicate = await ctx.db
         .query("transactions")
         .withIndex("by_external_id", (q) => q.eq("externalId", item.stripePaymentIntentId))
@@ -824,8 +819,8 @@ export const applyProjection = mutation({
 
     const existingInvoices = await ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500);
     for (const invoice of args.projection.invoices) {
-      assertMinorUnit(invoice.totalMinor, "Stripe invoice total");
-      assertMinorUnit(invoice.amountPaidMinor, "Stripe invoice paid amount");
+      assertNonNegativeMinorUnit(invoice.totalMinor, "Stripe invoice total");
+      assertNonNegativeMinorUnit(invoice.amountPaidMinor, "Stripe invoice paid amount");
       if (existingInvoices.some((row) => row.number === invoice.number)) {
         skippedDuplicates += 1;
         continue;
@@ -1349,7 +1344,7 @@ export const sendInvoiceViaStripe = action({
     });
     let totalMinor = 0;
     for (const [index, item] of args.lineItems.entries()) {
-      assertMinorUnit(item.amountMinor, `Line ${index + 1} amount`);
+      assertNonNegativeMinorUnit(item.amountMinor, `Line ${index + 1} amount`);
       if (!Number.isInteger(item.quantity) || item.quantity < 1) {
         throw new Error("Invoice line quantity must be a positive integer.");
       }

@@ -1,0 +1,37 @@
+Vercel CLI 54.11.1 (Node.js 22.19.0)
+Retrieving project…
+Deploying ansar-ullah-anas-projects/openbooks
+Uploading [--------------------] (0.0B/321.9KB)
+Uploading [=====---------------] (80.9KB/321.9KB)
+Uploading [==========----------] (162.8KB/321.9KB)
+Uploading [===============-----] (243.8KB/321.9KB)
+Uploading [====================] (321.9KB/321.9KB)
+  Inspect     https://vercel.com/ansar-ullah-anas-projects/openbooks/ojyNfdJdHPDyAew6XZPXtEGbVvDx
+▲ Production  https://openbooks-kyfmlvmpo-ansar-ullah-anas-projects.vercel.app
+Building…
+Building…
+[2K[1A[2K[G▲ Production  https://openbooks-kyfmlvmpo-ansar-ullah-anas-projects.vercel.app
+Completing…
+▲ Aliased     https://openbooks-flax.vercel.app
+{
+  "status": "ok",
+  "deployment": {
+    "id": "dpl_ojyNfdJdHPDyAew6XZPXtEGbVvDx",
+    "url": "https://openbooks-kyfmlvmpo-ansar-ullah-anas-projects.vercel.app",
+    "inspectorUrl": "https://vercel.com/ansar-ullah-anas-projects/openbooks/ojyNfdJdHPDyAew6XZPXtEGbVvDx",
+    "readyState": "READY",
+    "target": "production",
+    "deploymentApiUrl": "https://api.vercel.com/v13/deployments/dpl_ojyNfdJdHPDyAew6XZPXtEGbVvDx"
+  },
+  "message": "Deployment openbooks-kyfmlvmpo-ansar-ullah-anas-projects.vercel.app ready.",
+  "next": [
+    {
+      "command": "vercel inspect openbooks-kyfmlvmpo-ansar-ullah-anas-projects.vercel.app --scope ansar-ullah-anas-projects",
+      "when": "Inspect deployment"
+    },
+    {
+      "command": "vercel deploy --prod --scope ansar-ullah-anas-projects",
+      "when": "Promote to production"
+    }
+  ]
+}

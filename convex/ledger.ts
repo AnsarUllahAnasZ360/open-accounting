@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import { assertNonNegativeMinorUnit } from "./money";
 
 const accountTypeValidator = v.union(
   v.literal("asset"),
@@ -72,12 +73,6 @@ const chartTemplates: Array<{
 function assertIsoDate(date: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
     throw new Error("Use an ISO date in YYYY-MM-DD format.");
-  }
-}
-
-function assertMinorUnit(value: number, field: string) {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`${field} must be a non-negative integer minor-unit amount.`);
   }
 }
 
@@ -320,8 +315,8 @@ export const postEntry = mutation({
     let debitTotal = 0;
     let creditTotal = 0;
     for (const line of args.lines) {
-      assertMinorUnit(line.debitMinor, "Debit");
-      assertMinorUnit(line.creditMinor, "Credit");
+      assertNonNegativeMinorUnit(line.debitMinor, "Debit");
+      assertNonNegativeMinorUnit(line.creditMinor, "Credit");
       if ((line.debitMinor === 0 && line.creditMinor === 0) || (line.debitMinor > 0 && line.creditMinor > 0)) {
         throw new Error("Each journal line must contain exactly one debit or one credit.");
       }

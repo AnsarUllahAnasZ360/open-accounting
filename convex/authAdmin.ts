@@ -7,11 +7,11 @@ import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { action, internalMutation } from "./_generated/server";
+import { internalAction, internalMutation } from "./_generated/server";
 import { ensureWorkspaceForUser } from "./auth";
 import { normalizeEmail, ownerEmail } from "./authz";
 
-export const bootstrapOwner = action({
+export const bootstrapOwner = internalAction({
   args: {},
   handler: async (ctx) => {
     const email = ownerEmail();

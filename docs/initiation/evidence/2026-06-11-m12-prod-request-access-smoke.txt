@@ -1,0 +1,3 @@
+| Check | Status | Detail |
+|---|---:|---|
+| Request access | PASS | Public production form accepted a smoke lead on custom domain |

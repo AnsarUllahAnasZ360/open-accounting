@@ -34,7 +34,7 @@ const REPORT_LIMIT = 5000;
 async function getEntity(ctx: QueryCtx, entityId?: Id<"entities">) {
   if (entityId) {
     const entity = await ctx.db.get(entityId);
-    if (!entity) throw new Error("OpenBooks entity not found.");
+    if (!entity) return null;
     await requireWorkspaceRole(ctx, entity.workspaceId, "member");
     return entity;
   }
@@ -52,8 +52,111 @@ async function getEntity(ctx: QueryCtx, entityId?: Id<"entities">) {
     .query("entities")
     .withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId))
     .first();
-  if (!firstEntity) throw new Error("OpenBooks entity not found.");
+  if (!firstEntity) return null;
   return firstEntity;
+}
+
+function reportCards() {
+  return [
+    { id: "monthly-review", group: "Overview", name: "Monthly Review", description: "A one-page owner summary for the month." },
+    { id: "profit-and-loss", group: "Statements", name: "Profit & Loss", description: "How much you made and spent." },
+    { id: "balance-sheet", group: "Statements", name: "Balance Sheet", description: "What the business owns and owes." },
+    { id: "cash-flow", group: "Statements", name: "Cash Flow", description: "How cash moved through the business." },
+    { id: "ar-aging", group: "Money owed", name: "AR Aging", description: "Who owes you money." },
+    { id: "ap-aging", group: "Money owed", name: "AP Aging", description: "Who you need to pay." },
+    { id: "expenses", group: "Insights", name: "Expenses", description: "Spend by category and vendor." },
+    { id: "income-by-customer", group: "Insights", name: "Income by Customer", description: "Customer concentration." },
+    { id: "payroll-summary", group: "Insights", name: "Payroll Summary", description: "Payroll by month." },
+    { id: "general-ledger", group: "Accountant", name: "General Ledger", description: "Line-by-line account activity." },
+    { id: "trial-balance", group: "Accountant", name: "Trial Balance", description: "Debit and credit check." },
+    { id: "journal", group: "Accountant", name: "Journal Entries", description: "Entry-centric register." },
+  ];
+}
+
+function emptyReportPack(args: {
+  startDate: string;
+  endDate: string;
+  basis: ReportBasis;
+  compare: CompareMode;
+  columnMode: ColumnMode;
+}) {
+  const comparison = compareRange(args.startDate, args.endDate, args.compare);
+  const emptyAging = {
+    totalMinor: 0,
+    buckets: { currentMinor: 0, days30Minor: 0, days60Minor: 0, days90Minor: 0 },
+    rows: [],
+  };
+  return {
+    entity: {
+      id: "",
+      name: "No business yet",
+      currency: "USD",
+    },
+    controls: {
+      startDate: args.startDate,
+      endDate: args.endDate,
+      basis: args.basis,
+      compare: args.compare,
+      columnMode: args.columnMode,
+      comparison,
+    },
+    reportCards: reportCards(),
+    monthlyReview: {
+      month: monthKey(args.endDate),
+      moneyInMinor: 0,
+      moneyOutMinor: 0,
+      netResultMinor: 0,
+      owedToYouMinor: 0,
+      youOweMinor: 0,
+      payrollMinor: 0,
+      topCustomers: [],
+      topExpenseCategories: [],
+    },
+    profitAndLoss: {
+      incomeMinor: 0,
+      expenseMinor: 0,
+      netIncomeMinor: 0,
+      rows: [],
+      sections: [
+        { key: "income", label: "Income", totalMinor: 0, rows: [] },
+        { key: "expense", label: "Expenses", totalMinor: 0, rows: [] },
+      ],
+    },
+    balanceSheet: {
+      asOfDate: args.endDate,
+      assetMinor: 0,
+      liabilityMinor: 0,
+      equityMinor: 0,
+      currentEarningsMinor: 0,
+      differenceMinor: 0,
+      balanced: true,
+      rows: [],
+      sections: [
+        { key: "assets", label: "Assets", totalMinor: 0, rows: [] },
+        { key: "liabilities", label: "Liabilities", totalMinor: 0, rows: [] },
+        { key: "equity", label: "Equity", totalMinor: 0, rows: [] },
+      ],
+    },
+    cashFlow: {
+      openingCashMinor: 0,
+      closingCashMinor: 0,
+      netCashChangeMinor: 0,
+      groups: [
+        { key: "operating", label: "Operating", totalMinor: 0, rows: [] },
+        { key: "investing", label: "Investing", totalMinor: 0, rows: [] },
+        { key: "financing", label: "Financing", totalMinor: 0, rows: [] },
+      ],
+    },
+    arAging: emptyAging,
+    apAging: emptyAging,
+    expenses: { byCategory: [], byVendor: [] },
+    incomeByCustomer: { rows: [], totalMinor: 0 },
+    payrollSummary: { totalMinor: 0, rows: [] },
+    generalLedger: { rows: [] },
+    trialBalance: { rows: [], totalDebitMinor: 0, totalCreditMinor: 0, differenceMinor: 0 },
+    journal: { entries: [] },
+    limits: { reportLimit: REPORT_LIMIT, truncated: false },
+  };
 }
 
 function addBalance(map: Map<Id<"ledgerAccounts">, Balance>, line: Doc<"journalLines">) {
@@ -335,6 +438,9 @@ export const reportPack = query({
     }
 
     const entity = await getEntity(ctx, args.entityId);
+    if (!entity) {
+      return emptyReportPack(args);
+    }
     const [accounts, entries, lines, transactions, invoices, bills, payrollRuns, contacts, bankAccounts] =
       await Promise.all([
         ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(REPORT_LIMIT),
@@ -629,20 +735,7 @@ export const reportPack = query({
         columnMode: args.columnMode,
         comparison,
       },
-      reportCards: [
-        { id: "monthly-review", group: "Overview", name: "Monthly Review", description: "A one-page owner summary for the month." },
-        { id: "profit-and-loss", group: "Statements", name: "Profit & Loss", description: "How much you made and spent." },
-        { id: "balance-sheet", group: "Statements", name: "Balance Sheet", description: "What the business owns and owes." },
-        { id: "cash-flow", group: "Statements", name: "Cash Flow", description: "How cash moved through the business." },
-        { id: "ar-aging", group: "Money owed", name: "AR Aging", description: "Who owes you money." },
-        { id: "ap-aging", group: "Money owed", name: "AP Aging", description: "Who you need to pay." },
-        { id: "expenses", group: "Insights", name: "Expenses", description: "Spend by category and vendor." },
-        { id: "income-by-customer", group: "Insights", name: "Income by Customer", description: "Customer concentration." },
-        { id: "payroll-summary", group: "Insights", name: "Payroll Summary", description: "Payroll by month." },
-        { id: "general-ledger", group: "Accountant", name: "General Ledger", description: "Line-by-line account activity." },
-        { id: "trial-balance", group: "Accountant", name: "Trial Balance", description: "Debit and credit check." },
-        { id: "journal", group: "Accountant", name: "Journal Entries", description: "Entry-centric register." },
-      ],
+      reportCards: reportCards(),
       monthlyReview: {
         month: monthKey(args.endDate),
         moneyInMinor: incomeMinor,

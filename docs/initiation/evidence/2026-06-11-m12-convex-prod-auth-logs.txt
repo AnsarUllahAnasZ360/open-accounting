@@ -1,0 +1,60 @@
+▌ Showing logs of deployment:
+▌ [Production] z360:openbooks:production (prod) (dashboard: https://dashboard.convex.dev/t/z360/openbooks/perceptive-guanaco-487)
+▌ └─ https://perceptive-guanaco-487.convex.cloud
+Watching logs for production deployment perceptive-guanaco-487...
+6/11/2026, 7:30:58 AM [CONVEX M(auth:store)] [INFO] '`auth:store` type: createAccountFromCredentials'
+6/11/2026, 7:30:59 AM [CONVEX M(auth:store)] [INFO] '`auth:store` type: signIn'
+6/11/2026, 7:30:59 AM [CONVEX M(auth:store)] Uncaught Error: Missing environment variable `JWT_PRIVATE_KEY`
+    at requireEnv (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/utils.ts:5:9)
+    at generateToken (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/tokens.ts:25:18)
+    at generateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:77:18)
+    at async maybeGenerateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:32:10)
+    at async signInImpl (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/mutations/signIn.ts:34:0)
+
+6/11/2026, 7:30:59 AM [CONVEX A(auth:signIn)] Uncaught Error: Uncaught Error: Missing environment variable `JWT_PRIVATE_KEY`
+    at requireEnv (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/utils.ts:5:9)
+    at generateToken (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/tokens.ts:25:18)
+    at generateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:77:18)
+    at async maybeGenerateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:32:10)
+    at async signInImpl (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/mutations/signIn.ts:34:0)
+
+    at async handleCredentials (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/signIn.ts:195:12)
+    at async handler (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/index.ts:416:26)
+
+6/11/2026, 7:31:44 AM [CONVEX M(auth:store)] [INFO] '`auth:store` type: retrieveAccountWithCredentials'
+6/11/2026, 7:31:44 AM [CONVEX M(auth:store)] [INFO] '`auth:store` type: signIn'
+6/11/2026, 7:31:44 AM [CONVEX M(auth:store)] Uncaught Error: Missing environment variable `JWT_PRIVATE_KEY`
+    at requireEnv (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/utils.ts:5:9)
+    at generateToken (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/tokens.ts:25:18)
+    at generateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:77:18)
+    at async maybeGenerateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:32:10)
+    at async signInImpl (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/mutations/signIn.ts:34:0)
+
+6/11/2026, 7:31:44 AM [CONVEX A(auth:signIn)] Uncaught Error: Uncaught Error: Missing environment variable `JWT_PRIVATE_KEY`
+    at requireEnv (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/utils.ts:5:9)
+    at generateToken (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/tokens.ts:25:18)
+    at generateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:77:18)
+    at async maybeGenerateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:32:10)
+    at async signInImpl (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/mutations/signIn.ts:34:0)
+
+    at async handleCredentials (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/signIn.ts:195:12)
+    at async handler (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/index.ts:416:26)
+
+6/11/2026, 7:31:44 AM [CONVEX M(auth:store)] [INFO] '`auth:store` type: createAccountFromCredentials'
+6/11/2026, 7:31:45 AM [CONVEX M(auth:store)] [INFO] '`auth:store` type: signIn'
+6/11/2026, 7:31:45 AM [CONVEX M(auth:store)] Uncaught Error: Missing environment variable `JWT_PRIVATE_KEY`
+    at requireEnv (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/utils.ts:5:9)
+    at generateToken (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/tokens.ts:25:18)
+    at generateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:77:18)
+    at async maybeGenerateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:32:10)
+    at async signInImpl (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/mutations/signIn.ts:34:0)
+
+6/11/2026, 7:31:45 AM [CONVEX A(auth:signIn)] Uncaught Error: Uncaught Error: Missing environment variable `JWT_PRIVATE_KEY`
+    at requireEnv (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/utils.ts:5:9)
+    at generateToken (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/tokens.ts:25:18)
+    at generateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:77:18)
+    at async maybeGenerateTokensForSession (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/sessions.ts:32:10)
+    at async signInImpl (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/mutations/signIn.ts:34:0)
+
+    at async handleCredentials (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/signIn.ts:195:12)
+    at async handler (../../node_modules/.pnpm/@convex-dev+auth@0.0.93_@auth+core@0.37.0_convex@1.40.0_react@19.2.4__react@19.2.4/node_modules/@convex-dev/auth/src/server/implementation/index.ts:416:26)

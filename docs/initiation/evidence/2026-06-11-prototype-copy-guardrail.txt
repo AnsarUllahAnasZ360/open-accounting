@@ -1,0 +1,33 @@
+2026-06-11 14:06 CDT
+
+Correction: prototype copy and shell vocabulary guardrail.
+
+Source of truth:
+- OpenBook - Prototype/Landing.dc.html
+- OpenBook - Prototype/OpenBooks.dc.html
+- OpenBooks Design System/ui_kits/openbooks/
+
+Production files checked:
+- apps/web/src/app/page.tsx
+- apps/web/src/components/openbooks/AppShell.tsx
+- tests/prototype-copy.test.ts
+
+Browser evidence:
+- Opened http://localhost:3000/ in Chrome through browser automation.
+- Rendered page contained:
+  - Your books, always done.
+  - Money moves. The ledger posts. You answer a question now and then.
+  - Ask your books anything.
+  - Every screen money touches.
+  - The whole business, in your pocket.
+  - Connect your accounts. Answer a few questions a week.
+  - Request access
+- Screenshot: docs/initiation/evidence/2026-06-11-prototype-landing-render.png
+
+Verification:
+- pnpm test:unit -- tests/prototype-copy.test.ts: PASS
+- pnpm verify: PASS
+  - typecheck: PASS
+  - lint: PASS
+  - build: PASS
+  - unit tests: 16 files / 70 tests PASS

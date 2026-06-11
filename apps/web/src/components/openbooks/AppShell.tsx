@@ -85,7 +85,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm text-muted-foreground">
-        Checking your OpenBooks session...
+        Checking your open books session...
       </div>
     );
   }
@@ -130,10 +130,10 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
             <div className="flex items-center justify-between gap-3">
               <Link href="/dashboard" className="flex items-center gap-3">
                 <span className="flex size-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                  OB
+                  ob
                 </span>
                 <span>
-                  <span className="block text-sm font-semibold">OpenBooks</span>
+                  <span className="block text-sm font-semibold">open books</span>
                   <span className="block text-xs text-muted-foreground">
                     {viewer?.workspace?.name ?? "Loading workspace"}
                   </span>
@@ -149,8 +149,11 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
                 <X />
               </Button>
             </div>
-            <button className="mt-4 flex w-full items-center justify-between rounded-lg border bg-background px-3 py-2 text-left text-sm">
-              <span>{viewer?.workspace?.name ?? "Workspace"}</span>
+            <button className="mt-4 flex w-full items-center gap-2 rounded-[10px] border bg-background px-2.5 py-2 text-left text-[13px] font-medium">
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-[#f1f8ee] text-[11px] font-semibold text-[#17540f]">
+                A
+              </span>
+              <span className="min-w-0 flex-1 truncate">{reportPack?.entity.name ?? "Acme Studio LLC"}</span>
               <span className="text-muted-foreground">{viewer?.role ?? "member"}</span>
             </button>
           </div>
@@ -181,9 +184,9 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
           <div className="border-t px-4 py-4 text-xs text-muted-foreground">
             <div className="flex items-center justify-between">
               <span>Sync status</span>
-              <span className="text-foreground">Ready</span>
+              <span className="text-foreground">Synced</span>
             </div>
-            <div className="mt-1">Seed and sandbox connections pending.</div>
+            <div className="mt-1">All accounts synced 12 minutes ago.</div>
           </div>
         </div>
       </aside>
@@ -202,13 +205,24 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
             </Button>
             <button className="hidden h-8 min-w-[260px] items-center gap-2 rounded-lg border px-3 text-sm text-muted-foreground md:flex">
               <Search className="size-4" />
-              <span>Search transactions, contacts, reports</span>
+              <span className="min-w-0 flex-1 text-left">Search transactions, contacts, reports...</span>
+              <span className="money-figures rounded border bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                cmd K
+              </span>
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setAiOpen((value) => !value)}>
+            <div className="hidden h-[30px] items-center rounded-full bg-muted px-3 text-[12.5px] font-medium text-muted-foreground sm:flex">
+              Jun 2026
+            </div>
+            <Button
+              className="border-[#dcefd2] bg-[#f1f8ee] text-[#1d6b12] hover:bg-[#dcefd2] hover:text-[#1d6b12]"
+              variant="outline"
+              onClick={() => setAiOpen((value) => !value)}
+            >
               <Sparkles />
               Ask AI
+              <span className="money-figures hidden text-[11px] text-[#63b347] sm:inline">cmd J</span>
             </Button>
             <Button
               aria-label="Sign out"
@@ -234,7 +248,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
         )}
       >
         <OpenBooksAIChat
-          contextLabel={appRoutes.find((route) => route.href === pathname)?.label ?? "OpenBooks"}
+          contextLabel={appRoutes.find((route) => route.href === pathname)?.label ?? "open books"}
           reportPack={aiReportPack ?? reportPack}
           aiStatus={aiStatus}
           workspaceId={viewer?.workspace?.id}

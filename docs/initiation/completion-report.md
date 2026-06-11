@@ -14,7 +14,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 
 | # | Check (rows 1–18 = acceptance.md; 19–20 = goal.md gates) | Status | Evidence | Notes / next step |
 |---|---|---|---|---|
-| 1 | Landing + request-access (desktop/mobile) | WORKING | `docs/initiation/evidence/2026-06-11-m12-prod-request-access.png`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt` | Public landing, request-access, and desktop/mobile production screenshots are evidenced. |
+| 1 | Landing + request-access (desktop/mobile) | WORKING | `docs/initiation/evidence/2026-06-11-m12-prod-request-access.png`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-prototype-copy-guardrail.txt`; `docs/initiation/evidence/2026-06-11-prototype-landing-render.png` | Public landing, request-access, desktop/mobile production screenshots, and a prototype-copy guardrail are evidenced. |
 | 2 | Public sign-up disabled | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt` | Random email rejection passes on the custom domain. |
 | 3 | Owner login | WORKING | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-desktop.png`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt` | Owner login passes on the custom domain. |
 | 4 | Dashboard on 12-month demo data, drill-throughs | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-local-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt` | Dashboard/core flow passes after clean seed via the workspace seed job lock. |
@@ -1645,3 +1645,32 @@ PASS/PARTIAL table:
 | Stream delivery | PASS | `/ai/chat` streams chunked text to the existing chat surface and passes production CORS preflight. |
 | Acceptance shortcut stability | PASS | Existing report-backed prompts and confirm-first rule flow still pass the focused Playwright suite. |
 | Full action tool approval set | PARTIAL | `createRule` remains evidenced; `categorizeTransactions`, `draftInvoice`, `addBill`, and `createJournalEntry` still need confirm-card wiring. |
+
+### 2026-06-11 14:06 CDT — Prototype copy guardrail correction
+
+What changed:
+
+- Corrected app-shell vocabulary drift back toward `OpenBook - Prototype/OpenBooks.dc.html`: lowercase `ob`/`open books`, Acme entity switcher language, Jun 2026 period pill, search shortcut affordance, green Ask AI button, and prototype sync phrasing.
+- Left `OpenBook - Prototype/` and `OpenBooks Design System/` untouched as read-only source-of-truth references.
+- Added `tests/prototype-copy.test.ts` so `pnpm verify` now checks that the production landing and shell keep the prototype's key visible phrases.
+- Re-rendered the local landing page in Chrome and captured a full-page screenshot.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-prototype-copy-guardrail.txt`
+- `docs/initiation/evidence/2026-06-11-prototype-landing-render.png`
+
+Verification:
+
+- `pnpm test:unit -- tests/prototype-copy.test.ts` green; Vitest reported 16 files / 70 tests.
+- `pnpm verify` green: typecheck, lint, Next.js production build, and 16 unit files / 70 tests.
+- Browser automation opened `http://localhost:3000/` and confirmed the rendered landing contains the prototype headline, loop, Ask AI, tour, mobile, CTA, and request-access copy.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Prototype landing copy | PASS | Guardrail asserts the production landing keeps the key `Landing.dc.html` phrases. |
+| App-shell vocabulary | PASS | Guardrail asserts the shell keeps the prototype brand/entity/search/period/Ask AI vocabulary. |
+| Request-access intake | PASS | Still present below the prototype CTA for invite-only access. |
+| Production redeploy | PARTIAL | Local verification is green; this correction has not yet been redeployed to Vercel in this entry. |

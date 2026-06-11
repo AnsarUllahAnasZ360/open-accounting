@@ -63,6 +63,13 @@ Evidence: preflight output (redacted) in completion report.
       (stores lead in Convex; Plunk notify if key present) + sign-in entry.
       No public sign-up.
 
+M1 follow-up note, 2026-06-11: added `tests/prototype-copy.test.ts` and
+`docs/initiation/evidence/2026-06-11-prototype-copy-guardrail.txt` after a
+prototype-copy drift correction. Future landing/app-shell edits should treat
+`OpenBook - Prototype/Landing.dc.html`, `OpenBook - Prototype/OpenBooks.dc.html`,
+and `OpenBooks Design System/ui_kits/openbooks/` as source-of-truth inputs, not
+visual inspiration.
+
 Done when: every nav route renders (empty states fine), landing matches the
 design language desktop + 390px mobile, lighthouse-obvious regressions absent.
 Evidence: screenshots (desktop + mobile) in `docs/initiation/evidence/`.

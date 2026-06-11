@@ -28,6 +28,69 @@ async function requireEntity(ctx: MutationCtx, entityId: Id<"entities">) {
   return entity;
 }
 
+async function requireTransactionForAdmin(ctx: MutationCtx, transactionId: Id<"transactions">) {
+  const transaction = await ctx.db.get(transactionId);
+  if (!transaction) {
+    throw new Error("Transaction not found.");
+  }
+  const entity = await requireEntity(ctx, transaction.entityId);
+  return { entity, transaction };
+}
+
+async function resolveInboxItems(
+  ctx: MutationCtx,
+  entityId: Id<"entities">,
+  transactionId: Id<"transactions">,
+  now: number,
+) {
+  const items = await ctx.db
+    .query("inboxItems")
+    .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+    .collect();
+  for (const item of items) {
+    if (item.transactionId === transactionId && item.status === "open") {
+      await ctx.db.patch(item._id, {
+        status: "resolved",
+        updatedAt: now,
+      });
+    }
+  }
+}
+
+async function reverseExistingEntry(
+  ctx: MutationCtx,
+  args: {
+    entityId: Id<"entities">;
+    entryId: Id<"journalEntries">;
+    date: string;
+    memo: string;
+    sourceId: string;
+  },
+) {
+  const lines = await ctx.db
+    .query("journalLines")
+    .withIndex("by_entry", (q) => q.eq("entryId", args.entryId))
+    .collect();
+  if (lines.length === 0) {
+    throw new Error("Posted transaction has no ledger lines to reverse.");
+  }
+  const result: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
+    entityId: args.entityId,
+    date: args.date,
+    memo: args.memo,
+    source: "manual",
+    sourceId: args.sourceId,
+    reversesEntryId: args.entryId,
+    lines: lines.map((line) => ({
+      accountId: line.accountId,
+      debitMinor: line.creditMinor,
+      creditMinor: line.debitMinor,
+      currency: line.currency,
+    })),
+  });
+  return result.entryId;
+}
+
 async function findMatchingRule(
   ctx: MutationCtx,
   args: {
@@ -263,5 +326,266 @@ export const routeTransaction = mutation({
       updatedAt: now,
     });
     return { status: "needs_review" as const, transactionId, entryId: null, stage: "needs_review" as const };
+  },
+});
+
+export const confirmTransaction = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    categoryAccountId: v.optional(v.id("ledgerAccounts")),
+  },
+  handler: async (ctx, args) => {
+    const { entity, transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
+    if (transaction.entryId) {
+      await ctx.db.patch(transaction._id, {
+        review: "confirmed",
+        updatedAt: Date.now(),
+      });
+      return { entryId: transaction.entryId, status: "confirmed" as const };
+    }
+    const bankAccount = transaction.bankAccountId ? await ctx.db.get(transaction.bankAccountId) : null;
+    if (!bankAccount || bankAccount.entityId !== transaction.entityId) {
+      throw new Error("Transaction needs a bank account before it can be posted.");
+    }
+    const categoryAccountId = args.categoryAccountId ?? transaction.categoryAccountId;
+    if (!categoryAccountId) {
+      throw new Error("Choose a category before confirming this transaction.");
+    }
+    const entryId = await postTransactionEntry(ctx, {
+      entity,
+      bankAccount,
+      date: transaction.date,
+      amountMinor: transaction.amountMinor,
+      merchant: transaction.merchant,
+      source: transaction.source,
+      sourceId: transaction.externalId,
+      categoryAccountId,
+      memoSuffix: "human confirmed",
+    });
+    const now = Date.now();
+    await ctx.db.patch(transaction._id, {
+      review: "confirmed",
+      categoryAccountId,
+      entryId,
+      decidedBy: "rule",
+      confidence: 1,
+      reasoning: "Confirmed by human from the Inbox.",
+      updatedAt: now,
+    });
+    await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
+    return { entryId, status: "confirmed" as const };
+  },
+});
+
+export const recategorizeTransaction = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    categoryAccountId: v.id("ledgerAccounts"),
+  },
+  handler: async (ctx, args) => {
+    const { entity, transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
+    const categoryAccount = await ctx.db.get(args.categoryAccountId);
+    if (!categoryAccount || categoryAccount.entityId !== transaction.entityId || categoryAccount.archived) {
+      throw new Error("Choose an active category on this entity.");
+    }
+    const bankAccount = transaction.bankAccountId ? await ctx.db.get(transaction.bankAccountId) : null;
+    if (!bankAccount || bankAccount.entityId !== transaction.entityId) {
+      throw new Error("Transaction needs a bank account before it can be recategorized.");
+    }
+    if (transaction.entryId) {
+      await reverseExistingEntry(ctx, {
+        entityId: transaction.entityId,
+        entryId: transaction.entryId,
+        date: transaction.date,
+        memo: `${transaction.merchant} - reverse old category`,
+        sourceId: transaction._id,
+      });
+    }
+    const entryId = await postTransactionEntry(ctx, {
+      entity,
+      bankAccount,
+      date: transaction.date,
+      amountMinor: transaction.amountMinor,
+      merchant: transaction.merchant,
+      source: transaction.source,
+      sourceId: transaction.externalId,
+      categoryAccountId: args.categoryAccountId,
+      memoSuffix: "recategorized",
+    });
+    const now = Date.now();
+    await ctx.db.patch(transaction._id, {
+      review: "confirmed",
+      categoryAccountId: args.categoryAccountId,
+      entryId,
+      decidedBy: "rule",
+      confidence: 1,
+      reasoning: "Recategorized by human with reversal and repost.",
+      updatedAt: now,
+    });
+    await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
+    return { entryId, status: "recategorized" as const };
+  },
+});
+
+export const splitTransaction = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    splits: v.array(
+      v.object({
+        categoryAccountId: v.id("ledgerAccounts"),
+        amountMinor: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const { entity, transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
+    if (args.splits.length < 2) {
+      throw new Error("A split needs at least two category lines.");
+    }
+    const bankAccount = transaction.bankAccountId ? await ctx.db.get(transaction.bankAccountId) : null;
+    if (!bankAccount || bankAccount.entityId !== transaction.entityId) {
+      throw new Error("Transaction needs a bank account before it can be split.");
+    }
+
+    let splitTotal = 0;
+    const splitAccounts = [];
+    for (const split of args.splits) {
+      if (!Number.isInteger(split.amountMinor) || split.amountMinor <= 0) {
+        throw new Error("Split amounts must be positive integer minor units.");
+      }
+      const account = await ctx.db.get(split.categoryAccountId);
+      if (!account || account.entityId !== transaction.entityId || account.archived) {
+        throw new Error("Every split line needs an active category on this entity.");
+      }
+      splitTotal += split.amountMinor;
+      splitAccounts.push({ accountId: account._id, amountMinor: split.amountMinor });
+    }
+    if (splitTotal !== absoluteMinor(transaction.amountMinor)) {
+      throw new Error("Split amounts must equal the transaction amount.");
+    }
+
+    if (transaction.entryId) {
+      await reverseExistingEntry(ctx, {
+        entityId: transaction.entityId,
+        entryId: transaction.entryId,
+        date: transaction.date,
+        memo: `${transaction.merchant} - reverse before split`,
+        sourceId: transaction._id,
+      });
+    }
+
+    const lines =
+      transaction.amountMinor >= 0
+        ? [
+            {
+              accountId: bankAccount.ledgerAccountId,
+              debitMinor: splitTotal,
+              creditMinor: 0,
+              currency: entity.currency,
+            },
+            ...splitAccounts.map((split) => ({
+              accountId: split.accountId,
+              debitMinor: 0,
+              creditMinor: split.amountMinor,
+              currency: entity.currency,
+            })),
+          ]
+        : [
+            ...splitAccounts.map((split) => ({
+              accountId: split.accountId,
+              debitMinor: split.amountMinor,
+              creditMinor: 0,
+              currency: entity.currency,
+            })),
+            {
+              accountId: bankAccount.ledgerAccountId,
+              debitMinor: 0,
+              creditMinor: splitTotal,
+              currency: entity.currency,
+            },
+          ];
+
+    const entryResult: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
+      entityId: transaction.entityId,
+      date: transaction.date,
+      memo: `${transaction.merchant} - split`,
+      source: transaction.source,
+      sourceId: transaction.externalId,
+      lines,
+    });
+    const now = Date.now();
+    await ctx.db.patch(transaction._id, {
+      review: "confirmed",
+      categoryAccountId: splitAccounts[0].accountId,
+      entryId: entryResult.entryId,
+      decidedBy: "rule",
+      confidence: 1,
+      reasoning: `Split by human into ${splitAccounts.length} ledger categories.`,
+      updatedAt: now,
+    });
+    await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
+    return { entryId: entryResult.entryId, status: "split" as const };
+  },
+});
+
+export const createRuleFromTransaction = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    categoryAccountId: v.id("ledgerAccounts"),
+  },
+  handler: async (ctx, args) => {
+    const { transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
+    const account = await ctx.db.get(args.categoryAccountId);
+    if (!account || account.entityId !== transaction.entityId || account.archived) {
+      throw new Error("Choose an active category before saving a rule.");
+    }
+    const rules = await ctx.db
+      .query("rules")
+      .withIndex("by_entity", (q) => q.eq("entityId", transaction.entityId))
+      .collect();
+    const now = Date.now();
+    const ruleId = await ctx.db.insert("rules", {
+      entityId: transaction.entityId,
+      order: Math.max(0, ...rules.map((rule) => rule.order)) + 1,
+      name: `Always categorize ${transaction.merchant}`,
+      merchantContains: transaction.merchant,
+      descriptionContains: undefined,
+      direction: directionFor(transaction.amountMinor),
+      categoryAccountId: args.categoryAccountId,
+      autoPost: true,
+      hitCount: 0,
+      active: true,
+      createdBy: "user",
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { ruleId, status: "created" as const };
+  },
+});
+
+export const excludeTransaction = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
+    if (transaction.entryId) {
+      await reverseExistingEntry(ctx, {
+        entityId: transaction.entityId,
+        entryId: transaction.entryId,
+        date: transaction.date,
+        memo: `${transaction.merchant} - excluded`,
+        sourceId: transaction._id,
+      });
+    }
+    const now = Date.now();
+    await ctx.db.patch(transaction._id, {
+      review: "excluded",
+      reasoning: args.reason.trim() || "Excluded by human.",
+      updatedAt: now,
+    });
+    await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
+    return { status: "excluded" as const };
   },
 });

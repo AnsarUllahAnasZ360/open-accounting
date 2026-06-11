@@ -135,18 +135,18 @@ Evidence: seed run output + golden test results.
 
 ## M5 — Core screens on Convex data
 
-- [ ] Dashboard per design brief §1: cash position + sparkline, P&L snapshot,
+- [x] Dashboard per design brief §1: cash position + sparkline, P&L snapshot,
       inbox status, AR/AP widgets, expense donut, income by customer, cash
       flow bars, payroll widget, activity feed; period selector; all numbers
       from Convex queries over the ledger; click-through works on every number.
-- [ ] Inbox per §2: two-pane, card types (categorize, receipt, transfer,
+- [x] Inbox per §2: two-pane, card types (categorize, receipt, transfer,
       payout mismatch, connection, AI question), confirm/correct, "always do
       this → rule", batch confirm, J/K/E/Enter keys, zero-state.
-- [ ] Transactions per §3: filters/status tabs/search, inline category edit
+- [x] Transactions per §3: filters/status tabs/search, inline category edit
       (reverse+repost under the hood), split editor, exclude, manual add,
       bulk actions, row drawer with receipt preview + activity history +
       accounting view, reconciliation tile (ledger vs. synced balance).
-- [ ] CSV import wizard per §3b (column mapper with AI pre-map if available,
+- [x] CSV import wizard per §3b (column mapper with AI pre-map if available,
       duplicate detection, import → pipeline).
 
 Done when: the core loop works on demo data: dashboard → inbox → confirm →

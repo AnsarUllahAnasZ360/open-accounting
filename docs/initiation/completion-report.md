@@ -325,6 +325,53 @@ Next:
 
 - M5 — wire Dashboard, Inbox, Transactions, CSV import, and transaction drawers to the ledger-backed demo data.
 
+### 2026-06-11 04:15 CDT — M5 Core screens on Convex data
+
+What changed:
+
+- Replaced the placeholder app-shell body with Convex-backed Dashboard, Inbox, and Transactions screens for the Acme Studio LLC demo entity.
+- Added `coreViews.dashboard`, `coreViews.inbox`, and `coreViews.transactions` read models that derive cash, P&L, AR/AP, inbox status, income by customer, cash flow, bank reconciliation, receipt preview, audit history, and journal-line views from ledger-backed data.
+- Added transaction operations for recategorization, splitting, excluding, confirming Inbox items, and creating "always do this" rules. Recategorization and splits reverse the existing posted entry and repost through `ledger.postEntry`.
+- Added Dashboard period controls, click-through financial tiles, cash sparkline, income-by-customer, cash-flow, payroll, and activity panels.
+- Added Inbox two-pane review with card types, batch confirm, keyboard navigation, category correction, rule creation, and zero-state behavior.
+- Added Transactions filters/status tabs/search, row selection, bulk exclude, inline recategorization, split editor, manual add, lightweight CSV mapper/import, receipt preview, activity history, accounting-line drawer, and reconciliation tile.
+- Added a focused M5 Playwright acceptance spec covering dashboard -> inbox -> confirm/rule -> transactions drawer -> reverse+repost recategorization -> split -> manual/CSV import, plus mobile dashboard evidence.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m5-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m5-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m5-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m5-dashboard-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m5-inbox-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m5-transactions-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png`
+
+Verification:
+
+- `npx convex dev --once` green.
+- `pnpm verify` green: typecheck, lint, Next.js production build, Vitest.
+- `pnpm test:e2e` green: 7 passing Playwright tests, including the new M5 core-screens acceptance spec.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Dashboard | PASS | Cash position, sparkline, P&L snapshot, AR/AP, Inbox status, income by customer, cash flow, payroll, activity, period selector, and click-through cards read from Convex ledger-backed views. |
+| Inbox | PASS | Two-pane review, categorized card kinds, confirm/correct, rule creation, batch confirm, J/K/E/Enter keyboard handling, and zero-state are covered by the browser flow. |
+| Transactions | PASS | Filters, status tabs, search, inline recategorization with reverse+repost, split posting, exclude, manual add, bulk exclude, receipt/activity/accounting drawer, and reconciliation tile are working on demo data. |
+| CSV import | PARTIAL | Manual paste/import and duplicate preview work; full AI-assisted column pre-map is intentionally deferred until M10 AI is wired. |
+| Mobile core surface | PARTIAL | Mobile Dashboard evidence captured in M5; Inbox and Transactions responsive behavior remain part of the broader acceptance #16 pass. |
+
+Notes:
+
+- The full e2e log includes expected Convex server errors for negative tests: public sign-up rejection and locked-period posting rejection. Both are acceptance assertions, not failures.
+- A few M5 Playwright actions use DOM-dispatched clicks to avoid a local pointer-interception issue during automated testing; the same actions are visible and mutation-backed in the UI.
+
+Next:
+
+- M6 — Contacts, Invoices, Bills, Payroll, and remaining Settings screens on Convex data.
+
 ### 2026-06-11 00:44 CDT — Pre-goal access readiness
 
 What changed:

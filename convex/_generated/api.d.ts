@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as authAdmin from "../authAdmin.js";
 import type * as authz from "../authz.js";
 import type * as bootstrap from "../bootstrap.js";
+import type * as coreViews from "../coreViews.js";
 import type * as http from "../http.js";
 import type * as ledger from "../ledger.js";
 import type * as pipeline from "../pipeline.js";
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   authAdmin: typeof authAdmin;
   authz: typeof authz;
   bootstrap: typeof bootstrap;
+  coreViews: typeof coreViews;
   http: typeof http;
   ledger: typeof ledger;
   pipeline: typeof pipeline;

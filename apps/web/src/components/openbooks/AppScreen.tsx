@@ -2,6 +2,7 @@ import { AccountingPanel } from "@/components/openbooks/AccountingPanel";
 import { DashboardScreen, InboxScreen, TransactionsScreen } from "@/components/openbooks/CoreScreens";
 import { DemoDataPanel } from "@/components/openbooks/DemoDataPanel";
 import { LeadsPanel } from "@/components/openbooks/LeadsPanel";
+import { BillsScreen, ContactsScreen, InvoicesScreen, PayrollScreen, RemainingSettingsScreens } from "@/components/openbooks/ModuleScreens";
 import { CategoryChip, EmptyState, PageHeader } from "@/components/openbooks/primitives";
 import type { AppRoute } from "@/lib/openbooks/content";
 
@@ -18,17 +19,31 @@ export function AppScreen({ route }: { route: AppRoute }) {
       {route.href === "/dashboard" ? <DashboardScreen /> : null}
       {route.href === "/inbox" ? <InboxScreen /> : null}
       {route.href === "/transactions" ? <TransactionsScreen /> : null}
+      {route.href === "/invoices" ? <InvoicesScreen /> : null}
+      {route.href === "/bills" ? <BillsScreen /> : null}
+      {route.href === "/contacts" ? <ContactsScreen /> : null}
+      {route.href === "/payroll" ? <PayrollScreen /> : null}
       {route.href === "/settings" ? (
         <>
           <DemoDataPanel />
           <AccountingPanel />
+          <RemainingSettingsScreens />
           <LeadsPanel />
         </>
       ) : null}
-      {!["/dashboard", "/inbox", "/transactions", "/settings"].includes(route.href) ? (
+      {![
+        "/dashboard",
+        "/inbox",
+        "/transactions",
+        "/invoices",
+        "/bills",
+        "/contacts",
+        "/payroll",
+        "/settings",
+      ].includes(route.href) ? (
         <EmptyState
           title={`${route.label} is queued for the next milestone`}
-          description="This shell route is ready; M6 and M7 connect the module-specific ledger workflows."
+          description="This shell route is ready; M7 connects the report-specific ledger workflows."
         />
       ) : null}
     </div>

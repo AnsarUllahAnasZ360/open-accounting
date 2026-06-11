@@ -156,22 +156,22 @@ Evidence: Playwright specs + screenshots.
 
 ## M6 — Contacts, Invoices, Bills, Payroll + remaining Settings screens
 
-- [ ] Contacts per §6: directory, role filters, profile (totals, open AR/AP,
+- [x] Contacts per §6: directory, role filters, profile (totals, open AR/AP,
       history, default-category-as-rule), merge-duplicates flow.
-- [ ] Settings → Businesses (design brief §10): entity cards, add/archive
+- [x] Settings → Businesses (design brief §10): entity cards, add/archive
       entity — needed by M8/M9 to create the Live Sandbox entity.
-- [ ] Settings → Rules manager (design brief §10): ordered list, plain-English
+- [x] Settings → Rules manager (design brief §10): ordered list, plain-English
       summaries, hit counts, on/off, editor modal, AI-suggested section
       (pending-approval slot used by M10).
-- [ ] Settings → Audit log viewer (design brief §10): filterable table — when,
+- [x] Settings → Audit log viewer (design brief §10): filterable table — when,
       actor (user/AI/rule), action, before→after.
-- [ ] Invoices per §4: list + status pipeline + aging KPIs; composer (Stripe
+- [x] Invoices per §4: list + status pipeline + aging KPIs; composer (Stripe
       send arrives in M8 — composer saves drafts and records manual invoices
       now); receivables aging matrix.
-- [ ] Bills per §5: manual add + upload-PDF placeholder (AI extract lands in
+- [x] Bills per §5: manual add + upload-PDF placeholder (AI extract lands in
       M10/M11), due-window grouping, mark-paid → match-to-transaction picker,
       AP postings (bill entry, settlement entry).
-- [ ] Payroll per §7: employees CRUD; runs grid (adjustments, FX rate, base
+- [x] Payroll per §7: employees CRUD; runs grid (adjustments, FX rate, base
       conversion); approve → posts payroll entries; mark-paid settles against
       bank transactions w/ FX gain/loss line; printable statement view
       (per-currency + base totals) with CSV export.

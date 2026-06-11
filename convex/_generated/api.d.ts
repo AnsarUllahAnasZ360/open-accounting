@@ -15,6 +15,7 @@ import type * as bootstrap from "../bootstrap.js";
 import type * as coreViews from "../coreViews.js";
 import type * as http from "../http.js";
 import type * as ledger from "../ledger.js";
+import type * as moduleViews from "../moduleViews.js";
 import type * as pipeline from "../pipeline.js";
 import type * as reports from "../reports.js";
 import type * as requestAccess from "../requestAccess.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   coreViews: typeof coreViews;
   http: typeof http;
   ledger: typeof ledger;
+  moduleViews: typeof moduleViews;
   pipeline: typeof pipeline;
   reports: typeof reports;
   requestAccess: typeof requestAccess;

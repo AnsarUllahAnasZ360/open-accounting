@@ -372,6 +372,57 @@ Next:
 
 - M6 — Contacts, Invoices, Bills, Payroll, and remaining Settings screens on Convex data.
 
+### 2026-06-11 04:51 CDT — M6 Contacts, Invoices, Bills, Payroll + remaining Settings
+
+What changed:
+
+- Added `moduleViews.overview`, a server-authorized Convex read model for Contacts, Invoices, Bills, Payroll, Businesses, Rules, and Audit Log data for the active Acme Studio LLC entity.
+- Wired Contacts, Invoices, Bills, and Payroll routes into the app shell and replaced the queued placeholders with data-backed screens.
+- Added remaining Settings surfaces: Businesses cards, Rules manager with plain-English summaries and hit counts, AI-suggested rule slot, and a filterable Audit Log table.
+- Added Contacts directory filters/search and profile KPIs for open A/R, open A/P, yearly activity, history, default-category-as-rule affordance, and merge-duplicate placeholder.
+- Added Invoices list/status pipeline, A/R KPIs, composer affordance, and receivables aging matrix.
+- Added Bills due-window groups, A/P KPIs, upload-PDF placeholder, bill selection, and bank-match candidates.
+- Added Payroll employees/runs/statement views with USD, PKR, and INR local totals, base-currency conversion, print action, and CSV export.
+- Added focused M6 unit and browser tests.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m6-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m6-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m6-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m6-settings-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m6-contacts-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m6-invoices-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m6-bills-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m6-payroll-e2e.png`
+
+Verification:
+
+- `npx convex dev --once` green after pushing the new `moduleViews` function to the dev deployment.
+- `pnpm verify` green: typecheck, lint, Next.js production build, Vitest.
+- `pnpm test:e2e` green: 8 passing Playwright tests, including the new M6 module acceptance spec.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Contacts | PARTIAL | Directory, filters, profile totals, history, and default-category rule affordance work; merge duplicates is a clear placeholder because the schema has aliases but no duplicate-candidate/merge model yet. |
+| Settings → Businesses | PARTIAL | Entity cards and Live Sandbox recommendation render; add/archive are UI affordances because the current entity schema has no archived flag and reusable non-demo entity creation still needs a ledger chart seed path. |
+| Settings → Rules | PASS | Ordered rules, plain-English summaries, hit counts, on/off state, editor modal, and AI-suggested pending slot render from Convex data. |
+| Settings → Audit log | PASS | Filterable when/actor/action/before-after table renders from workspace audit events. |
+| Invoices | PARTIAL | Lists, status filters, A/R KPIs, composer shell, and aging matrix work; draft/manual invoice save mutation is still not wired. Stripe send remains M8 by design. |
+| Bills | PARTIAL | Due-window groups, A/P KPIs, PDF placeholder, bill selection, and match candidates work; mark-paid settlement mutation is not yet wired. Seeded bill entries already flow through the ledger. |
+| Payroll | PARTIAL | Employees, runs, FX/base conversion, 3-currency printable statement, and CSV export work; approve/mark-paid mutations and persisted per-run line adjustments are not yet schema-backed. |
+
+Notes:
+
+- First M6 browser attempts exposed a deployment/env issue: the browser was waiting on new `moduleViews` before `npx convex dev --once` had made it callable on the dev deployment. After pushing functions, the same module route tests passed.
+- Full e2e logs still include expected negative-test Convex errors for random sign-up rejection and locked-period posting rejection.
+
+Next:
+
+- M7 — Reports and export. Omar's report/export worker slice is parked in stash `m7-worker-slice` and ready for main-thread integration.
+
 ### 2026-06-11 00:44 CDT — Pre-goal access readiness
 
 What changed:

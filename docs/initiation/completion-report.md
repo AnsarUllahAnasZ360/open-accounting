@@ -988,11 +988,14 @@ Evidence:
 
 - `docs/initiation/evidence/2026-06-11-m10-bedrock-categorizer-verify.txt`
 - `docs/initiation/evidence/2026-06-11-m10-bedrock-categorizer-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m10-bedrock-categorizer-convex-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-m10-bedrock-categorizer-convex-deploy-confirmed.txt`
 
 Verification:
 
 - `pnpm verify` green: typecheck, lint, Next.js production build, and 12 unit files / 45 tests.
 - `npx convex dev --once` green: Convex functions ready on the dev deployment.
+- `npx convex deploy --yes` green: Convex production functions deployed to `https://perceptive-guanaco-487.convex.cloud`.
 
 PASS/PARTIAL table:
 

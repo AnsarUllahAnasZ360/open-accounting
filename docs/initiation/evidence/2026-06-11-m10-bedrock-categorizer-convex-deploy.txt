@@ -1,0 +1,15 @@
+▌ Deploying code to deployment:
+▌ [Production] z360:openbooks:production (prod) (dashboard: https://dashboard.convex.dev/t/z360/openbooks/perceptive-guanaco-487)
+▌ └─ https://perceptive-guanaco-487.convex.cloud
+You're currently developing against your dev deployment
+
+  ceaseless-mandrill-524 (set in CONVEX_DEPLOYMENT)
+
+Your prod deployment perceptive-guanaco-487 serves traffic at:
+
+  NEXT_PUBLIC_CONVEX_URL=https://perceptive-guanaco-487.convex.cloud
+
+Make sure that your published client is configured with this URL (for instructions see https://docs.convex.dev/hosting)
+
+Do you want to push your code to your prod deployment perceptive-guanaco-487 now?
+✖ Cannot prompt for input in non-interactive terminals. (Do you want to push your code to your prod deployment perceptive-guanaco-487 now?)

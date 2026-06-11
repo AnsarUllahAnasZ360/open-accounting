@@ -263,8 +263,17 @@ Evidence: Playwright spec using sandbox token + screenshots of Link flow.
       createJournalEntry); inline
       mini table/chart artifacts; contextual suggested prompts; "Explain this
       report" button on the report viewer.
-- [ ] Degraded mode: AI env absent → stages 1–3 only + UI hints; chat hidden
+- [x] Degraded mode: AI env absent → stages 1–3 only + UI hints; chat hidden
       or clearly disabled.
+
+M10 integration note, 2026-06-11: shipped and committed as a green partial
+increment. Working: backend provider/env status, persisted autonomy thresholds,
+memory/Plaid-prior/AI-proposal routing with threshold gates, correction memory,
+AI-drafted/confirmed rules, report-backed chat drawer, report explain button,
+confirm-first rule creation, fixture eval output, and degraded-mode UI. Still
+open: real AI SDK provider registry, Convex vector index/embeddings, batched
+Bedrock LLM categorization, full-page/streaming `useChat`, full server-side chat
+tool set, and authenticated live 120-row eval scoring.
 
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules

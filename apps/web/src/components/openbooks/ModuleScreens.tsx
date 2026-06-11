@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Archive,
   Building2,
@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/table";
 import { PlaidConnectionPanel } from "@/components/openbooks/PlaidConnectionPanel";
 import { StripeConnectionPanel } from "@/components/openbooks/StripeConnectionPanel";
+import { aiAutonomyOptions, frontendAiStatus, type AiAutonomyMode } from "@/lib/openbooks/ai";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../convex/_generated/api";
 
@@ -730,12 +731,155 @@ function PayrollStatement({ data }: { data: ModuleOverview }) {
 
 export function RemainingSettingsScreens() {
   const data = useModuleOverview();
+  const viewer = useQuery(api.session.viewer, {});
+  const aiProviderStatus = useQuery(
+    api.ai.providerStatus,
+    viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
+  );
   const ensureLiveSandboxEntity = useMutation(api.ledger.ensureLiveSandboxEntity);
+  const setAiConfig = useMutation(api.ai.setConfig);
+  const testAiConnection = useAction(api.ai.testProviderConnection);
   const [auditFilter, setAuditFilter] = useState("");
   const [entityMessage, setEntityMessage] = useState("");
+  const [aiAutonomyOverride, setAiAutonomyOverride] = useState<AiAutonomyMode | null>(null);
+  const [aiTestMessage, setAiTestMessage] = useState("");
   const [creatingEntity, setCreatingEntity] = useState(false);
+  const aiStatus = frontendAiStatus(aiProviderStatus);
+  const aiAutonomy = aiAutonomyOverride ?? aiProviderStatus?.autonomy ?? "balanced";
 
-  if (data === undefined) return <LoadingBlock label="settings modules" />;
+  async function saveAiAutonomy(value: AiAutonomyMode) {
+    setAiAutonomyOverride(value);
+    setAiTestMessage("");
+    if (!viewer?.workspace?.id) {
+      setAiTestMessage("Workspace is still loading; try again in a moment.");
+      return;
+    }
+    try {
+      await setAiConfig({
+        workspaceId: viewer.workspace.id,
+        provider: "bedrock",
+        autonomy: value,
+      });
+      const option = aiAutonomyOptions.find((item) => item.value === value);
+      setAiTestMessage(`Autonomy saved: ${option?.label ?? value} (${option?.thresholdLabel ?? "threshold configured"}).`);
+    } catch (error) {
+      setAiTestMessage(error instanceof Error ? error.message : "Could not save AI autonomy.");
+    }
+  }
+
+  async function runAiConnectionTest() {
+    if (!viewer?.workspace?.id) {
+      setAiTestMessage("Workspace is still loading; try again in a moment.");
+      return;
+    }
+    setAiTestMessage("Testing server-side provider configuration...");
+    try {
+      const result = await testAiConnection({ workspaceId: viewer.workspace.id });
+      setAiTestMessage(result.message);
+    } catch (error) {
+      setAiTestMessage(error instanceof Error ? error.message : "AI connection test failed.");
+    }
+  }
+
+  const aiSettingsPanel = (
+    <Card className="shadow-xs" data-testid="m10-ai-settings">
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <CardTitle className="text-base">AI</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Provider status, model display, and autonomy settings for the M10 AI layer.
+          </p>
+        </div>
+        <Badge variant="outline">{aiStatus.mode === "active" ? "Bedrock active" : "Degraded mode"}</Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-lg border p-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">Status</div>
+            <div className="mt-2 text-sm font-medium">{aiStatus.label}</div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{aiStatus.detail}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">Provider</div>
+            <div className="mt-2 text-sm font-medium">{aiStatus.provider}</div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Bedrock is the v1 target when env is present.</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">Chat model</div>
+            <div className="mt-2 text-sm font-medium">{aiStatus.chatModel}</div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Loaded from AI_MODEL after backend provider wiring.</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">Embeddings</div>
+            <div className="mt-2 text-sm font-medium">{aiStatus.embeddingsModel}</div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Loaded from AI_EMBEDDINGS_MODEL for memory search.</p>
+          </div>
+        </div>
+
+        <div>
+          <div className="text-sm font-medium">Autonomy</div>
+          <div className="mt-2 grid gap-3 md:grid-cols-3">
+            {aiAutonomyOptions.map((option) => (
+              <label
+                key={option.value}
+                className={`rounded-lg border p-3 transition-colors ${
+                  aiAutonomy === option.value ? "border-primary/50 bg-primary/5" : "bg-background"
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  <input
+                    type="radio"
+                    name="ai-autonomy"
+                    value={option.value}
+                    checked={aiAutonomy === option.value}
+                    onChange={() => void saveAiAutonomy(option.value)}
+                    className="mt-1 accent-[var(--primary)]"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">{option.label}</span>
+                    <span className="mt-1 block text-xs font-medium text-primary">{option.thresholdLabel}</span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{option.description}</span>
+                  </span>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-medium">Connection test</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              This does not print keys. It only reports whether the server-side provider is available.
+            </p>
+            {aiTestMessage ? <p className="mt-2 text-sm text-primary">{aiTestMessage}</p> : null}
+          </div>
+          <Button
+            className="shrink-0"
+            disabled={!viewer?.workspace?.id}
+            variant="outline"
+            onClick={() => void runAiConnectionTest()}
+          >
+            <Sparkles className="size-4" />
+            Test AI connection
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  if (data === undefined) {
+    return (
+      <div className="space-y-5" data-testid="m6-settings-screen">
+        <ModuleIntro
+          title="Remaining settings"
+          description="Businesses, rules, audit log, and AI controls are the trust/control surfaces that M8, M9, and M10 depend on."
+        />
+        {aiSettingsPanel}
+        <LoadingBlock label="settings modules" />
+      </div>
+    );
+  }
   if (!data.entity) return <NoEntityState />;
 
   const liveSandboxReady = data.settings.businesses.addEntity.status === "live_sandbox_ready";
@@ -784,6 +928,8 @@ export function RemainingSettingsScreens() {
           </div>
         )}
       </section>
+
+      {aiSettingsPanel}
 
       <section className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <Card className="shadow-xs">

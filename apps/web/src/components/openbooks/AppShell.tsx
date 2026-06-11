@@ -4,12 +4,15 @@ import { useAuthActions, useConvexAuth } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, PanelRightClose, Search, Sparkles, X } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { LogOut, Menu, Search, Sparkles, X } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { api } from "../../../../../convex/_generated/api";
+import { OpenBooksAIChat } from "@/components/openbooks/OpenBooksAIChat";
 import { Button } from "@/components/ui/button";
+import { frontendAiStatus, OPENBOOKS_AI_EVENT } from "@/lib/openbooks/ai";
 import { appRoutes, mobileRoutes } from "@/lib/openbooks/content";
+import type { ReportPack } from "@/lib/openbooks/reports-export";
 import { cn } from "@/lib/utils";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -46,8 +49,38 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { signOut } = useAuthActions();
   const viewer = useQuery(api.session.viewer, isAuthenticated ? {} : "skip");
+  const reportArgs = useMemo(
+    () => ({
+      startDate: "2026-01-01",
+      endDate: "2026-12-31",
+      basis: "accrual" as const,
+      compare: "none" as const,
+      columnMode: "monthly" as const,
+    }),
+    [],
+  );
+  const reportPack = useQuery(api.reportViews.reportPack, isAuthenticated ? reportArgs : "skip") as ReportPack | undefined;
+  const aiProviderStatus = useQuery(
+    api.ai.providerStatus,
+    isAuthenticated && viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
+  );
+  const aiStatus = frontendAiStatus(aiProviderStatus);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [pendingAiPrompt, setPendingAiPrompt] = useState("");
+  const [aiReportPack, setAiReportPack] = useState<ReportPack | undefined>();
+
+  useEffect(() => {
+    function handleAskAi(event: Event) {
+      const detail = (event as CustomEvent<{ prompt?: string; reportPack?: ReportPack }>).detail;
+      setAiOpen(true);
+      if (detail?.reportPack) setAiReportPack(detail.reportPack);
+      if (detail?.prompt) setPendingAiPrompt(`${detail.prompt}::${Date.now()}`);
+    }
+
+    window.addEventListener(OPENBOOKS_AI_EVENT, handleAskAi);
+    return () => window.removeEventListener(OPENBOOKS_AI_EVENT, handleAskAi);
+  }, []);
 
   if (isLoading) {
     return (
@@ -196,27 +229,17 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 right-0 z-40 w-full max-w-[380px] border-l bg-background transition-transform",
+          "fixed inset-y-0 right-0 z-40 w-full max-w-[420px] border-l bg-background transition-transform",
           aiOpen ? "translate-x-0" : "translate-x-full",
         )}
       >
-        <div className="flex h-14 items-center justify-between border-b px-4">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Sparkles className="size-4 text-primary" />
-            Ask AI
-          </div>
-          <Button aria-label="Close Ask AI" size="icon-sm" variant="ghost" onClick={() => setAiOpen(false)}>
-            <PanelRightClose />
-          </Button>
-        </div>
-        <div className="flex h-[calc(100%-3.5rem)] flex-col justify-between p-4">
-          <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-            Chat activates in M10 after the read tools and propose-to-confirm actions are wired.
-          </div>
-          <div className="rounded-lg border bg-background p-3 text-sm text-muted-foreground">
-            Context: {appRoutes.find((route) => route.href === pathname)?.label ?? "OpenBooks"}
-          </div>
-        </div>
+        <OpenBooksAIChat
+          contextLabel={appRoutes.find((route) => route.href === pathname)?.label ?? "OpenBooks"}
+          reportPack={aiReportPack ?? reportPack}
+          aiStatus={aiStatus}
+          pendingPrompt={pendingAiPrompt}
+          onClose={() => setAiOpen(false)}
+        />
       </aside>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t bg-background lg:hidden">

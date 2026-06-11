@@ -51,6 +51,7 @@ import {
   type ReportExportId,
   type ReportPack,
 } from "@/lib/openbooks/reports-export";
+import { createAiRequestEvent } from "@/lib/openbooks/ai";
 import { api } from "../../../../../convex/_generated/api";
 
 type ReportBasis = "accrual" | "cash";
@@ -335,6 +336,14 @@ function ReportsToolbar({
         </div>
 
         <div className="flex flex-wrap gap-2 lg:justify-end">
+          <Button
+            variant="outline"
+            onClick={() => window.dispatchEvent(createAiRequestEvent("Explain this report", "Reports", pack))}
+            disabled={!pack}
+          >
+            <PanelRightOpen className="size-4" />
+            Explain report
+          </Button>
           <Button variant="outline" onClick={exportCurrent} disabled={!pack}>
             <Download className="size-4" />
             Export CSV

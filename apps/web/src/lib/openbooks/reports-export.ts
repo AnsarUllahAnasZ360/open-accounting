@@ -62,6 +62,7 @@ type AgingRow = {
 
 export type ReportPack = {
   entity: {
+    id: string;
     name: string;
     currency: string;
   };

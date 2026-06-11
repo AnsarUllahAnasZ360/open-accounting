@@ -41,7 +41,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 - Convex dev deployment: z360/openbooks dev/ansar-ullah-anas (ceaseless-mandrill-524) / prod deployment:
 - Vercel project: ansar-ullah-anas-projects/openbooks / production URL: https://openbooks-flax.vercel.app
 - Owner credential location (never the secret itself): `.env.local` plus macOS Keychain item `OpenBooks_OWNER_PASSWORD`
-- Categorization eval accuracy:
+- Categorization eval accuracy: M10 backend fixture eval 5/5 = 100.0%; live seeded >=100-row eval not run because the available CLI path has no signed-in workspace context.
 - Goal ended (timestamp): / stop reason (complete / budget / blocked):
 
 ## Blockers (append as found)
@@ -51,11 +51,15 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 2026-06-11 00:44 CDT | Vercel linked locally under the wrong `z360` scope, and GitHub auto-attach failed there. | M12 production deploy + domain | Use the `ansar-ullah-anas-projects` Vercel scope instead. | Resolved at 2026-06-11 01:00 CDT: linked/deployed `ansar-ullah-anas-projects/openbooks`; GitHub connection succeeded. |
 | 2026-06-11 00:48 CDT | `ansarullahanas.com` was not listed under the active Vercel `z360` scope. | M12 custom domain | Confirm which Vercel scope owns `ansarullahanas.com`. | Resolved at 2026-06-11 01:00 CDT: domain is listed under `ansar-ullah-anas-projects`. |
 | 2026-06-11 01:00 CDT | `openbooks.ansarullahanas.com` is attached to Vercel but DNS does not resolve yet. | M12 custom domain | In Hostinger DNS, add `A openbooks.ansarullahanas.com 76.76.21.21` (or host/name `openbooks`, value `76.76.21.21`), then wait for propagation and Vercel verification. | Vercel production URL works now: https://openbooks-flax.vercel.app. |
+| 2026-06-11 06:52 CDT | Live seeded categorization eval cannot be run through `npx convex run` because the eval/status functions correctly require a signed-in workspace role. | M10 live eval | Add a safe owner-authenticated eval UI/action or an admin-only eval runner that derives the owner workspace without exposing secrets. | Recorded fixture/backend eval and saved the failed auth probe in evidence; continued with browser-verified chat and pipeline tests. |
 
 ## Deviations from product spec (append as made)
 
 | Spec section | Deviation | Why | Restore plan |
 |---|---|---|---|
+| Product spec §4 / §6.8 | M10 ships a report-backed deterministic chat and AI proposal pipeline, not full Vercel AI SDK streaming with Bedrock tool calls. | The safe increment proves confirm-first actions, provider/degraded state, and ledger-safe routing without introducing unverified model writes. | Add the AI SDK provider registry, Bedrock model actions, streaming `useChat`, and server-side read/action tools before marking M10 fully complete. |
+| Product spec §4 | Correction memory is table-backed by merchant/category; it is not yet a Convex vector index over embeddings. | This keeps the ledger/pipeline invariant testable while avoiding a fake embedding implementation. | Add embedding generation in Convex actions, store vectors in a vector-indexed memory table, and use top-k memory in the LLM categorizer. |
+| Goal §2 categorization eval | Recorded 5-row backend fixture accuracy, not the full seeded >=100-row live eval. | CLI execution lacks the signed-in owner workspace context required by authorization. | Add an authenticated eval runner and record the full seeded eval before final acceptance. |
 
 ---
 
@@ -687,3 +691,59 @@ Verification:
 Next:
 
 - Keep the landing patch scoped; resume M10 integration separately and bring `pnpm verify` back to green there.
+
+### 2026-06-11 06:59 CDT — M10 AI pipeline + chat, green partial
+
+What changed:
+
+- Added `convex/ai.ts` with Bedrock env/provider status, the shared autonomy thresholds (`suggest = never`, `balanced = 0.90`, `autopilot = 0.75`), persisted AI config, provider connection test, confirmed-rule creation, and eval-run recording.
+- Extended the categorization pipeline with stages for correction memory, Plaid prior, and AI proposals. AI proposals route by the shared autonomy threshold and still post only through `ledger.postEntry` when they auto-post.
+- Added correction memory: confirmed/corrected transactions write memory, and three identical corrections create an inactive AI-drafted rule for Rules manager review.
+- Added Settings → AI with provider/model/degraded status, autonomy radio save, and server-side connection test that never exposes keys.
+- Replaced the placeholder Ask AI drawer with report-backed read answers, suggested prompts, mini-table artifacts, Explain report integration, and confirm-first rule creation. Confirmed chat rules create/update a rule only; they do not post journal entries.
+- Added M10 unit and Playwright coverage plus fixture eval output.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m10-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m10-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m10-ai-chat-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m10-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m10-ai-settings.png`
+- `docs/initiation/evidence/2026-06-11-m10-ai-chat.png`
+- `docs/initiation/evidence/2026-06-11-m10-categorization-eval.json`
+- `docs/initiation/evidence/2026-06-11-m10-categorization-eval-run.txt`
+- `docs/initiation/evidence/2026-06-11-m10-live-eval-probe.txt`
+
+Verification:
+
+- `npx convex dev --once` green; functions ready.
+- `pnpm verify` green: typecheck, lint, Next.js production build, Vitest. Unit total is 11 files / 38 tests.
+- Focused `pnpm test:e2e -- tests/e2e/ai-chat.spec.ts` green: 1 passing M10 chat test.
+- Full `pnpm test:e2e` green: 14 passing Playwright tests in 4.6m.
+- Backend fixture categorization eval: 5/5 correct = 100.0%. This is a finding only; the live seeded >=100-row eval remains unrun for the auth-context reason logged above.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Provider/status/config surface | PARTIAL | Bedrock env status, model display, autonomy persistence, and test connection work. This is not yet a full AI SDK provider registry for Anthropic/OpenAI/Google/Ollama/Bedrock. |
+| Shared autonomy thresholds | PASS | Single backend constant maps suggest/balanced/autopilot to never/0.90/0.75 and pipeline routing uses it. |
+| Pipeline memory stage | PARTIAL | Correction memory routes repeated merchants and drafts rules after three confirmations. It is not yet an embeddings/vector-index memory. |
+| Plaid prior stage | PASS | Pipeline accepts Plaid prior category ids and routes them through the autonomy gate. |
+| LLM proposal stage | PARTIAL | Pipeline accepts structured AI proposals and routes/posts safely; no batched Bedrock categorization action is wired yet. |
+| Ledger invariant | PASS | AI/rule/memory/payout posting still goes through `postEntry`; chat rule confirmation does not post journal entries. |
+| Categorization eval | PARTIAL | Fixture/backend eval is 100.0%. Live seeded >=100-row eval is blocked by missing signed-in CLI eval context. |
+| Chat read answers | PARTIAL | Drawer answers the five surfaced prompts from loaded report data and renders mini tables. It is not yet streaming `useChat` with server-side tool calls. |
+| Chat propose→confirm action | PASS | Chat-proposed Uber rule lands in Rules after confirmation and remains review-first/autoPost=false. |
+| Full-page chat mode | NOT REACHED | Drawer and mobile bottom-tab path work; separate full-page chat route remains open. |
+| Degraded mode | PASS | AI env absent/incomplete shows degraded mode and leaves stages 1-3/report-backed chat usable. |
+
+Notes:
+
+- Full e2e logs include expected negative-test Convex errors for blocked self-registration and locked-period posting rejection.
+- The phrase "green partial" is intentional: the app/test surface is green, but M10 is not fully complete against the Bedrock/AI SDK/vector/streaming wording in the product spec.
+
+Next:
+
+- M11 receipts can proceed independently. Before final acceptance, return to the open M10 items: AI SDK registry, Bedrock LLM categorization action, vector memory, full-page streaming chat/tool calls, and signed-in live eval runner.

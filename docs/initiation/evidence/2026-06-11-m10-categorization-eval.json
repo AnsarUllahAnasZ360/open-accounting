@@ -1,0 +1,49 @@
+{
+  "milestone": "M10 backend categorization eval",
+  "generatedAt": "2026-06-11T11:48:59.979Z",
+  "source": "local_backend_fixture",
+  "noSecrets": true,
+  "evaluatedCount": 5,
+  "correctCount": 5,
+  "accuracy": 1,
+  "targetAccuracy": 0.8,
+  "status": "meets_target",
+  "finding": "Backend fixture accuracy meets the 80% target. Run ai:recordCategorizationEvalRun against the seeded demo entity for the full >=100-row product eval.",
+  "liveDemoEval": {
+    "status": "not_run_in_this_backend_slice",
+    "reason": "This worker scope did not include authenticated seeded Convex demo data. The backend mutation ai:recordCategorizationEvalRun is available to score evalSet rows after demo seed.",
+    "integrationCommand": "npx convex run ai:recordCategorizationEvalRun '{\"entityId\":\"<demo entity id>\"}'"
+  },
+  "cases": [
+    {
+      "merchant": "Notion",
+      "expectedStage": "ai",
+      "expectedRoute": "inbox_in_suggest_mode",
+      "passed": true
+    },
+    {
+      "merchant": "Notion",
+      "expectedStage": "ai",
+      "expectedRoute": "posted_in_autopilot_mode",
+      "passed": true
+    },
+    {
+      "merchant": "Cafe Izmir",
+      "expectedStage": "memory",
+      "expectedRoute": "posted_after_corrections",
+      "passed": true
+    },
+    {
+      "merchant": "Cafe Izmir",
+      "expectedStage": "memory",
+      "expectedRoute": "ai_drafted_rule_pending_approval",
+      "passed": true
+    },
+    {
+      "merchant": "Bedrock env absent",
+      "expectedStage": "degraded",
+      "expectedRoute": "rules_and_inbox_still_available",
+      "passed": true
+    }
+  ]
+}

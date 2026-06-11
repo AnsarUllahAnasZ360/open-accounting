@@ -3,9 +3,17 @@ import { v } from "convex/values";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx } from "./_generated/server";
+import { type AIAutonomy, shouldAutoPostAI } from "./ai";
 import { requireWorkspaceRole } from "./authz";
 
 const sourceValidator = v.union(v.literal("bank"), v.literal("stripe"), v.literal("manual"));
+const aiProposalValidator = v.object({
+  categoryAccountId: v.id("ledgerAccounts"),
+  confidence: v.number(),
+  reasoning: v.string(),
+  needsHuman: v.boolean(),
+  question: v.optional(v.string()),
+});
 
 function directionFor(amountMinor: number) {
   return amountMinor >= 0 ? "inflow" : "outflow";
@@ -17,6 +25,20 @@ function includesText(haystack: string, needle: string | undefined) {
 
 function absoluteMinor(amountMinor: number) {
   return Math.abs(amountMinor);
+}
+
+function normalizeMerchantKey(merchant: string) {
+  return merchant.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function legacyReturnStage(
+  decidedBy: Doc<"transactions">["decidedBy"] | undefined,
+): "transfer" | "match" | "rule" | "needs_review" {
+  return decidedBy === "transfer" || decidedBy === "match" || decidedBy === "rule"
+    ? decidedBy
+    : decidedBy === "needs_review"
+      ? "needs_review"
+      : "rule";
 }
 
 async function requireEntity(ctx: MutationCtx, entityId: Id<"entities">) {
@@ -116,6 +138,48 @@ async function findMatchingRule(
     );
 }
 
+async function getEntityAutonomy(ctx: MutationCtx, entity: Doc<"entities">): Promise<AIAutonomy> {
+  const config = await ctx.db
+    .query("aiConfigs")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId))
+    .unique();
+  return config?.autonomy ?? "balanced";
+}
+
+async function assertCategoryAccount(
+  ctx: MutationCtx,
+  entityId: Id<"entities">,
+  categoryAccountId: Id<"ledgerAccounts">,
+) {
+  const account = await ctx.db.get(categoryAccountId);
+  if (!account || account.entityId !== entityId || account.archived) {
+    throw new Error("Pipeline proposal category must be an active account on this entity.");
+  }
+  return account;
+}
+
+async function findCorrectionMemory(
+  ctx: MutationCtx,
+  args: {
+    entityId: Id<"entities">;
+    merchant: string;
+    amountMinor: number;
+  },
+) {
+  const memories = await ctx.db
+    .query("aiCorrectionMemories")
+    .withIndex("by_entity_and_merchant_key_and_direction", (q) =>
+      q
+        .eq("entityId", args.entityId)
+        .eq("merchantKey", normalizeMerchantKey(args.merchant))
+        .eq("direction", directionFor(args.amountMinor)),
+    )
+    .take(10);
+  return memories
+    .sort((a, b) => b.occurrenceCount - a.occurrenceCount || b.updatedAt - a.updatedAt)
+    .find((memory) => memory.status === "active" || memory.status === "rule_suggested") ?? null;
+}
+
 async function postTransactionEntry(
   ctx: MutationCtx,
   args: {
@@ -157,6 +221,151 @@ async function postTransactionEntry(
   return result.entryId;
 }
 
+async function routeProposedCategory(
+  ctx: MutationCtx,
+  args: {
+    entity: Doc<"entities">;
+    bankAccount: Doc<"bankAccounts">;
+    transactionId: Id<"transactions">;
+    date: string;
+    amountMinor: number;
+    merchant: string;
+    source: "bank" | "stripe" | "manual";
+    sourceId: string;
+    categoryAccountId: Id<"ledgerAccounts">;
+    confidence: number;
+    reasoning: string;
+    stage: "memory" | "plaid_prior" | "ai";
+    needsHuman?: boolean;
+    question?: string;
+    now: number;
+  },
+) {
+  await assertCategoryAccount(ctx, args.entity._id, args.categoryAccountId);
+  const autonomy = await getEntityAutonomy(ctx, args.entity);
+
+  if (
+    shouldAutoPostAI({
+      autonomy,
+      confidence: args.confidence,
+      needsHuman: args.needsHuman,
+    })
+  ) {
+    const entryId = await postTransactionEntry(ctx, {
+      entity: args.entity,
+      bankAccount: args.bankAccount,
+      date: args.date,
+      amountMinor: args.amountMinor,
+      merchant: args.merchant,
+      source: args.source,
+      sourceId: args.sourceId,
+      categoryAccountId: args.categoryAccountId,
+      memoSuffix: `pipeline ${args.stage}`,
+    });
+    await ctx.db.patch(args.transactionId, {
+      review: "auto",
+      categoryAccountId: args.categoryAccountId,
+      entryId,
+      decidedBy: args.stage,
+      confidence: args.confidence,
+      reasoning: args.reasoning,
+      updatedAt: args.now,
+    });
+    return { status: "posted" as const, transactionId: args.transactionId, entryId, stage: "rule" as const };
+  }
+
+  await ctx.db.patch(args.transactionId, {
+    categoryAccountId: args.categoryAccountId,
+    decidedBy: args.stage,
+    confidence: args.confidence,
+    reasoning: args.question ? `${args.reasoning} Question: ${args.question}` : args.reasoning,
+    updatedAt: args.now,
+  });
+  await ctx.db.insert("inboxItems", {
+    entityId: args.entity._id,
+    transactionId: args.transactionId,
+    kind: args.question ? "question" : "categorize",
+    payloadSummary: `${args.merchant} needs review for ${args.entity.currency} ${absoluteMinor(args.amountMinor) / 100}`,
+    status: "open",
+    createdAt: args.now,
+    updatedAt: args.now,
+  });
+  return { status: "needs_review" as const, transactionId: args.transactionId, entryId: null, stage: "needs_review" as const };
+}
+
+async function recordCorrectionMemory(
+  ctx: MutationCtx,
+  args: {
+    entity: Doc<"entities">;
+    transaction: Doc<"transactions">;
+    categoryAccountId: Id<"ledgerAccounts">;
+    now: number;
+  },
+) {
+  await assertCategoryAccount(ctx, args.entity._id, args.categoryAccountId);
+  const merchantKey = normalizeMerchantKey(args.transaction.merchant);
+  const direction = directionFor(args.transaction.amountMinor);
+  const memories = await ctx.db
+    .query("aiCorrectionMemories")
+    .withIndex("by_entity_and_merchant_key_and_direction", (q) =>
+      q.eq("entityId", args.entity._id).eq("merchantKey", merchantKey).eq("direction", direction),
+    )
+    .take(10);
+  const existing = memories.find((memory) => memory.categoryAccountId === args.categoryAccountId);
+  const nextCount = (existing?.occurrenceCount ?? 0) + 1;
+
+  let suggestedRuleId = existing?.suggestedRuleId;
+  let status: "active" | "rule_suggested" = existing?.status ?? "active";
+  if (nextCount >= 3 && !suggestedRuleId) {
+    const rules = await ctx.db
+      .query("rules")
+      .withIndex("by_entity", (q) => q.eq("entityId", args.entity._id))
+      .collect();
+    suggestedRuleId = await ctx.db.insert("rules", {
+      entityId: args.entity._id,
+      order: Math.max(0, ...rules.map((rule) => rule.order)) + 1,
+      name: `AI draft: ${args.transaction.merchant}`,
+      merchantContains: args.transaction.merchant,
+      descriptionContains: undefined,
+      direction,
+      categoryAccountId: args.categoryAccountId,
+      autoPost: false,
+      hitCount: 0,
+      active: false,
+      createdBy: "ai",
+      createdAt: args.now,
+      updatedAt: args.now,
+    });
+    status = "rule_suggested";
+  }
+
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      occurrenceCount: nextCount,
+      merchantDisplayName: args.transaction.merchant,
+      lastTransactionId: args.transaction._id,
+      status,
+      suggestedRuleId,
+      updatedAt: args.now,
+    });
+    return existing._id;
+  }
+
+  return await ctx.db.insert("aiCorrectionMemories", {
+    entityId: args.entity._id,
+    merchantKey,
+    merchantDisplayName: args.transaction.merchant,
+    direction,
+    categoryAccountId: args.categoryAccountId,
+    occurrenceCount: nextCount,
+    lastTransactionId: args.transaction._id,
+    status,
+    suggestedRuleId,
+    createdAt: args.now,
+    updatedAt: args.now,
+  });
+}
+
 export const routeTransaction = mutation({
   args: {
     entityId: v.id("entities"),
@@ -176,6 +385,8 @@ export const routeTransaction = mutation({
     forceReview: v.optional(v.boolean()),
     evalExpectedAccountId: v.optional(v.id("ledgerAccounts")),
     evalSet: v.optional(v.boolean()),
+    plaidPriorAccountId: v.optional(v.id("ledgerAccounts")),
+    aiProposal: v.optional(aiProposalValidator),
   },
   handler: async (ctx, args) => {
     const entity = await requireEntity(ctx, args.entityId);
@@ -193,7 +404,7 @@ export const routeTransaction = mutation({
         status: "duplicate" as const,
         transactionId: duplicate._id,
         entryId: duplicate.entryId ?? null,
-        stage: duplicate.decidedBy ?? "needs_review",
+        stage: legacyReturnStage(duplicate.decidedBy),
       };
     }
 
@@ -307,6 +518,67 @@ export const routeTransaction = mutation({
       return { status: "posted" as const, transactionId, entryId, stage: "rule" as const };
     }
 
+    const correctionMemory = await findCorrectionMemory(ctx, {
+      entityId: args.entityId,
+      merchant: args.merchant,
+      amountMinor: args.amountMinor,
+    });
+    if (correctionMemory && !args.forceReview) {
+      return await routeProposedCategory(ctx, {
+        entity,
+        bankAccount,
+        transactionId,
+        date: args.date,
+        amountMinor: args.amountMinor,
+        merchant: args.merchant,
+        source: args.source,
+        sourceId: args.externalId,
+        categoryAccountId: correctionMemory.categoryAccountId,
+        confidence: 0.92,
+        reasoning: `Pipeline stage 4 matched correction memory for ${correctionMemory.merchantDisplayName}.`,
+        stage: "memory",
+        now,
+      });
+    }
+
+    if (args.plaidPriorAccountId && !args.forceReview) {
+      return await routeProposedCategory(ctx, {
+        entity,
+        bankAccount,
+        transactionId,
+        date: args.date,
+        amountMinor: args.amountMinor,
+        merchant: args.merchant,
+        source: args.source,
+        sourceId: args.externalId,
+        categoryAccountId: args.plaidPriorAccountId,
+        confidence: 0.7,
+        reasoning: "Pipeline stage 5 used Plaid personal finance category as a weak prior.",
+        stage: "plaid_prior",
+        now,
+      });
+    }
+
+    if (args.aiProposal && !args.forceReview) {
+      return await routeProposedCategory(ctx, {
+        entity,
+        bankAccount,
+        transactionId,
+        date: args.date,
+        amountMinor: args.amountMinor,
+        merchant: args.merchant,
+        source: args.source,
+        sourceId: args.externalId,
+        categoryAccountId: args.aiProposal.categoryAccountId,
+        confidence: args.aiProposal.confidence,
+        reasoning: `Pipeline stage 6 LLM proposal: ${args.aiProposal.reasoning}`,
+        stage: "ai",
+        needsHuman: args.aiProposal.needsHuman,
+        question: args.aiProposal.question,
+        now,
+      });
+    }
+
     await ctx.db.patch(transactionId, {
       categoryAccountId,
       decidedBy: "needs_review",
@@ -372,6 +644,12 @@ export const confirmTransaction = mutation({
       reasoning: "Confirmed by human from the Inbox.",
       updatedAt: now,
     });
+    await recordCorrectionMemory(ctx, {
+      entity,
+      transaction,
+      categoryAccountId,
+      now,
+    });
     await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
     return { entryId, status: "confirmed" as const };
   },
@@ -421,6 +699,12 @@ export const recategorizeTransaction = mutation({
       confidence: 1,
       reasoning: "Recategorized by human with reversal and repost.",
       updatedAt: now,
+    });
+    await recordCorrectionMemory(ctx, {
+      entity,
+      transaction,
+      categoryAccountId: args.categoryAccountId,
+      now,
     });
     await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
     return { entryId, status: "recategorized" as const };

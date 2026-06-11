@@ -1119,3 +1119,23 @@ PASS/PARTIAL table:
 | Browser regression | PASS | Focused receipt e2e remains green. |
 | PDF OCR | PARTIAL | PDF uploads remain storage/manual-match only until a PDF-to-image/OCR path exists. |
 | Persisted receipt vectors | PARTIAL | This slice computes receipt/candidate embeddings on demand; it does not persist a reusable receipt vector index. |
+
+### 2026-06-11 10:20 CDT — Production redeploy after AI memory UI changes
+
+What changed:
+
+- Redeployed the Next.js app to Vercel production after `CoreScreens.tsx` switched Inbox confirmations and Transaction recategorization to embedding-aware Convex actions.
+- Confirmed the custom domain still returns HTTP 200.
+- Ran the focused production-domain AI chat spec after the deploy.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-post-ai-memory-vercel-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-post-ai-memory-http-check.txt`
+- `docs/initiation/evidence/2026-06-11-post-ai-memory-production-ai-e2e.txt`
+
+Verification:
+
+- Vercel production deploy succeeded: `https://openbooks-gw64pif3i-ansar-ullah-anas-projects.vercel.app`, aliased to `https://openbooks-flax.vercel.app`.
+- `https://openbooks.ansarullahanas.com` returned HTTP 200.
+- `PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm test:e2e -- tests/e2e/ai-chat.spec.ts` green: 1/1 passed.

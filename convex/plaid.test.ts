@@ -31,6 +31,12 @@ const syncFixtureTransactions = makeFunctionReference<"mutation", SyncFixtureArg
 const handleItemLoginRequired = makeFunctionReference<"mutation", LoginRequiredArgs, LoginRequiredResult>(
   "plaid:handleItemLoginRequired",
 );
+const persistPlaidItem = makeFunctionReference<"mutation", PersistPlaidItemArgs, PersistPlaidItemResult>(
+  "plaid:persistPlaidItem",
+);
+const selectSandboxFixtureAccounts = makeFunctionReference<"mutation", SelectAccountsArgs, SelectAccountsResult>(
+  "plaid:selectSandboxFixtureAccounts",
+);
 
 type PlaidEnvState = {
   environment: "sandbox" | "missing" | "unsupported";
@@ -41,6 +47,10 @@ type PlaidEnvState = {
 };
 
 type PlaidConnectionState = {
+  accounts: Array<{
+    name: string;
+    plaidItemId?: string | null;
+  }>;
   recentTransactions: Array<{
     merchant: string;
     plaidPriorCaptured: boolean;
@@ -94,6 +104,37 @@ type LoginRequiredArgs = {
 type LoginRequiredResult = {
   inboxItemId: string;
   payloadSummary: string;
+};
+
+type PersistPlaidItemArgs = {
+  entityId: string;
+  plaidItemId: string;
+  accessToken: string;
+  institutionName?: string;
+};
+
+type PersistPlaidItemResult = {
+  plaidItemRecordId: string;
+  status: "created" | "updated";
+};
+
+type SelectAccountsArgs = {
+  entityId: string;
+  accounts: Array<{
+    plaidAccountId: string;
+    plaidItemId?: string;
+    name: string;
+    mask: string;
+    subtype: string;
+    balanceMinor: number;
+    currency: string;
+    include: boolean;
+  }>;
+};
+
+type SelectAccountsResult = {
+  createdCount: number;
+  accounts: Array<{ bankAccountId: string; ledgerAccountId: string; plaidAccountId: string }>;
 };
 
 async function setupPlaidTest(t: ReturnType<typeof convexTest>) {
@@ -443,6 +484,53 @@ describe("Plaid Convex primitives", () => {
     const state = await session.query(listConnectionState, { entityId: ids.entityId });
     expect(state.recentTransactions.some((transaction) => transaction.merchant === "Notion")).toBe(true);
     expect(state.recentTransactions.some((transaction) => transaction.plaidPriorCaptured)).toBe(true);
+  });
+
+  it("persists sandbox Plaid item tokens without exposing token material", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+    const accessToken = "sandbox-access-token-test";
+
+    const persisted = await session.mutation(persistPlaidItem, {
+      entityId: ids.entityId,
+      plaidItemId: "item-sandbox-1",
+      accessToken,
+      institutionName: "Plaid Sandbox Bank",
+    });
+    await session.mutation(selectSandboxFixtureAccounts, {
+      entityId: ids.entityId,
+      accounts: [
+        {
+          plaidAccountId: "sandbox-checking-1",
+          plaidItemId: "item-sandbox-1",
+          name: "Plaid Sandbox Checking",
+          mask: "0000",
+          subtype: "checking",
+          balanceMinor: 425000,
+          currency: "USD",
+          include: true,
+        },
+      ],
+    });
+
+    expect(persisted).toMatchObject({ status: "created" });
+    expect(JSON.stringify(persisted)).not.toContain(accessToken);
+    const state = await session.query(listConnectionState, { entityId: ids.entityId });
+    expect(state.accounts.some((account) => account.plaidItemId === "item-sandbox-1")).toBe(true);
+    expect(JSON.stringify(state)).not.toContain(accessToken);
+    await t.run(async (ctx) => {
+      const item = await ctx.db
+        .query("plaidItems")
+        .withIndex("by_item", (q) => q.eq("plaidItemId", "item-sandbox-1"))
+        .first();
+      expect(item).toMatchObject({
+        entityId: ids.entityId,
+        accessToken,
+        environment: "sandbox",
+        status: "active",
+      });
+    });
   });
 
   it("handles Plaid cursor sync removals by excluding and reversing posted entries", async () => {

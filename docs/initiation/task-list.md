@@ -237,6 +237,15 @@ Evidence: screenshots + Stripe object IDs in completion report.
 - [x] Plaid `personal_finance_category` captured as pipeline prior.
 - [x] Synced transactions run the full pipeline (stages 1–3 now; AI stages
       activate in M10).
+- [x] Sandbox access-token persistence in Convex-owned `plaidItems`, with
+      account rows linked by `plaidItemId` and public connection queries hiding
+      token material.
+
+M9 follow-up note, 2026-06-11: added durable sandbox Plaid item storage. The
+exchange action now persists the item access token server-side and previewed
+accounts carry `plaidItemId` into account selection. Public UI/query state never
+returns the access token. Still open: scheduled/stored-token sync jobs are
+hardening work beyond the fixture/manual sync acceptance path.
 
 Done when: connecting a sandbox bank in the UI yields transactions in the
 register that were categorized by the pipeline; relink flow demonstrated.

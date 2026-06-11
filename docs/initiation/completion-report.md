@@ -25,7 +25,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 9 | Payroll runs + 3-currency statement + CSV | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m6-payroll-e2e.png` | Payroll screen and 3-currency evidence are present. |
 | 10 | Reports suite + Balanced ✓ + TB=0 + cash/accrual + CSV export | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m7-reports-e2e.png`; `docs/initiation/evidence/2026-06-11-m7-monthly-review.csv` | Reports spec passed in the final production run. |
 | 11 | Full data export | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m7-settings-export.json` | Settings export passed in reports spec. |
-| 12 | Plaid sandbox connect → sync → pipeline | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m9-plaid-settings-e2e.png` | Sandbox-ready path connects, selects accounts, syncs Plaid-shaped rows through the pipeline, shows recent imports, and simulates relink. Durable access-token persistence remains a hardening item. |
+| 12 | Plaid sandbox connect → sync → pipeline | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m9-plaid-settings-e2e.png`; `docs/initiation/evidence/2026-06-11-m9-plaid-token-persistence-verify.txt`; `docs/initiation/evidence/2026-06-11-m9-plaid-token-persistence-e2e.txt` | Sandbox-ready path connects, selects accounts, syncs Plaid-shaped rows through the pipeline, shows recent imports, simulates relink, and now persists sandbox Plaid item tokens server-side without exposing them in public connection state. Scheduled stored-token sync remains hardening. |
 | 13 | Stripe test sync + payout drill-down + invoice via Stripe | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-object-ids.json`; `docs/initiation/evidence/2026-06-11-m8-stripe-webhook-register.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-webhook-negative-http.txt` | Stripe spec passed in the final production run; payout reconciliation remains fixture-backed per sandbox-reality notes. Production Convex now has a signed Stripe test webhook endpoint that records verified events. |
 | 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png`; `docs/initiation/evidence/2026-06-11-m10-semantic-memory-focused-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-categorization-verify.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-ui-vercel-deploy.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-result.json`; `docs/initiation/evidence/2026-06-11-m10-live-eval-production-e2e.txt` | Report-backed chat, confirmed Uber rule, Bedrock categorizer, vector-backed semantic correction memory, Settings-triggered batch categorization for imported needs-review rows, and owner-authenticated 120-row seeded eval pass. Full streaming/tool-call chat remains partial. |
 | 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-receipt-vectors-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-receipt-vectors-e2e.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Image uploads attempt Bedrock vision OCR, deterministic matching, embedding-assisted transaction matching, and persisted receipt vectors, then fall back to manual match. PDF OCR remains an allowed degradation. |
@@ -584,7 +584,7 @@ PASS/PARTIAL table:
 | `ITEM_LOGIN_REQUIRED` relink | PASS | Simulated relink creates/dedupes a connection inbox card and renders in the Bank panel. |
 | Plaid PFC prior | PASS | `personal_finance_category` is captured into transaction rawDescription/pipeline metadata and verified by unit + browser evidence. |
 | Pipeline stages 1-3 | PASS | Synced items route through the existing dedupe/match/rule pipeline and never write journal entries directly. |
-| Durable Plaid access token storage | PARTIAL | Real access tokens are not stored. This avoids introducing unencrypted bank credentials before the encrypted-token storage decision is implemented. |
+| Durable Plaid access token storage | PASS | Sandbox item access tokens are persisted in server-side `plaidItems`, linked to selected accounts by `plaidItemId`, and excluded from public connection-state responses. |
 | Transactions register | PARTIAL | Live Sandbox Plaid imports are visible in the Bank panel's recent imports. A full app-wide entity switcher so `/transactions` can view Live Sandbox instead of Acme remains a product gap. |
 
 Notes:
@@ -910,7 +910,7 @@ PASS/PARTIAL table:
 Next:
 
 - Implement seed reset as a real job: lock per workspace/entity, clear in chunks, route in chunks, expose status, and make Playwright wait on status. Then rerun full `pnpm test:e2e` from a clean state.
-- Add receipt PDF OCR, automatic batch-categorization triggers/job status, durable Plaid access-token sync, and event-driven Stripe webhook sync jobs before claiming final v1 complete.
+- Add receipt PDF OCR, automatic batch-categorization triggers/job status, stored-token Plaid sync jobs, and event-driven Stripe webhook sync jobs before claiming final v1 complete.
 
 ### 2026-06-11 09:22 CDT — M13 Acceptance closure
 
@@ -1364,3 +1364,41 @@ PASS/PARTIAL table:
 | Verification | PASS | Full verify and focused AI e2e stayed green after the UI change. |
 | Production deploy | PASS | Vercel production redeployed and the custom domain returns HTTP 200. |
 | Persistent job history | PARTIAL | The trigger reports immediate counts, but does not yet persist batch job history/retry state. |
+
+### 2026-06-11 12:15 CDT — M9 Plaid sandbox token persistence
+
+What changed:
+
+- Added `plaidItems`, a server-side Convex table for sandbox Plaid item access tokens.
+- Updated Plaid public-token exchange so successful sandbox exchange persists the access token through an internal mutation and returns `accessTokenPersisted: true` without returning token material.
+- Linked selected bank accounts to the stored Plaid item via `plaidItemId`.
+- Extended public connection state with `plaidItemId` only; access tokens remain absent from UI/query responses.
+- Added focused tests proving the token is stored server-side, not present in mutation results or connection-state JSON, and account rows link to the item id.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m9-plaid-token-persistence-codegen.txt`
+- `docs/initiation/evidence/2026-06-11-m9-plaid-token-persistence-unit.txt`
+- `docs/initiation/evidence/2026-06-11-m9-plaid-token-persistence-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m9-plaid-token-persistence-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m9-plaid-token-persistence-convex-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-m9-plaid-token-persistence-e2e.txt`
+
+Verification:
+
+- `pnpm test:unit -- convex/plaid.test.ts` green; current unit total is 13 files / 61 tests.
+- `pnpm verify` green: typecheck, lint, Next.js production build, and 13 unit files / 61 tests.
+- `npx convex dev --once` green.
+- `npx convex deploy --yes` green for production Convex with `plaidItems.by_entity` / `plaidItems.by_item` in the deployed schema.
+- `pnpm test:e2e -- tests/e2e/plaid.spec.ts` green: 2/2 Plaid browser specs passed.
+- Secret scan matches were false positives only: a fixture transaction id and evidence filenames containing `plaid-token-persistence`.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Token persistence | PASS | Sandbox Plaid item access tokens persist in server-side Convex storage after successful exchange. |
+| Public-state hygiene | PASS | Public connection-state responses expose item/account ids, not access-token material. |
+| Account linkage | PASS | Selected bank accounts store the Plaid item id for later sync. |
+| Production schema | PASS | `plaidItems` indexes are deployed in production Convex. |
+| Stored-token sync job | PARTIAL | The stored token is now available, but a scheduled/action sync path using it remains hardening work. |

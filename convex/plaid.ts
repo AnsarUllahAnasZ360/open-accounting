@@ -1,9 +1,9 @@
 import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { action, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { action, internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
 
 type PlaidEnvironment = "sandbox" | "missing" | "unsupported";
@@ -582,6 +582,7 @@ export const listConnectionState = query({
         balanceMinor: account.balanceMinor,
         includeInSync: account.includeInSync,
         plaidAccountId: account.plaidAccountId ?? null,
+        plaidItemId: account.plaidItemId ?? null,
         lastSyncCursor: account.lastSyncCursor ?? null,
         lastSyncedAt: account.lastSyncedAt ?? null,
       })),
@@ -606,6 +607,47 @@ export const listConnectionState = query({
           payloadSummary: item.payloadSummary,
         })),
     };
+  },
+});
+
+export const persistPlaidItem = internalMutation({
+  args: {
+    entityId: v.id("entities"),
+    plaidItemId: v.string(),
+    accessToken: v.string(),
+    institutionName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireEntity(ctx, args.entityId);
+    const existing = await ctx.db
+      .query("plaidItems")
+      .withIndex("by_item", (q) => q.eq("plaidItemId", args.plaidItemId))
+      .first();
+    const now = Date.now();
+    const row = {
+      entityId: args.entityId,
+      plaidItemId: args.plaidItemId,
+      accessToken: args.accessToken,
+      ...(args.institutionName ? { institutionName: args.institutionName } : {}),
+      environment: "sandbox" as const,
+      status: "active" as const,
+      updatedAt: now,
+    };
+    if (existing) {
+      if (existing.entityId !== args.entityId) {
+        throw new Error("Plaid item belongs to a different OpenBooks entity.");
+      }
+      await ctx.db.replace(existing._id, {
+        ...row,
+        createdAt: existing.createdAt,
+      });
+      return { plaidItemRecordId: existing._id, status: "updated" as const };
+    }
+    const plaidItemRecordId = await ctx.db.insert("plaidItems", {
+      ...row,
+      createdAt: now,
+    });
+    return { plaidItemRecordId, status: "created" as const };
   },
 });
 
@@ -708,13 +750,20 @@ export const exchangePublicTokenAndPreviewAccounts = action({
 
     let exchanged: Record<string, unknown>;
     let accountsPayload: Record<string, unknown>;
+    let plaidItemId: string;
     try {
       exchanged = await callPlaid("/item/public_token/exchange", {
         public_token: args.publicToken,
       });
       const accessToken = String(exchanged.access_token);
+      plaidItemId = typeof exchanged.item_id === "string" ? exchanged.item_id : `sandbox-item:${args.entityId}`;
       accountsPayload = await callPlaid("/accounts/get", {
         access_token: accessToken,
+      });
+      await ctx.runMutation(internal.plaid.persistPlaidItem, {
+        entityId: args.entityId,
+        plaidItemId,
+        accessToken,
       });
     } catch {
       return {
@@ -725,13 +774,12 @@ export const exchangePublicTokenAndPreviewAccounts = action({
       };
     }
     const accounts = Array.isArray(accountsPayload.accounts)
-      ? accountsPayload.accounts.map((account) => normalizePlaidAccount(account, entity.currency))
+      ? accountsPayload.accounts.map((account) => normalizePlaidAccount(account, entity.currency, plaidItemId))
       : [];
 
     return {
       mode: "sandbox" as const,
-      accessTokenPersisted: false,
-      persistenceBlocker: "Schema-owned integration work must persist Plaid access tokens before real sync can run.",
+      accessTokenPersisted: true,
       accounts,
     };
   },
@@ -749,6 +797,7 @@ export const selectSandboxFixtureAccounts = mutation({
         balanceMinor: v.number(),
         currency: v.string(),
         include: v.boolean(),
+        plaidItemId: v.optional(v.string()),
       }),
     ),
   },
@@ -774,7 +823,7 @@ export const selectSandboxFixtureAccounts = mutation({
       if (existing) {
         await ctx.db.patch(existing._id, {
           plaidAccountId: account.plaidAccountId,
-          plaidItemId: "openbooks-sandbox-fixture",
+          plaidItemId: account.plaidItemId || "openbooks-sandbox-fixture",
           includeInSync: true,
           balanceMinor: account.balanceMinor,
           updatedAt: now,
@@ -807,7 +856,7 @@ export const selectSandboxFixtureAccounts = mutation({
         balanceMinor: account.balanceMinor,
         includeInSync: true,
         plaidAccountId: account.plaidAccountId,
-        plaidItemId: "openbooks-sandbox-fixture",
+        plaidItemId: account.plaidItemId || "openbooks-sandbox-fixture",
         createdAt: now,
         updatedAt: now,
       });
@@ -903,7 +952,7 @@ export const handleItemLoginRequired = mutation({
   },
 });
 
-function normalizePlaidAccount(account: unknown, currency: string) {
+function normalizePlaidAccount(account: unknown, currency: string, plaidItemId?: string) {
   const value = account && typeof account === "object" ? account as Record<string, unknown> : {};
   const balances = value.balances && typeof value.balances === "object" ? value.balances as Record<string, unknown> : {};
   const current = typeof balances.current === "number" ? balances.current : 0;
@@ -915,6 +964,7 @@ function normalizePlaidAccount(account: unknown, currency: string) {
     subtype,
     balanceMinor: Math.round(current * 100),
     currency: typeof balances.iso_currency_code === "string" ? balances.iso_currency_code : currency,
+    ...(plaidItemId ? { plaidItemId } : {}),
     include: true,
   };
 }
@@ -928,6 +978,7 @@ function fixturePlaidAccounts(currency: string) {
       subtype: "checking",
       balanceMinor: 425000,
       currency,
+      plaidItemId: "openbooks-sandbox-fixture",
       include: true,
     },
     {
@@ -937,6 +988,7 @@ function fixturePlaidAccounts(currency: string) {
       subtype: "credit card",
       balanceMinor: -8790,
       currency,
+      plaidItemId: "openbooks-sandbox-fixture",
       include: true,
     },
   ];

@@ -8,6 +8,7 @@ export type PlaidEnvState = {
 
 export type PlaidSelectableAccount = {
   plaidAccountId: string;
+  plaidItemId?: string;
   name: string;
   mask: string;
   subtype: string;
@@ -31,6 +32,7 @@ export type PlaidConnectionState = {
     balanceMinor: number;
     includeInSync: boolean;
     plaidAccountId?: string | null;
+    plaidItemId?: string | null;
     lastSyncCursor?: string | null;
     lastSyncedAt?: number | null;
   }>;

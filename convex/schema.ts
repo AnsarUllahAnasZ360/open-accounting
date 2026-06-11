@@ -150,6 +150,18 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_entity", ["entityId"]),
+  plaidItems: defineTable({
+    entityId: v.id("entities"),
+    plaidItemId: v.string(),
+    accessToken: v.string(),
+    institutionName: v.optional(v.string()),
+    environment: v.literal("sandbox"),
+    status: v.union(v.literal("active"), v.literal("relink_required")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_item", ["plaidItemId"]),
   contacts: defineTable({
     entityId: v.id("entities"),
     name: v.string(),

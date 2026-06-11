@@ -1,0 +1,9 @@
+Found multiple NEXT_PUBLIC_CONVEX_URL environment variables in .env.local so cannot update automatically.
+▌ Developing against deployment:
+▌ [Development] z360:openbooks:dev/ansar-ullah-anas (dev) (dashboard: https://dashboard.convex.dev/t/z360/openbooks/ceaseless-mandrill-524)
+▌ └─ https://ceaseless-mandrill-524.convex.cloud
+- Preparing Convex functions...
+
+[36mA minor update is available for Convex[39m [2m(1.40.0 → 1.41.0)[22m
+[2mChangelog:[22m [4mhttps://github.com/get-convex/convex-js/blob/main/CHANGELOG.md#changelog[24m
+✔ 12:17:24 Convex functions ready! (2.93s)

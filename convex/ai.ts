@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { action, internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
+import { resolveAIProviderRegistry, type AIProviderMode } from "./aiProviderRegistry";
 import { requireWorkspaceRole } from "./authz";
 
 export const AI_AUTONOMY_THRESHOLDS = {
@@ -12,7 +13,6 @@ export const AI_AUTONOMY_THRESHOLDS = {
 } as const;
 
 export type AIAutonomy = keyof typeof AI_AUTONOMY_THRESHOLDS;
-export type AIProviderMode = "active" | "degraded";
 
 const DEFAULT_AI_AUTONOMY: AIAutonomy = "balanced";
 const aiProviderValidator = v.union(
@@ -27,10 +27,6 @@ const aiAutonomyValidator = v.union(
   v.literal("balanced"),
   v.literal("autopilot"),
 );
-
-function present(value: string | undefined) {
-  return Boolean(value && value.trim().length > 0);
-}
 
 export function resolveAutonomyThreshold(autonomy: AIAutonomy) {
   return AI_AUTONOMY_THRESHOLDS[autonomy];
@@ -47,23 +43,16 @@ export function shouldAutoPostAI(args: {
 }
 
 export function bedrockEnvironmentStatus() {
-  const envProvider = process.env.AI_PROVIDER?.trim().toLowerCase();
-  const configured =
-    envProvider === "bedrock" &&
-    present(process.env.AWS_ACCESS_KEY_ID) &&
-    present(process.env.AWS_SECRET_ACCESS_KEY) &&
-    present(process.env.AWS_REGION) &&
-    present(process.env.AI_MODEL);
+  const registry = resolveAIProviderRegistry();
 
   return {
-    mode: configured ? "active" as const : "degraded" as const,
-    activeProvider: configured ? "bedrock" as const : null,
-    model: configured ? process.env.AI_MODEL!.trim() : null,
-    embeddingsModel:
-      configured && present(process.env.AI_EMBEDDINGS_MODEL)
-        ? process.env.AI_EMBEDDINGS_MODEL!.trim()
-        : null,
-    region: configured ? process.env.AWS_REGION!.trim() : null,
+    mode: registry.mode,
+    activeProvider: registry.activeProvider === "bedrock" ? "bedrock" as const : null,
+    model: registry.activeProvider === "bedrock" ? registry.model : null,
+    embeddingsModel: registry.activeProvider === "bedrock" ? registry.embeddingsModel : null,
+    region: registry.activeProvider === "bedrock" ? registry.region : null,
+    degradedReason: registry.degradedReason,
+    providers: registry.providers,
   };
 }
 
@@ -171,8 +160,23 @@ export const providerStatus = query({
       configuredProvider: config?.provider ?? "bedrock",
       degradedReason:
         env.mode === "degraded"
-          ? "Bedrock env is absent or incomplete; OpenBooks will use rules, memory, Plaid priors, and Inbox review."
+          ? env.degradedReason
           : null,
+      providers: env.providers.map((provider) => ({
+        id: provider.id,
+        label: provider.label,
+        runtime: provider.runtime,
+        v1Enabled: provider.v1Enabled,
+        capabilities: provider.capabilities,
+        configured: provider.configured,
+        active: provider.active,
+        ready: provider.ready,
+        missingEnv: provider.missingEnv,
+        model: provider.model,
+        embeddingsModel: provider.embeddingsModel,
+        aiSdk: provider.aiSdk,
+        reason: provider.reason,
+      })),
     };
   },
 });

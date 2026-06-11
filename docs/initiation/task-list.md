@@ -329,6 +329,15 @@ after 90 seconds instead of blocking retries for 10 minutes. Still open: AI SDK
 provider registry, streaming/full-page chat tool calls, and automatic post-sync
 batch scheduling.
 
+M10 provider-registry note, 2026-06-11: added a Convex-safe AI SDK-compatible
+provider registry for Bedrock, Anthropic, OpenAI, Google, and Ollama, including
+package/factory metadata, capabilities, required env names, readiness state, and
+Bedrock-only v1 activation. `providerStatus` now exposes the registry while
+continuing to degrade safely when non-Bedrock providers are configured. The
+checkbox remains open until actual AI SDK runtime invocation is wired into the
+chat/tool path; streaming/full-page chat and automatic post-sync batch scheduling
+also remain open.
+
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules
 after confirmation; eval accuracy logged.

@@ -16,6 +16,7 @@ import {
   buildMemoryEmbeddingText,
   extractEmbeddingVector,
 } from "./semanticMemory";
+import { AI_PROVIDER_REGISTRY, resolveAIProviderRegistry } from "./aiProviderRegistry";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -299,6 +300,68 @@ afterEach(() => {
 });
 
 describe("M10 AI backend", () => {
+  it("declares an AI SDK-compatible provider registry for v1 Bedrock and future providers", () => {
+    expect(Object.keys(AI_PROVIDER_REGISTRY)).toEqual(["bedrock", "anthropic", "openai", "google", "ollama"]);
+    expect(AI_PROVIDER_REGISTRY.bedrock).toMatchObject({
+      v1Enabled: true,
+      aiSdk: {
+        packageName: "@ai-sdk/amazon-bedrock",
+        importName: "bedrock",
+        languageModel: "bedrock(AI_MODEL)",
+        embeddingModel: "bedrock.embedding(AI_EMBEDDINGS_MODEL)",
+      },
+    });
+    expect(AI_PROVIDER_REGISTRY.anthropic.aiSdk.packageName).toBe("@ai-sdk/anthropic");
+    expect(AI_PROVIDER_REGISTRY.openai.aiSdk.packageName).toBe("@ai-sdk/openai");
+    expect(AI_PROVIDER_REGISTRY.google.aiSdk.packageName).toBe("@ai-sdk/google");
+    expect(AI_PROVIDER_REGISTRY.ollama.aiSdk.packageName).toBe("ollama-ai-provider-v2");
+  });
+
+  it("resolves Bedrock as the only active v1 provider when env is complete", () => {
+    vi.stubEnv("AI_PROVIDER", "bedrock");
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "test-access-key");
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "test-secret-key");
+    vi.stubEnv("AWS_REGION", "test-region-1");
+    vi.stubEnv("AI_MODEL", "anthropic.claude-3-5-sonnet-test");
+    vi.stubEnv("AI_EMBEDDINGS_MODEL", "amazon.titan-embed-text-v2:0");
+
+    const status = resolveAIProviderRegistry();
+
+    expect(status).toMatchObject({
+      mode: "active",
+      activeProvider: "bedrock",
+      configuredProvider: "bedrock",
+      model: "anthropic.claude-3-5-sonnet-test",
+      embeddingsModel: "amazon.titan-embed-text-v2:0",
+      region: "test-region-1",
+    });
+    expect(status.providers.find((provider) => provider.id === "bedrock")).toMatchObject({
+      configured: true,
+      active: true,
+      ready: true,
+      missingEnv: [],
+    });
+    expect(status.providers.filter((provider) => provider.active)).toHaveLength(1);
+  });
+
+  it("keeps non-Bedrock providers registered but degraded for v1", () => {
+    vi.stubEnv("AI_PROVIDER", "openai");
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("AI_MODEL", "openai/gpt-5");
+
+    const status = resolveAIProviderRegistry();
+
+    expect(status.mode).toBe("degraded");
+    expect(status.activeProvider).toBeNull();
+    expect(status.configuredProvider).toBe("openai");
+    expect(status.degradedReason).toContain("registered for AI SDK compatibility");
+    expect(status.providers.find((provider) => provider.id === "openai")).toMatchObject({
+      configured: true,
+      ready: true,
+      active: false,
+    });
+  });
+
   it("builds a bounded Bedrock categorization prompt from ledger accounts", () => {
     const prompt = buildCategorizationPrompt({
       entityName: "Acme Studio LLC",

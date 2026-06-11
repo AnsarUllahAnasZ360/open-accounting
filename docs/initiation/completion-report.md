@@ -60,7 +60,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 
 | Spec section | Deviation | Why | Restore plan |
 |---|---|---|---|
-| Product spec §4 / §6.8 | M10 ships a real Bedrock categorization action plus a report-backed deterministic chat, not full Vercel AI SDK streaming with Bedrock chat/tool calls. | The safe increment proves confirm-first actions, provider/degraded state, and ledger-safe routing; the Bedrock categorizer now produces structured proposals but chat remains deterministic/report-backed. | Add the AI SDK provider registry, streaming `useChat`, server-side read/action tools, and route chat tool calls through Bedrock before marking M10 fully complete. |
+| Product spec §4 / §6.8 | M10 ships a real Bedrock categorization action plus a report-backed deterministic chat, not full Vercel AI SDK streaming with Bedrock chat/tool calls. | The safe increment proves confirm-first actions, provider/degraded state, registry readiness, and ledger-safe routing; the Bedrock categorizer now produces structured proposals but chat remains deterministic/report-backed. | Wire actual AI SDK runtime invocation into streaming `useChat`, server-side read/action tools, and route chat tool calls through Bedrock before marking M10 fully complete. |
 | Product spec §4 | Bedrock batch categorization now exists for bounded imported needs-review rows with persistent Settings-visible run history, but it is not yet automatically scheduled after every Plaid/Stripe/CSV sync. | The safe increment proves queue draining and durable operator history without changing external sync semantics late in the acceptance run. | Trigger the batch action from import/sync completion, add retry metadata, and surface queue state in Settings/Inbox. |
 | Product spec §4 | Semantic memory now participates in the batch categorizer before the LLM stage, but the batch worker is bounded and manually/action-triggered rather than a continuous background queue. | This keeps the ledger/pipeline invariant testable: exact and semantic memory still route through pipeline mutations, while Bedrock calls stay in Convex actions. | Add scheduled/queued processing for all uncategorized import rows with retry/degraded handling. |
 | Goal §2 categorization eval | Historical: before the Settings eval runner, only the 5-row backend fixture accuracy was recorded. | CLI execution lacked the signed-in owner workspace context required by authorization. | Resolved with an owner-authenticated Settings eval runner; current production evidence records the seeded 120-row eval at 100.0%. |
@@ -735,7 +735,7 @@ PASS/PARTIAL table:
 
 | Item | Status | Notes |
 |---|---:|---|
-| Provider/status/config surface | PARTIAL | Bedrock env status, model display, autonomy persistence, and test connection work. This is not yet a full AI SDK provider registry for Anthropic/OpenAI/Google/Ollama/Bedrock. |
+| Provider/status/config surface | PARTIAL | Bedrock env status, model display, autonomy persistence, test connection, and the AI SDK-compatible provider registry now work. Actual AI SDK runtime invocation remains part of the streaming/tool-call chat gap. |
 | Shared autonomy thresholds | PASS | Single backend constant maps suggest/balanced/autopilot to never/0.90/0.75 and pipeline routing uses it. |
 | Pipeline memory stage | PARTIAL | Correction memory routes repeated merchants and drafts rules after three confirmations. It is not yet an embeddings/vector-index memory. |
 | Plaid prior stage | PASS | Pipeline accepts Plaid prior category ids and routes them through the autonomy gate. |
@@ -1205,7 +1205,7 @@ What changed:
 - Added an owner-authenticated Settings control that records the seeded categorization eval from the real signed-in app session.
 - Reused the existing authorized Convex eval mutation instead of a secret-bearing CLI path, so workspace/entity authorization remains intact.
 - Extended the AI Playwright acceptance spec to click "Run eval", assert the seeded result, write structured result evidence, and capture a Settings screenshot.
-- Updated M10 and the acceptance table: live eval is no longer blocked, but M10 remains PARTIAL because streaming/tool-call chat and the AI SDK provider registry are still open.
+- Updated M10 and the acceptance table: live eval is no longer blocked, but M10 remains PARTIAL because streaming/tool-call chat and actual AI SDK runtime invocation are still open.
 
 Evidence:
 
@@ -1303,7 +1303,7 @@ What changed:
 - Added `pipeline.applyProposalToExistingTransactionInternal`, which applies semantic-memory or LLM proposals to an existing transaction row without re-inserting a duplicate transaction.
 - Added `bedrockCategorizer.categorizePendingTransactions`, a bounded action that checks semantic memory first, then Bedrock LLM categorization, then applies the proposal through the pipeline mutation.
 - Kept degraded mode safe: if Bedrock env is absent/incomplete, the batch action leaves imported rows in review and records a degraded result instead of posting.
-- Updated M10/task-list status: pipeline stages 4-6 are now working as a backend capability; M10 remains PARTIAL because the AI SDK provider registry and full streaming/tool-call chat are still open, and automatic post-sync batch scheduling remains hardening work.
+- Updated M10/task-list status: pipeline stages 4-6 are now working as a backend capability; M10 remains PARTIAL because actual AI SDK runtime invocation and full streaming/tool-call chat are still open, and automatic post-sync batch scheduling remains hardening work.
 
 Evidence:
 
@@ -1452,3 +1452,38 @@ PASS/PARTIAL table:
 | Stale seed lease behavior | PASS | Dead running seed jobs can be replaced after 90 seconds while active jobs continue to prove liveness by heartbeat. |
 | Automatic sync scheduling | PARTIAL | Plaid/Stripe/CSV completion still does not automatically enqueue the batch worker. |
 | Streaming/tool-call chat | PARTIAL | Chat remains report-backed/deterministic rather than full AI SDK streaming Bedrock tools. |
+
+### 2026-06-11 12:52 CDT — M10 AI SDK-compatible provider registry
+
+What changed:
+
+- Added `convex/aiProviderRegistry.ts`, a pure Convex-safe registry for Bedrock, Anthropic, OpenAI, Google, and Ollama.
+- The registry records each provider's AI SDK package/factory shape, capabilities, required env names, optional env names, runtime family, and v1 enablement.
+- `ai.providerStatus` now derives readiness from the registry and exposes sanitized provider entries to the UI; Bedrock remains the only active v1 provider and all non-Bedrock providers degrade safely even when their env is present.
+- Kept existing Bedrock categorization calls in Convex actions and did not move secrets into the client.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m10-provider-registry-unit.txt`
+- `docs/initiation/evidence/2026-06-11-m10-provider-registry-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m10-provider-registry-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m10-provider-registry-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m10-provider-registry-convex-deploy.txt`
+
+Verification:
+
+- `pnpm test:unit -- convex/ai.test.ts` green; current unit total is 13 files / 64 tests.
+- `pnpm verify` green: typecheck, lint, Next.js production build, and 13 unit files / 64 tests.
+- `pnpm test:e2e -- tests/e2e/ai-chat.spec.ts` green: 2/2 passed.
+- `npx convex dev --once` green.
+- `npx convex deploy --yes` green for production Convex.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Provider registry shape | PASS | Registry covers Bedrock, Anthropic, OpenAI, Google, and Ollama with AI SDK package/factory metadata. |
+| Bedrock v1 activation | PASS | Bedrock becomes active only when `AI_PROVIDER=bedrock` and required AWS/AI model env is complete. |
+| Non-Bedrock fallback | PASS | Future providers can be configured, but v1 reports degraded until they are explicitly enabled. |
+| Settings/provider status contract | PASS | `providerStatus` now returns sanitized registry entries without exposing secret values. |
+| Actual AI SDK runtime invocation | PARTIAL | The registry is ready, but chat/tool execution still uses the existing report-backed drawer and manual Bedrock Runtime action. |

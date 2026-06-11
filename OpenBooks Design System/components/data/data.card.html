@@ -1,0 +1,78 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Data" subtitle="StatCard, Amount, Table, BarChart, Sparkline, EmptyState" -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+</head>
+<body style="margin:0;padding:16px;background:var(--surface-page);">
+<div id="root"></div>
+<script type="text/babel">
+const { StatCard, Amount, Sparkline, BarChart, Card, CardHeader, CardTitle, CardDescription, CardContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Badge } = window.OpenBooksDesignSystem_8d97bf;
+
+const rows = [
+  ["Jun 6", "OpenAI", "Software & AI tools", -248.0, ["ai", "sparkles", "AI"]],
+  ["Jun 6", "Stripe payout", "Clearing reconciliation", 4892.14, ["secondary", null, "Match"]],
+  ["Jun 5", "Wise transfer", "Contractor labor", -1850.0, ["warning", "circle-alert", "Review"]],
+  ["Jun 4", "Mercury ACH", "Marketing retainer", 5500.0, ["positive", "circle-check", "Posted"]],
+];
+
+function Demo() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+        <StatCard label="Cash balance" value={<Amount value={128400} abbreviate decimals={1} />} detail="Across 3 accounts" icon="landmark" trend="Synced" trendVariant="info" />
+        <StatCard label="Revenue MTD" value={<Amount value={42800} abbreviate decimals={1} />} detail="Stripe and ACH" icon="arrow-up-right" trend="+18%" trendVariant="positive">
+          <Sparkline data={[18, 22, 19, 27, 31, 42]} width={200} />
+        </StatCard>
+        <StatCard label="Expenses MTD" value={<Amount value={19600} abbreviate decimals={1} />} detail="Software, contractors" icon="arrow-down-right" trend="Review" trendVariant="warning" />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, alignItems: "start" }}>
+        <Card>
+          <CardHeader><CardTitle>Recent transactions</CardTitle></CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead><TableHead>Counterparty</TableHead><TableHead>Category</TableHead><TableHead numeric>Amount</TableHead><TableHead style={{ textAlign: "right" }}>State</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map(([date, cp, cat, amt, [v, ic, label]]) => (
+                  <TableRow key={cp + date}>
+                    <TableCell style={{ fontFamily: "var(--font-figures)", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{date}</TableCell>
+                    <TableCell style={{ fontWeight: 500 }}>{cp}</TableCell>
+                    <TableCell style={{ color: "var(--text-secondary)" }}>{cat}</TableCell>
+                    <TableCell numeric><Amount value={amt} colored /></TableCell>
+                    <TableCell style={{ textAlign: "right" }}><Badge variant={v} icon={ic || undefined}>{label}</Badge></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Cash flow</CardTitle>
+            <CardDescription>Net by month</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BarChart height={120} data={[
+              { label: "Jan", value: 12400 }, { label: "Feb", value: -3200 }, { label: "Mar", value: 8900 },
+              { label: "Apr", value: 15300 }, { label: "May", value: 6100 }, { label: "Jun", value: 9800, color: "var(--chart-3)" },
+            ]} />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+</script>
+</body>
+</html>

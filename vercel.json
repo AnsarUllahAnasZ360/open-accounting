@@ -1,0 +1,7 @@
+{
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @openbooks/web build",
+  "devCommand": "pnpm --filter @openbooks/web dev",
+  "outputDirectory": "apps/web/.next"
+}

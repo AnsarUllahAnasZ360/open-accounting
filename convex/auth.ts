@@ -32,11 +32,11 @@ async function sendPlunkMagicLink({
     body: JSON.stringify({
       to: identifier,
       from: requiredEnv("PLUNK_FROM_EMAIL"),
-      fromName: process.env.PLUNK_FROM_NAME ?? "Ottex AI Accounting",
-      subject: "Sign in to Ottex",
+      fromName: process.env.PLUNK_FROM_NAME ?? "OpenBooks",
+      subject: "Sign in to OpenBooks",
       body: `
-        <p>Use this secure link to sign in to Ottex AI Accounting:</p>
-        <p><a href="${url}">Sign in to Ottex</a></p>
+        <p>Use this secure link to sign in to OpenBooks:</p>
+        <p><a href="${url}">Sign in to OpenBooks</a></p>
         <p>If the button does not work, copy and paste this URL into your browser:</p>
         <p>${url}</p>
       `,
@@ -59,11 +59,10 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       id: "plunk",
       name: "Plunk",
       authorize: undefined,
-      from: process.env.PLUNK_FROM_EMAIL ?? "Ottex AI Accounting",
+      from: process.env.PLUNK_FROM_EMAIL ?? "OpenBooks",
       sendVerificationRequest: async ({ identifier, url }) => {
         await sendPlunkMagicLink({ identifier, url });
       },
     }),
   ],
 });
-

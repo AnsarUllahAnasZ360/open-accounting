@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Create the public Ottex AI Accounting foundation with a Next.js frontend, Convex backend/auth baseline, Plunk email configuration, GitHub repository, Vercel project, and domain setup notes.
+**Goal:** Create the public OpenBooks foundation with a Next.js frontend, Convex backend/auth baseline, Plunk email configuration, GitHub repository, Vercel project, and domain setup notes.
 
 **Architecture:** Use a pnpm workspace with `apps/web` for the Vercel-hosted Next.js app and root-level `convex` for backend functions/database/auth. Keep shared accounting, connector, AI, and email logic in future `packages/*` workspaces so ledger rules stay independent from UI and external APIs.
 
@@ -35,7 +35,7 @@
 
 - [ ] Scaffold `apps/web` with `create-next-app@latest`, TypeScript, App Router, Tailwind, ESLint, Turbopack, and `@/*` alias.
 - [ ] Verify installed Next.js version is `16.2.7` or newer patch.
-- [ ] Replace starter screen with a product-shell placeholder for Ottex AI Accounting.
+- [ ] Replace starter screen with a product-shell placeholder for OpenBooks.
 - [ ] Apply shadcn/Geist font fixes after component initialization.
 
 ### Task 3: shadcn UI Baseline
@@ -84,7 +84,7 @@
 - [ ] Link or create the Vercel project under the Z360 team.
 - [ ] Set root directory/build settings for `apps/web`.
 - [ ] Add safe environment variables by name only in docs.
-- [ ] Add `accounting.zikrainfotech.com` to Vercel and capture the DNS record Ansar must create.
+- [ ] Add `openbooks.zikrainfotech.com` to Vercel and capture the DNS record Ansar must create.
 
 ### Task 7: Verification
 

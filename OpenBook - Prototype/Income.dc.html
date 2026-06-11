@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+    @keyframes ob-slide { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  </style>
+</helmet>
+
+<div style="font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:14px; color:#0a0a0a; line-height:1.5; padding:24px 28px 48px; max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:16px;">
+
+  <!-- Header -->
+  <div style="display:flex; align-items:center; gap:12px;">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em; line-height:1.2;">Income</div>
+      <div style="font-size:13px; color:#737373;">Money in — payments received, invoices out, and what's still owed · Z360 Labs LLC</div>
+    </div>
+    <div style="flex:1;"></div>
+    <div style="display:flex; align-items:center; gap:2px; height:34px; padding:2px; border-radius:10px; background:#f5f5f5;">
+      <button onClick="{{ showPayments }}" style="height:30px; padding:0 13px; border-radius:8px; border:none; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500; white-space:nowrap; background:{{ payTabBg }}; color:{{ payTabColor }}; box-shadow:{{ payTabShadow }};">Payments</button>
+      <button onClick="{{ showInvoices }}" style="height:30px; padding:0 13px; border-radius:8px; border:none; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500; white-space:nowrap; background:{{ invTabBg }}; color:{{ invTabColor }}; box-shadow:{{ invTabShadow }};">Invoices</button>
+      <button onClick="{{ showReceivables }}" style="height:30px; padding:0 13px; border-radius:8px; border:none; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500; white-space:nowrap; background:{{ recTabBg }}; color:{{ recTabColor }}; box-shadow:{{ recTabShadow }};">Receivables</button>
+    </div>
+    <button onClick="{{ openComposer }}" style="height:34px; padding:0 14px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; white-space:nowrap; flex-shrink:0;" style-hover="background:#248716;" style-active="transform:translateY(1px);">New invoice</button>
+  </div>
+
+  <!-- KPIs -->
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px;">
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:14px 18px;">
+      <div style="font-size:12px; color:#737373; font-weight:500;">Received · this month</div>
+      <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600; letter-spacing:-0.01em; color:#248716;">$21,860</div>
+      <div style="font-size:11.5px; color:#a3a3a3;">18 payments · 2 payouts reconciled</div>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:14px 18px;">
+      <div style="font-size:12px; color:#737373; font-weight:500;">Still open</div>
+      <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600; letter-spacing:-0.01em;">$23,800</div>
+      <div style="font-size:11.5px; color:#a3a3a3;">5 invoices awaiting payment</div>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:14px 18px;">
+      <div style="font-size:12px; color:#737373; font-weight:500;">Overdue</div>
+      <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600; letter-spacing:-0.01em; color:#d92d20;">$15,000</div>
+      <div style="font-size:11.5px; color:#a3a3a3;">3 invoices · oldest 14 days</div>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:14px 18px;">
+      <div style="font-size:12px; color:#737373; font-weight:500;">Avg days to pay</div>
+      <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600; letter-spacing:-0.01em;">11</div>
+      <div style="font-size:11.5px; color:#a3a3a3;">improving · was 16 in Q1</div>
+    </div>
+  </div>
+
+  <!-- ===== PAYMENTS (money received) ===== -->
+  <sc-if value="{{ paymentsMode }}" hint-placeholder-val="{{ false }}">
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:70px 1.4fr 1fr 130px 110px; gap:8px; padding:9px 18px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>Date</span><span>From</span><span>For</span><span>Status</span><span style="text-align:right;">Amount</span>
+      </div>
+      <sc-for list="{{ payRows }}" as="p" hint-placeholder-count="8">
+        <div style="display:grid; grid-template-columns:70px 1.4fr 1fr 130px 110px; gap:8px; padding:11px 18px; border-top:1px solid #f3f3f3; align-items:center;">
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#737373;">{{ p.date }}</span>
+          <span style="display:flex; align-items:center; gap:9px; min-width:0;">
+            <span style="width:24px; height:24px; border-radius:7px; background:{{ p.logoBg }}; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; flex-shrink:0;">{{ p.logo }}</span>
+            <span style="font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ p.from }}</span>
+          </span>
+          <span style="font-size:12.5px; color:#737373; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ p.memo }}</span>
+          <span><span style="display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:9999px; font-size:11px; font-weight:500; background:{{ p.chipBg }}; color:{{ p.chipColor }};"><span style="width:6px; height:6px; border-radius:9999px; background:currentColor; opacity:0.7;"></span>{{ p.status }}</span></span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:600; color:{{ p.amtColor }};">{{ p.amount }}</span>
+        </div>
+      </sc-for>
+      <div style="padding:10px 18px; border-top:1px solid #f3f3f3; font-size:12px; color:#a3a3a3;">Payments sync from Stripe and your bank feed. Payouts arrive as one deposit — OpenBooks splits them back into gross revenue and fees automatically.</div>
+    </div>
+  </sc-if>
+
+  <!-- ===== INVOICE LIST ===== -->
+  <sc-if value="{{ invoiceMode }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; align-items:center; gap:2px; border-bottom:1px solid #e5e5e5;">
+      <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="5">
+        <button onClick="{{ tb.pick }}" style="height:36px; padding:0 14px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; font-weight:{{ tb.weight }}; color:{{ tb.color }}; border-bottom:2px solid {{ tb.line }}; margin-bottom:-1px; white-space:nowrap; flex-shrink:0;" style-hover="color:#0a0a0a;">{{ tb.label }}</button>
+      </sc-for>
+    </div>
+
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:70px 1.4fr 110px 110px 110px 100px 110px; gap:8px; padding:9px 18px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>#</span><span>Customer</span><span>Issued</span><span>Due</span><span>Status</span><span style="text-align:right;">Amount</span><span style="text-align:right;">Balance</span>
+      </div>
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+        <div onClick="{{ r.open }}" style="display:grid; grid-template-columns:70px 1.4fr 110px 110px 110px 100px 110px; gap:8px; padding:11px 18px; border-top:1px solid #f3f3f3; align-items:center; cursor:pointer; transition:background 120ms ease-out;" style-hover="background:#fafafa;">
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#737373;">{{ r.num }}</span>
+          <span style="font-size:13px; font-weight:500;">{{ r.customer }}</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#737373;">{{ r.issued }}</span>
+          <span style="font-size:12px; color:{{ r.dueColor }};">{{ r.due }}</span>
+          <span><span style="display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:9999px; font-size:11px; font-weight:500; background:{{ r.chipBg }}; color:{{ r.chipColor }};"><span style="width:6px; height:6px; border-radius:9999px; background:currentColor; opacity:0.7;"></span>{{ r.status }}</span></span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:500;">{{ r.amount }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:600; color:{{ r.balColor }};">{{ r.balance }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ===== RECEIVABLES MATRIX ===== -->
+  <sc-if value="{{ receivablesMode }}" hint-placeholder-val="{{ false }}">
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:1.5fr repeat(5, 1fr); padding:10px 20px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>Customer</span><span style="text-align:right;">Current</span><span style="text-align:right;">1–30</span><span style="text-align:right;">31–60</span><span style="text-align:right;">61–90</span><span style="text-align:right;">Total</span>
+      </div>
+      <sc-for list="{{ matrixRows }}" as="mr" hint-placeholder-count="5">
+        <div style="display:grid; grid-template-columns:1.5fr repeat(5, 1fr); padding:11px 20px; border-top:1px solid #f3f3f3; font-size:13px; font-weight:{{ mr.weight }}; background:{{ mr.bg }}; align-items:center;">
+          <span>{{ mr.name }}</span>
+          <sc-for list="{{ mr.cells }}" as="mc" hint-placeholder-count="5">
+            <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; border-radius:5px; padding:2px 6px; background:{{ mc.bg }}; color:{{ mc.color }};">{{ mc.v }}</span>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size:12px; color:#a3a3a3;">Heat shading = how overdue the money is. Click any customer in the Contacts page for their full history.</div>
+  </sc-if>
+
+  <!-- ===== COMPOSER ===== -->
+  <sc-if value="{{ composerOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeComposer }}" style="position:fixed; inset:0; background:rgba(0,0,0,0.18); z-index:80;"></div>
+    <div style="position:fixed; top:0; right:0; bottom:0; width:560px; background:#ffffff; z-index:90; box-shadow:-8px 0 24px rgba(0,0,0,0.08); display:flex; flex-direction:column; animation:ob-slide 180ms ease-out;">
+      <div style="display:flex; align-items:center; gap:10px; padding:16px 22px; border-bottom:1px solid #ececec;">
+        <div style="font-size:16px; font-weight:600; flex:1;">New invoice</div>
+        <span style="display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px; border-radius:9999px; background:#f5f5f5; font-size:11px; color:#737373;"><span style="width:14px; height:14px; border-radius:4px; background:#635bff; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700;">S</span> sends via your Stripe</span>
+        <button onClick="{{ closeComposer }}" style="width:28px; height:28px; border-radius:8px; border:none; background:transparent; cursor:pointer; color:#737373; display:flex; align-items:center; justify-content:center;" style-hover="background:#f5f5f5;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18 M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div style="flex:1; overflow-y:auto; padding:20px 22px; display:flex; flex-direction:column; gap:16px;">
+        <div>
+          <div style="font-size:12.5px; font-weight:500; color:#525252; margin-bottom:6px;">Customer</div>
+          <select value="{{ cCustomer }}" onChange="{{ onCCustomer }}" style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none; color:#0a0a0a;">
+            <option>Tonal Labs</option><option>Halpern Co</option><option>Meridian Health</option><option>Beacon Press</option><option>Arclight Media</option><option>+ New customer…</option>
+          </select>
+          <div style="font-size:11px; color:#a3a3a3; margin-top:4px;">Synced with your Stripe customer list</div>
+        </div>
+        <div>
+          <div style="font-size:12.5px; font-weight:500; color:#525252; margin-bottom:6px;">Line items</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <sc-for list="{{ cLines }}" as="ln" hint-placeholder-count="2">
+              <div style="display:grid; grid-template-columns:1fr 64px 96px 90px; gap:8px; align-items:center;">
+                <input value="{{ ln.desc }}" onChange="{{ ln.onDesc }}" placeholder="Description" style="height:34px; padding:0 10px; border-radius:9px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; outline:none;" style-focus="border-color:#63b347;"></input>
+                <input value="{{ ln.qty }}" onChange="{{ ln.onQty }}" style="height:34px; padding:0 8px; border-radius:9px; border:1px solid #e5e5e5; font-family:'Geist Mono',ui-monospace,monospace; font-size:12.5px; text-align:center; outline:none;" style-focus="border-color:#63b347;"></input>
+                <input value="{{ ln.rate }}" onChange="{{ ln.onRate }}" style="height:34px; padding:0 8px; border-radius:9px; border:1px solid #e5e5e5; font-family:'Geist Mono',ui-monospace,monospace; font-size:12.5px; text-align:right; outline:none;" style-focus="border-color:#63b347;"></input>
+                <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:500;">{{ ln.total }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <button onClick="{{ addLine }}" style="margin-top:8px; height:28px; padding:0 11px; border-radius:8px; border:1px dashed #d4d4d4; background:transparent; color:#737373; cursor:pointer; font-family:inherit; font-size:12px;" style-hover="background:#fafafa; color:#0a0a0a;">+ Add line</button>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <div style="font-size:12.5px; font-weight:500; color:#525252; margin-bottom:6px;">Terms</div>
+            <select style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+              <option>Net 30</option><option>Net 15</option><option>Net 7</option><option>Due on receipt</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:12.5px; font-weight:500; color:#525252; margin-bottom:6px;">Due date</div>
+            <input value="Jul 11, 2026" readOnly="{{ true }}" style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; color:#525252; outline:none; background:#fafafa;"></input>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12.5px; font-weight:500; color:#525252; margin-bottom:6px;">Memo</div>
+          <input placeholder="Thanks for your business — payment link below." style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; outline:none;" style-focus="border-color:#63b347;"></input>
+        </div>
+        <div style="border-radius:12px; background:#fafafa; padding:14px 16px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#525252;"><span>Subtotal</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ cSubtotal }}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:600;"><span>Total due</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ cSubtotal }}</span></div>
+          <div style="font-size:11px; color:#a3a3a3;">Stripe hosts the payment page and emails the customer. Card or ACH.</div>
+        </div>
+      </div>
+      <div style="padding:14px 22px; border-top:1px solid #ececec; display:flex; gap:8px;">
+        <button onClick="{{ saveDraft }}" style="height:36px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500;" style-hover="background:#f5f5f5;">Save draft</button>
+        <div style="flex:1;"></div>
+        <button onClick="{{ sendInvoice }}" style="height:36px; padding:0 18px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Send via Stripe</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ===== INVOICE DETAIL ===== -->
+  <sc-if value="{{ detailOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDetail }}" style="position:fixed; inset:0; background:rgba(0,0,0,0.18); z-index:80;"></div>
+    <div style="position:fixed; top:0; right:0; bottom:0; width:420px; background:#ffffff; z-index:90; box-shadow:-8px 0 24px rgba(0,0,0,0.08); display:flex; flex-direction:column; animation:ob-slide 180ms ease-out;">
+      <div style="display:flex; align-items:center; gap:10px; padding:16px 20px; border-bottom:1px solid #ececec;">
+        <div style="flex:1;">
+          <div style="font-size:16px; font-weight:600;">Invoice {{ dNum }}</div>
+          <div style="font-size:12px; color:#737373;">{{ dCustomer }}</div>
+        </div>
+        <span style="display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 10px; border-radius:9999px; font-size:11.5px; font-weight:500; background:{{ dChipBg }}; color:{{ dChipColor }};">{{ dStatus }}</span>
+        <button onClick="{{ closeDetail }}" style="width:28px; height:28px; border-radius:8px; border:none; background:transparent; cursor:pointer; color:#737373; display:flex; align-items:center; justify-content:center;" style-hover="background:#f5f5f5;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18 M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div style="flex:1; overflow-y:auto; padding:18px 20px; display:flex; flex-direction:column; gap:18px;">
+        <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:28px; font-weight:600; letter-spacing:-0.01em;">{{ dAmount }}</div>
+        <div style="border:1px solid #ececec; border-radius:10px; padding:12px 14px; display:flex; align-items:center; gap:10px;">
+          <span style="width:24px; height:24px; border-radius:6px; background:#635bff; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;">S</span>
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:12.5px; font-weight:500;">Hosted payment page</div>
+            <div style="font-family:'Geist Mono',ui-monospace,monospace; font-size:10.5px; color:#a3a3a3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">invoice.stripe.com/i/{{ dNum }}…</div>
+          </div>
+          <button style="height:26px; padding:0 10px; border-radius:7px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:11.5px;" style-hover="background:#f5f5f5;">Copy</button>
+        </div>
+        <div>
+          <div style="font-size:12px; font-weight:600; color:#737373; margin-bottom:10px;">Timeline</div>
+          <div style="display:flex; flex-direction:column;">
+            <sc-for list="{{ dTimeline }}" as="tl" hint-placeholder-count="4">
+              <div style="display:flex; gap:11px;">
+                <div style="display:flex; flex-direction:column; align-items:center;">
+                  <span style="width:10px; height:10px; border-radius:9999px; background:{{ tl.dot }}; border:2px solid {{ tl.ring }}; flex-shrink:0; margin-top:3px;"></span>
+                  <sc-if value="{{ tl.hasLine }}" hint-placeholder-val="{{ true }}"><span style="width:2px; flex:1; min-height:18px; background:#ececec;"></span></sc-if>
+                </div>
+                <div style="padding-bottom:14px;">
+                  <div style="font-size:12.5px; font-weight:500; color:{{ tl.color }};">{{ tl.label }}</div>
+                  <div style="font-size:11px; color:#a3a3a3;">{{ tl.when }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <sc-if value="{{ dOverdue }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; align-items:center; gap:9px; padding:11px 13px; border-radius:10px; background:#fef3f2; font-size:12.5px; color:#b42318;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 8v4 M12 16h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+            {{ dOverdueNote }}
+          </div>
+        </sc-if>
+      </div>
+      <div style="padding:14px 20px; border-top:1px solid #ececec; display:flex; gap:8px;">
+        <sc-if value="{{ dOverdue }}" hint-placeholder-val="{{ false }}">
+          <button style="height:34px; padding:0 14px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#248716;">Send reminder</button>
+        </sc-if>
+        <button style="height:34px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">Download PDF</button>
+        <div style="flex:1;"></div>
+        <button onClick="{{ closeDetail }}" style="height:34px; padding:0 14px; border-radius:10px; border:none; background:transparent; color:#737373; cursor:pointer; font-family:inherit; font-size:12.5px;" style-hover="background:#f0f0f0;">Close</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.payments = [
+      { date: "Jun 9", from: "Meridian Health", logo: "MH", logoBg: "#0e7569", memo: "Subscription — June", status: "paid", amount: 2100 },
+      { date: "Jun 6", from: "Stripe payout", logo: "S", logoBg: "#635bff", memo: "14 payments − $63.30 fees", status: "reconciled", amount: 4180.55 },
+      { date: "Jun 4", from: "Arclight Media", logo: "AM", logoBg: "#7a4a8c", memo: "Invoice #1042", status: "paid", amount: 2400 },
+      { date: "Jun 3", from: "Tonal Labs", logo: "TL", logoBg: "#1d6bb5", memo: "Stripe charge — retainer", status: "paid", amount: 1100 },
+      { date: "Jun 2", from: "Beacon Press", logo: "BP", logoBg: "#3d5a80", memo: "Stripe charge — subscription", status: "paid", amount: 950 },
+      { date: "May 31", from: "Stripe payout", logo: "S", logoBg: "#635bff", memo: "11 payments − $58.10 fees", status: "reconciled", amount: 6212.10 },
+      { date: "May 26", from: "Halpern Co", logo: "HC", logoBg: "#17540f", memo: "Invoice #1039", status: "paid", amount: 9990 },
+      { date: "May 22", from: "Dune Hospitality", logo: "DH", logoBg: "#8c6a3f", memo: "Stripe charge — one-time", status: "refunded", amount: -480 }
+    ];
+    this.state = {
+      mode: "payments", tab: "all",
+      composerOpen: false, detailId: null,
+      cCustomer: "Tonal Labs",
+      cLines: [
+        { desc: "Product design retainer — June", qty: "1", rate: "4200" },
+        { desc: "Design system audit", qty: "1", rate: "1800" }
+      ],
+      invoices: [
+        { id: "1044", customer: "Tonal Labs", issued: "Jun 10", due: "Jul 10", status: "draft", amount: 1200, balance: 1200 },
+        { id: "1043", customer: "Beacon Press", issued: "May 14", due: "Jun 9", status: "overdue", amount: 2400, balance: 2400, late: 2 },
+        { id: "1042", customer: "Arclight Media", issued: "May 20", due: "Jun 19", status: "paid", amount: 2400, balance: 0, paidOn: "Jun 4" },
+        { id: "1041", customer: "Meridian Health", issued: "May 6", due: "Jun 5", status: "overdue", amount: 4200, balance: 4200, late: 6 },
+        { id: "1040", customer: "Arclight Media", issued: "May 26", due: "Jun 25", status: "open", amount: 5400, balance: 5400 },
+        { id: "1039", customer: "Halpern Co", issued: "Apr 26", due: "May 26", status: "paid", amount: 9990, balance: 0, paidOn: "May 26" },
+        { id: "1038", customer: "Halpern Co", issued: "Apr 28", due: "May 28", status: "overdue", amount: 8400, balance: 8400, late: 14 },
+        { id: "1037", customer: "Tonal Labs", issued: "May 29", due: "Jun 28", status: "open", amount: 3400, balance: 3400 },
+        { id: "1036", customer: "Meridian Health", issued: "Apr 12", due: "May 12", status: "paid", amount: 2100, balance: 0, paidOn: "May 12" }
+      ]
+    };
+  }
+
+  fmt(n) { return "$" + n.toLocaleString("en-US"); }
+
+  renderVals() {
+    const s = this.state;
+    const chip = {
+      draft: { bg: "#f5f5f5", color: "#525252", label: "Draft" },
+      open: { bg: "#eff8ff", color: "#175cd3", label: "Open" },
+      paid: { bg: "#f1f8ee", color: "#17540f", label: "Paid" },
+      overdue: { bg: "#fef3f2", color: "#b42318", label: "Overdue" }
+    };
+
+    const counts = { all: s.invoices.length };
+    ["draft", "open", "paid", "overdue"].forEach(k => counts[k] = s.invoices.filter(i => i.status === k).length);
+    let rows = s.invoices;
+    if (s.tab !== "all") rows = rows.filter(i => i.status === s.tab);
+
+    const det = s.invoices.find(i => i.id === s.detailId);
+
+    const subtotal = s.cLines.reduce((a, l) => a + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0), 0);
+
+    const seg = (active) => ({
+      bg: active ? "#ffffff" : "transparent",
+      color: active ? "#0a0a0a" : "#737373",
+      shadow: active ? "0 1px 2px rgba(0,0,0,0.08)" : "none"
+    });
+    const invSeg = seg(s.mode === "invoices"), recSeg = seg(s.mode === "receivables"), paySeg = seg(s.mode === "payments");
+
+    const payChip = {
+      paid: { bg: "#f1f8ee", color: "#17540f", label: "Paid" },
+      reconciled: { bg: "#eff8ff", color: "#175cd3", label: "Payout · reconciled" },
+      refunded: { bg: "#fef3f2", color: "#b42318", label: "Refunded" }
+    };
+    const payRows = this.payments.map(p => ({
+      ...p,
+      status: payChip[p.status].label, chipBg: payChip[p.status].bg, chipColor: payChip[p.status].color,
+      amount: (p.amount < 0 ? "−$" : "+$") + Math.abs(p.amount).toLocaleString("en-US", { minimumFractionDigits: p.amount % 1 ? 2 : 0 }),
+      amtColor: p.amount < 0 ? "#b42318" : "#248716"
+    }));
+
+    const heat = (v, max) => v === 0 ? { bg: "transparent", color: "#c9c9c9" } : { bg: "rgba(247,144,9," + Math.min(0.28, v / max * 0.3).toFixed(2) + ")", color: "#0a0a0a" };
+    const matrix = [
+      { name: "Halpern Co", cells: [0, 0, 8400, 0] },
+      { name: "Arclight Media", cells: [5400, 0, 0, 0] },
+      { name: "Meridian Health", cells: [0, 0, 0, 4200] },
+      { name: "Tonal Labs", cells: [3400, 0, 0, 0] },
+      { name: "Beacon Press", cells: [0, 2400, 0, 0] }
+    ];
+    const maxCell = 8400;
+    const sum = a => a.reduce((x, y) => x + y, 0);
+    const matrixRows = matrix.map(r => ({
+      name: r.name, weight: "400", bg: "#ffffff",
+      cells: r.cells.concat([sum(r.cells)]).map((v, i) => ({
+        v: v === 0 ? "—" : this.fmt(v),
+        ...(i < 4 ? heat(v, maxCell) : { bg: "transparent", color: "#0a0a0a" })
+      }))
+    })).concat([{
+      name: "Total", weight: "600", bg: "#fbfbfb",
+      cells: [0, 1, 2, 3].map(i => sum(matrix.map(r => r.cells[i]))).concat([23800])
+        .map(v => ({ v: v === 0 ? "—" : this.fmt(v), bg: "transparent", color: "#0a0a0a" }))
+    }]);
+
+    const timeline = det ? (() => {
+      const steps = [
+        { label: "Created", when: det.issued },
+        { label: "Sent via Stripe", when: det.issued },
+        { label: "Viewed by customer", when: det.status === "draft" ? null : det.issued + " · opened twice" },
+        { label: det.status === "paid" ? "Paid" : "Payment", when: det.status === "paid" ? det.paidOn : null }
+      ];
+      return steps.map((st, i) => {
+        const done = st.when != null && !(det.status === "draft" && i > 0);
+        return {
+          label: st.label,
+          when: done ? st.when : "—",
+          dot: done ? "#2ca01c" : "#ffffff",
+          ring: done ? "#dcefd2" : "#e5e5e5",
+          color: done ? "#0a0a0a" : "#a3a3a3",
+          hasLine: i < steps.length - 1
+        };
+      });
+    })() : [];
+
+    return {
+      invoiceMode: s.mode === "invoices",
+      receivablesMode: s.mode === "receivables",
+      paymentsMode: s.mode === "payments",
+      showInvoices: () => this.setState({ mode: "invoices" }),
+      showReceivables: () => this.setState({ mode: "receivables" }),
+      showPayments: () => this.setState({ mode: "payments" }),
+      invTabBg: invSeg.bg, invTabColor: invSeg.color, invTabShadow: invSeg.shadow,
+      recTabBg: recSeg.bg, recTabColor: recSeg.color, recTabShadow: recSeg.shadow,
+      payTabBg: paySeg.bg, payTabColor: paySeg.color, payTabShadow: paySeg.shadow,
+      payRows,
+
+      tabs: [
+        { id: "all", label: "All · " + counts.all }, { id: "draft", label: "Draft · " + counts.draft },
+        { id: "open", label: "Open · " + counts.open }, { id: "paid", label: "Paid · " + counts.paid },
+        { id: "overdue", label: "Overdue · " + counts.overdue }
+      ].map(t => ({
+        ...t, pick: () => this.setState({ tab: t.id }),
+        weight: s.tab === t.id ? "600" : "450",
+        color: s.tab === t.id ? "#0a0a0a" : "#737373",
+        line: s.tab === t.id ? "#2ca01c" : "transparent"
+      })),
+
+      rows: rows.map(r => ({
+        num: "#" + r.id, customer: r.customer, issued: r.issued,
+        due: r.late ? r.due + " · " + r.late + "d late" : r.due,
+        dueColor: r.late ? "#d92d20" : "#737373",
+        status: chip[r.status].label, chipBg: chip[r.status].bg, chipColor: chip[r.status].color,
+        amount: this.fmt(r.amount),
+        balance: r.balance === 0 ? "—" : this.fmt(r.balance),
+        balColor: r.balance === 0 ? "#c9c9c9" : "#0a0a0a",
+        open: () => this.setState({ detailId: r.id })
+      })),
+
+      matrixRows,
+
+      composerOpen: s.composerOpen,
+      openComposer: () => this.setState({ composerOpen: true }),
+      closeComposer: () => this.setState({ composerOpen: false }),
+      cCustomer: s.cCustomer,
+      onCCustomer: (e) => this.setState({ cCustomer: e.target.value }),
+      cLines: s.cLines.map((l, i) => ({
+        ...l,
+        total: this.fmt((parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0)),
+        onDesc: (e) => { const v = e.target.value; this.setState(st => ({ cLines: st.cLines.map((x, j) => j === i ? { ...x, desc: v } : x) })); },
+        onQty: (e) => { const v = e.target.value; this.setState(st => ({ cLines: st.cLines.map((x, j) => j === i ? { ...x, qty: v } : x) })); },
+        onRate: (e) => { const v = e.target.value; this.setState(st => ({ cLines: st.cLines.map((x, j) => j === i ? { ...x, rate: v } : x) })); }
+      })),
+      addLine: () => this.setState(st => ({ cLines: [...st.cLines, { desc: "", qty: "1", rate: "0" }] })),
+      cSubtotal: "$" + subtotal.toLocaleString("en-US", { minimumFractionDigits: 2 }),
+      saveDraft: () => this.setState(st => ({
+        composerOpen: false,
+        invoices: [{ id: "1045", customer: st.cCustomer, issued: "Jun 11", due: "Jul 11", status: "draft", amount: subtotal, balance: subtotal }, ...st.invoices]
+      })),
+      sendInvoice: () => this.setState(st => ({
+        composerOpen: false, tab: "open",
+        invoices: [{ id: "1045", customer: st.cCustomer, issued: "Jun 11", due: "Jul 11", status: "open", amount: subtotal, balance: subtotal }, ...st.invoices]
+      })),
+
+      detailOpen: !!det,
+      closeDetail: () => this.setState({ detailId: null }),
+      dNum: det ? "#" + det.id : "",
+      dCustomer: det ? det.customer : "",
+      dStatus: det ? chip[det.status].label : "",
+      dChipBg: det ? chip[det.status].bg : "",
+      dChipColor: det ? chip[det.status].color : "",
+      dAmount: det ? this.fmt(det.amount) : "",
+      dTimeline: timeline,
+      dOverdue: !!(det && det.status === "overdue"),
+      dOverdueNote: det && det.late ? det.late + " days past due. A polite reminder usually gets these paid within a week." : ""
+    };
+  }
+}
+</script>
+</body>
+</html>

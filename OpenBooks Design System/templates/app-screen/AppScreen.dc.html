@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="App screen" description="OpenBooks app shell — sidebar, page header, and an empty content area to build a screen on" -->
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="display: flex; height: 100vh; background: #ffffff; font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; font-size: 14px; color: #252525;">
+  <x-import component-from-global-scope="OpenBooksDesignSystem_8d97bf.SideNav" items="{{ navItems }}" active-id="dashboard" footer-items="{{ footerItems }}" hint-size="232px,100%"></x-import>
+  <main style="flex: 1; overflow-y: auto;">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 24px 32px 48px; display: flex; flex-direction: column; gap: 20px;">
+      <x-import component-from-global-scope="OpenBooksDesignSystem_8d97bf.PageHeader" title="Business at a glance" description="Jun 10, 2026 · All accounts synced 12 minutes ago" hint-size="100%,52px"></x-import>
+      <x-import component-from-global-scope="OpenBooksDesignSystem_8d97bf.AskAI" suggestions="{{ askSuggestions }}" hint-size="100%,80px"></x-import>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+        <x-import component-from-global-scope="OpenBooksDesignSystem_8d97bf.StatCard" label="Total balance" value="$128.4K" detail="3 connected accounts" icon="landmark" trend="Synced" trend-variant="info" hint-size="100%,130px"></x-import>
+        <x-import component-from-global-scope="OpenBooksDesignSystem_8d97bf.StatCard" label="Income MTD" value="$42.8K" detail="Stripe and ACH sources" icon="arrow-up-right" trend="+18%" trend-variant="positive" hint-size="100%,130px"></x-import>
+        <x-import component-from-global-scope="OpenBooksDesignSystem_8d97bf.StatCard" label="Expenses MTD" value="$19.6K" detail="Software, contractors, fees" icon="arrow-down-right" trend="−4%" trend-variant="positive" hint-size="100%,130px"></x-import>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: center; min-height: 260px; border: 1px dashed #e4e4e4; border-radius: 14px; color: #8e8e8e; font-size: 14px;">Build your screen content here — cards, tables, and charts from the OpenBooks design system.</div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      navItems: [
+        { id: "dashboard", label: "Dashboard", icon: "layout-dashboard" },
+        { id: "inbox", label: "Inbox", icon: "inbox", count: 3 },
+        { section: "Money" },
+        { id: "transactions", label: "Transactions", icon: "receipt" },
+        { id: "income", label: "Income", icon: "arrow-up-right" },
+        { id: "expenses", label: "Expenses", icon: "arrow-down-right" },
+        { id: "cashflow", label: "Cash flow", icon: "chart-column" },
+        { section: "Insights" },
+        { id: "reports", label: "Reports", icon: "file-text" },
+      ],
+      footerItems: [{ id: "settings", label: "Settings", icon: "settings" }],
+      askSuggestions: [
+        "How much did I spend on software in May?",
+        "What's my runway at current burn?",
+        "Which receivables are overdue?",
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+
+> openbooks@0.0.0 verify /Users/ansarullahanas/Documents/OpenBooks
+> pnpm typecheck && pnpm lint && pnpm build && pnpm test:unit
+
+
+> openbooks@0.0.0 typecheck /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web typecheck
+
+
+> @openbooks/web@0.1.0 typecheck /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> tsc --noEmit
+
+
+> openbooks@0.0.0 lint /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web lint
+
+
+> @openbooks/web@0.1.0 lint /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> eslint
+
+
+> openbooks@0.0.0 build /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web build
+
+
+> @openbooks/web@0.1.0 build /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> next build
+
+▲ Next.js 16.2.7 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 1282ms
+  Running TypeScript ...
+  Finished TypeScript in 1367ms ...
+  Collecting page data using 5 workers ...
+  Generating static pages using 5 workers (0/4) ...
+  Generating static pages using 5 workers (1/4) 
+  Generating static pages using 5 workers (2/4) 
+  Generating static pages using 5 workers (3/4) 
+✓ Generating static pages using 5 workers (4/4) in 177ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+└ ○ /_not-found
+
+
+○  (Static)  prerendered as static content
+
+
+> openbooks@0.0.0 test:unit /Users/ansarullahanas/Documents/OpenBooks
+> vitest run --passWithNoTests
+
+
+ RUN  v4.1.8 /Users/ansarullahanas/Documents/OpenBooks
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  01:12:59
+   Duration  108ms (transform 9ms, setup 0ms, import 15ms, tests 1ms, environment 23ms)
+

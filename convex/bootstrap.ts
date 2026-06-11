@@ -4,7 +4,7 @@ import { v } from "convex/values";
 export const health = query({
   handler: () => ({
     status: "ready",
-    service: "ottex-ai-accounting",
+    service: "openbooks",
   }),
 });
 
@@ -37,7 +37,7 @@ export const ensureWorkspace = mutation({
 
     await ctx.db.insert("workspaceSettings", {
       workspaceId,
-      appName: "Ottex AI Accounting",
+      appName: "OpenBooks",
       defaultCurrency: "USD",
       fiscalYearStartMonth: 1,
       updatedAt: now,
@@ -55,4 +55,3 @@ export const ensureWorkspace = mutation({
     return workspaceId;
   },
 });
-

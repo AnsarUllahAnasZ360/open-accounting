@@ -1,0 +1,80 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Core" subtitle="Button, Badge, Card, Tabs, Icon" -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+</head>
+<body style="margin:0;padding:16px;background:var(--surface-page);">
+<div id="root"></div>
+<script type="text/babel">
+const { Button, Badge, Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent, Tabs, TabsList, TabsTrigger, TabsContent, Icon } = window.OpenBooksDesignSystem_8d97bf;
+
+function Demo() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <Button icon="plus">Add transaction</Button>
+        <Button variant="outline" icon="download">Export</Button>
+        <Button variant="secondary">Run report</Button>
+        <Button variant="ghost">Cancel</Button>
+        <Button variant="destructive" icon="trash-2">Delete rule</Button>
+        <Button variant="link">View all</Button>
+        <Button variant="outline" size="icon" icon="ellipsis" aria-label="More"></Button>
+        <Button size="sm" icon="refresh-cw">Sync</Button>
+        <Button disabled>Posting…</Button>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <Badge variant="positive" icon="circle-check">Posted</Badge>
+        <Badge variant="warning" icon="circle-alert">Needs review</Badge>
+        <Badge variant="ai" icon="sparkles">Categorized by AI</Badge>
+        <Badge variant="info">Synced</Badge>
+        <Badge variant="outline">Ready</Badge>
+        <Badge variant="secondary">Match</Badge>
+        <Badge variant="negative">Overdue</Badge>
+        <Badge variant="default">New</Badge>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Profit &amp; Loss</CardTitle>
+            <CardDescription>Jan 1 – Jun 10, 2026</CardDescription>
+            <CardAction><Button variant="ghost" size="icon-sm" icon="ellipsis" aria-label="More"></Button></CardAction>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="review">
+              <TabsList>
+                <TabsTrigger value="review">Needs review</TabsTrigger>
+                <TabsTrigger value="ready">Ready</TabsTrigger>
+                <TabsTrigger value="posted">Posted</TabsTrigger>
+              </TabsList>
+              <TabsContent value="review">14 transactions need owner context.</TabsContent>
+              <TabsContent value="ready">High-confidence proposals appear here.</TabsContent>
+              <TabsContent value="posted">Posted entries after ledger validation.</TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>Icons — lucide, 2px stroke</CardTitle>
+            <CardDescription>currentColor; 16px inline, 18–20px nav</CardDescription>
+          </CardHeader>
+          <CardContent style={{ display: "flex", flexWrap: "wrap", gap: 12, color: "var(--text-secondary)" }}>
+            {["landmark","banknote","wallet","credit-card","receipt","inbox","sparkles","chart-column","chart-line","chart-pie","trending-up","arrow-up-right","arrow-down-right","circle-alert","circle-check","shield-check","search","calendar","funnel","tag","settings","file-text","layout-dashboard","scale","book-open","zap"].map((n) => (
+              <Icon key={n} name={n} size={18} />
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+</script>
+</body>
+</html>

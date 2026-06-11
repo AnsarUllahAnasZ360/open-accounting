@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:14px; color:#0a0a0a; line-height:1.5; padding:24px 28px 40px; max-width:1200px; margin:0 auto; display:flex; flex-direction:column; gap:16px;">
+
+  <!-- Page header -->
+  <div style="display:flex; align-items:center; gap:12px; min-height:40px;">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em; line-height:1.2;">{{ pageTitle }}</div>
+      <div style="font-size:13px; color:#737373;">{{ pageSub }}</div>
+    </div>
+    <div style="flex:1;"></div>
+    <sc-if value="{{ notAllMode }}" hint-placeholder-val="{{ true }}">
+      <div style="position:relative; flex-shrink:0;">
+        <button onClick="{{ togglePeriod }}" style="display:flex; align-items:center; gap:7px; height:34px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; color:#0a0a0a; white-space:nowrap;" style-hover="background:#f5f5f5;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path></svg>
+          <span>{{ periodLabel }}</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+        </button>
+        <sc-if value="{{ periodMenuOpen }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ closePeriodMenu }}" style="position:fixed; inset:0; z-index:40;"></div>
+          <div style="position:absolute; top:calc(100% + 4px); right:0; z-index:50; width:{{ menuWidth }}; background:#ffffff; border-radius:12px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 4px 6px -1px rgba(0,0,0,0.08), 0 10px 24px -8px rgba(0,0,0,0.1); padding:6px; display:flex; gap:6px;">
+            <div style="display:flex; flex-direction:column; gap:1px; min-width:152px;">
+              <sc-for list="{{ periodOptions }}" as="po" hint-placeholder-count="4">
+                <button onClick="{{ po.pick }}" style="width:100%; display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:7px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; text-align:left; color:#0a0a0a;" style-hover="background:#f5f5f5;">
+                  <span style="flex:1;">{{ po.label }}</span>
+                  <sc-if value="{{ po.active }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2ca01c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+                </button>
+              </sc-for>
+              <div style="height:1px; background:#f0f0f0; margin:4px 6px;"></div>
+              <button onClick="{{ toggleCustom }}" style="width:100%; display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:7px; border:none; cursor:pointer; font-family:inherit; font-size:13px; text-align:left; background:{{ customBtnBg }}; color:{{ customBtnColor }}; font-weight:{{ customBtnWeight }};" style-hover="background:#f5f5f5;">
+                <span style="flex:1;">Custom range…</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+              </button>
+            </div>
+            <sc-if value="{{ customOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="border-left:1px solid #f0f0f0; padding:8px 10px 10px; display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; gap:18px;">
+                  <sc-for list="{{ calMonths }}" as="cal" hint-placeholder-count="2">
+                    <div style="width:182px;">
+                      <div style="font-size:12px; font-weight:600; text-align:center; margin-bottom:6px;">{{ cal.name }}</div>
+                      <div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:1px; font-size:9.5px; color:#a3a3a3; text-align:center; margin-bottom:3px;">
+                        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                      </div>
+                      <div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:1px;">
+                        <sc-for list="{{ cal.cells }}" as="dd" hint-placeholder-count="35">
+                          <button onClick="{{ dd.pick }}" disabled="{{ dd.blank }}" style="height:24px; border-radius:{{ dd.radius }}; border:none; cursor:{{ dd.cursor }}; font-family:'Geist Mono',ui-monospace,monospace; font-size:11px; background:{{ dd.bg }}; color:{{ dd.color }}; font-weight:{{ dd.weight }};" style-hover="background:{{ dd.hoverBg }};">{{ dd.n }}</button>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; border-top:1px solid #f0f0f0; padding-top:8px;">
+                  <span style="font-size:12px; color:#737373; flex:1;">{{ customSelLabel }}</span>
+                  <button onClick="{{ closePeriodMenu }}" style="height:28px; padding:0 11px; border-radius:8px; border:1px solid #e5e5e5; background:#ffffff; color:#525252; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#f5f5f5;">Cancel</button>
+                  <button onClick="{{ applyCustom }}" disabled="{{ customApplyDisabled }}" style="height:28px; padding:0 13px; border-radius:8px; border:none; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500; background:{{ applyBg }}; color:#ffffff;" style-hover="background:{{ applyHoverBg }};">Apply</button>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- ======== ALL-ENTITIES MODE ======== -->
+  <sc-if value="{{ allMode }}" hint-placeholder-val="{{ false }}">
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:20px 24px;">
+      <div style="font-size:13px; font-weight:500; color:#737373;">Cash across all businesses</div>
+      <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:36px; font-weight:600; letter-spacing:-0.01em; margin-top:2px;">$131,883.16</div>
+      <div style="font-size:12.5px; color:#737373; margin-top:2px;">2 businesses · 4 accounts · all synced within 2 days</div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+      <sc-for list="{{ allEntityCards }}" as="ec" hint-placeholder-count="2">
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; align-items:center; gap:9px;">
+            <span style="width:24px; height:24px; border-radius:7px; background:{{ ec.bg }}; color:{{ ec.fg }}; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:600;">{{ ec.initial }}</span>
+            <span style="font-weight:600; font-size:14.5px;">{{ ec.name }}</span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+            <div><div style="font-size:11.5px; color:#737373;">Cash</div><div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:15px; font-weight:600;">{{ ec.cash }}</div></div>
+            <div><div style="font-size:11.5px; color:#737373;">Net this month</div><div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:15px; font-weight:600; color:#248716;">{{ ec.net }}</div></div>
+            <div><div style="font-size:11.5px; color:#737373;">Inbox</div><div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:15px; font-weight:600;">{{ ec.inbox }}</div></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size:12.5px; color:#737373; padding:2px 4px;">Registers and reports are kept per business — switch to one from the sidebar for full books. Combined reporting is on the roadmap.</div>
+  </sc-if>
+
+  <!-- ======== SINGLE-ENTITY MODE ======== -->
+  <sc-if value="{{ notAllMode }}" hint-placeholder-val="{{ true }}">
+
+    <!-- 1 · Cash hero -->
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:20px 24px;">
+      <div style="display:flex; gap:24px; align-items:flex-start;">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:13px; font-weight:500; color:#737373;">Cash position</div>
+          <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:36px; font-weight:600; letter-spacing:-0.01em; margin-top:2px;">{{ cashTotal }}</div>
+          <div style="font-size:12.5px; color:#737373; margin-top:2px;">{{ cashSub }}</div>
+        </div>
+        <svg width="280" height="64" viewBox="0 0 280 64" style="flex-shrink:0; margin-top:6px;">
+          <path d="{{ sparkPath }}" fill="none" stroke="#2ca01c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="{{ sparkFill }}" fill="#2ca01c" opacity="0.07" stroke="none"></path>
+        </svg>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
+        <sc-for list="{{ accounts }}" as="acc" hint-placeholder-count="3">
+          <div title="{{ acc.tip }}" style="display:flex; align-items:center; gap:9px; padding:8px 12px; border-radius:10px; border:1px solid #ececec; background:#fafafa; flex-shrink:0; white-space:nowrap;">
+            <span style="width:24px; height:24px; border-radius:6px; background:{{ acc.logoBg }}; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; flex-shrink:0;">{{ acc.logo }}</span>
+            <span style="font-size:12.5px; font-weight:500; white-space:nowrap;">{{ acc.name }}</span>
+            <span style="font-size:11.5px; color:#a3a3a3; font-family:'Geist Mono',ui-monospace,monospace;">{{ acc.mask }}</span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px; font-weight:600; color:{{ acc.balColor }};">{{ acc.balance }}</span>
+            <sc-if value="{{ acc.stale }}" hint-placeholder-val="{{ false }}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#b54708" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4 M12 16h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- Row: P&L · Expense donut · Inbox -->
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;">
+
+      <!-- 2 · P&L snapshot -->
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-size:13.5px; font-weight:600;">Profit &amp; loss</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; font-size:13px;"><span style="color:#525252;">Income</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600; color:#248716;">{{ plIncome }}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:13px;"><span style="color:#525252;">Expenses</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600;">{{ plExpenses }}</span></div>
+        </div>
+        <div style="border-top:1px solid #f0f0f0; padding-top:10px;">
+          <div style="font-size:12px; color:#737373;">Net profit</div>
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:24px; font-weight:600; letter-spacing:-0.01em;">{{ plNet }}</span>
+            <span style="font-size:12px; font-weight:500; color:{{ plDeltaColor }};">{{ plDelta }}</span>
+          </div>
+        </div>
+        <div style="display:flex; align-items:flex-end; gap:8px; height:48px; margin-top:auto;">
+          <sc-for list="{{ plBars }}" as="b" hint-placeholder-count="6">
+            <div style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">
+              <div style="display:flex; align-items:flex-end; gap:2px; height:38px;">
+                <div style="width:7px; border-radius:3px 3px 0 0; background:#2ca01c; height:{{ b.inH }};"></div>
+                <div style="width:7px; border-radius:3px 3px 0 0; background:#cbd2d9; height:{{ b.outH }};"></div>
+              </div>
+              <div style="font-size:9.5px; color:#a3a3a3;">{{ b.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- 6 · Expense donut -->
+      <div onClick="{{ goReports }}" style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:10px; cursor:pointer; transition:box-shadow 120ms ease-out;" style-hover="box-shadow:0 0 0 1px rgba(10,10,10,0.16), 0 1px 3px rgba(0,0,0,0.07);">
+        <div style="font-size:13.5px; font-weight:600;">Where money went</div>
+        <div style="display:flex; gap:16px; align-items:center;">
+          <svg width="104" height="104" viewBox="0 0 104 104" style="flex-shrink:0;">
+            <sc-for list="{{ donutSegs }}" as="seg" hint-placeholder-count="5">
+              <circle cx="52" cy="52" r="40" fill="none" stroke="{{ seg.color }}" stroke-width="13" stroke-dasharray="{{ seg.dash }}" stroke-dashoffset="{{ seg.offset }}" transform="rotate(-90 52 52)"></circle>
+            </sc-for>
+            <text x="52" y="49" text-anchor="middle" style="font-family:'Geist Mono',ui-monospace,monospace; font-size:13px; font-weight:600; fill:#0a0a0a;">{{ donutTotal }}</text>
+            <text x="52" y="63" text-anchor="middle" style="font-family:'Geist',sans-serif; font-size:9px; fill:#737373;">spent</text>
+          </svg>
+          <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:5px;">
+            <sc-for list="{{ donutLegend }}" as="lg" hint-placeholder-count="5">
+              <div style="display:flex; align-items:center; gap:7px; font-size:11.5px;">
+                <span style="width:8px; height:8px; border-radius:3px; background:{{ lg.color }}; flex-shrink:0;"></span>
+                <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#525252;">{{ lg.name }}</span>
+                <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:500;">{{ lg.amount }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 · Inbox status -->
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-size:13.5px; font-weight:600;">Inbox</div>
+        <sc-if value="{{ hasInboxItems }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; align-items:baseline; gap:7px;">
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:30px; font-weight:600; letter-spacing:-0.01em;">{{ inboxCount }}</span>
+            <span style="font-size:13px; color:#525252;">items need you</span>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:5px;">
+            <sc-for list="{{ inboxBreakdown }}" as="ib" hint-placeholder-count="4">
+              <span style="display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:9999px; background:#f5f5f5; font-size:11px; color:#525252;">{{ ib.label }} <span style="font-weight:600; color:#0a0a0a;">{{ ib.n }}</span></span>
+            </sc-for>
+          </div>
+          <button onClick="{{ goInbox }}" style="margin-top:auto; height:32px; border-radius:9px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; transition:background 120ms ease-out;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Open inbox</button>
+        </sc-if>
+        <sc-if value="{{ inboxZero }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; flex:1; padding:12px 0; text-align:center;">
+            <span style="width:36px; height:36px; border-radius:9999px; background:#f1f8ee; display:flex; align-items:center; justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>
+            <div style="font-size:13px; font-weight:500;">Books up to date</div>
+            <div style="font-size:12px; color:#737373;">94% automated this month</div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <!-- Row: AR · AP · Payroll -->
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;">
+
+      <!-- 4 · Money owed to you -->
+      <div onClick="{{ goInvoices }}" style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:11px; cursor:pointer; transition:box-shadow 120ms ease-out;" style-hover="box-shadow:0 0 0 1px rgba(10,10,10,0.16), 0 1px 3px rgba(0,0,0,0.07);">
+        <div style="display:flex; align-items:baseline; gap:8px;">
+          <span style="font-size:13.5px; font-weight:600; white-space:nowrap;">Owed to you</span>
+          <span style="font-size:11px; color:#a3a3a3;">A/R</span>
+        </div>
+        <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:24px; font-weight:600; letter-spacing:-0.01em;">{{ arTotal }}</div>
+        <div style="display:flex; height:8px; border-radius:9999px; overflow:hidden; gap:2px;">
+          <sc-for list="{{ arAging }}" as="seg" hint-placeholder-count="4">
+            <div title="{{ seg.tip }}" style="background:{{ seg.color }}; width:{{ seg.w }};"></div>
+          </sc-for>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:10px; color:#a3a3a3;"><span>0–30</span><span>31–60</span><span>61–90</span><span>90+</span></div>
+        <div style="display:flex; flex-direction:column; gap:7px; margin-top:2px;">
+          <sc-for list="{{ arOverdue }}" as="inv" hint-placeholder-count="3">
+            <div style="display:flex; align-items:center; gap:8px; font-size:12.5px;">
+              <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ inv.customer }}</span>
+              <span style="color:#d92d20; font-size:11.5px;">{{ inv.late }}</span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:500;">{{ inv.amount }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- 5 · Money you owe -->
+      <div onClick="{{ goBills }}" style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:11px; cursor:pointer; transition:box-shadow 120ms ease-out;" style-hover="box-shadow:0 0 0 1px rgba(10,10,10,0.16), 0 1px 3px rgba(0,0,0,0.07);">
+        <div style="display:flex; align-items:baseline; gap:8px;">
+          <span style="font-size:13.5px; font-weight:600; white-space:nowrap;">You owe</span>
+          <span style="font-size:11px; color:#a3a3a3;">A/P</span>
+        </div>
+        <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:24px; font-weight:600; letter-spacing:-0.01em;">{{ apTotal }}</div>
+        <div style="font-size:12px; color:#737373;">{{ apSub }}</div>
+        <div style="display:flex; flex-direction:column; gap:7px; margin-top:2px;">
+          <sc-for list="{{ apNext }}" as="bill" hint-placeholder-count="3">
+            <div style="display:flex; align-items:center; gap:8px; font-size:12.5px;">
+              <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ bill.vendor }}</span>
+              <span style="color:#737373; font-size:11.5px;">{{ bill.due }}</span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:500;">{{ bill.amount }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- 9 · Payroll -->
+      <div onClick="{{ goPayroll }}" style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:11px; cursor:pointer; transition:box-shadow 120ms ease-out;" style-hover="box-shadow:0 0 0 1px rgba(10,10,10,0.16), 0 1px 3px rgba(0,0,0,0.07);">
+        <div style="font-size:13.5px; font-weight:600;">Payroll</div>
+        <div>
+          <div style="font-size:12px; color:#737373;">Last run · {{ payrollLastDate }}</div>
+          <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:24px; font-weight:600; letter-spacing:-0.01em;">{{ payrollTotal }}</div>
+          <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12px; color:#525252; margin-top:3px;">{{ payrollCurrencies }}</div>
+        </div>
+        <div style="margin-top:auto; display:flex; align-items:center; gap:7px; font-size:12.5px; color:#525252;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path></svg>
+          Next run {{ payrollNext }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Row: Income by customer · Cash flow -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+
+      <!-- 7 · Income by customer -->
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-size:13.5px; font-weight:600;">Income by customer</div>
+        <div style="display:flex; flex-direction:column; gap:9px;">
+          <sc-for list="{{ topCustomers }}" as="c" hint-placeholder-count="5">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="width:110px; min-width:110px; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ c.name }}</span>
+              <div style="flex:1; height:14px; border-radius:4px; background:#f5f5f5; overflow:hidden;">
+                <div style="height:100%; border-radius:4px; background:#2ca01c; opacity:{{ c.opacity }}; width:{{ c.w }};"></div>
+              </div>
+              <span style="width:64px; text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12px; font-weight:500;">{{ c.amount }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ showConcentration }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; align-items:center; gap:8px; padding:8px 11px; border-radius:9px; background:#fffaeb; font-size:12px; color:#b54708;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 8v4 M12 16h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+            {{ concentrationNote }}
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- 8 · Cash flow -->
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:13.5px; font-weight:600; flex:1;">Cash flow</span>
+          <span style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#737373;"><span style="width:8px; height:8px; border-radius:3px; background:#2ca01c;"></span>In</span>
+          <span style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#737373;"><span style="width:8px; height:8px; border-radius:3px; background:#cbd2d9;"></span>Out</span>
+        </div>
+        <div style="display:flex; align-items:flex-end; gap:14px; height:110px; padding:0 4px;">
+          <sc-for list="{{ cfBars }}" as="m" hint-placeholder-count="6">
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <div style="display:flex; align-items:flex-end; gap:3px; height:88px;">
+                <div title="{{ m.inTip }}" style="width:13px; border-radius:4px 4px 0 0; background:#2ca01c; height:{{ m.inH }};"></div>
+                <div title="{{ m.outTip }}" style="width:13px; border-radius:4px 4px 0 0; background:#cbd2d9; height:{{ m.outH }};"></div>
+              </div>
+              <div style="font-size:10.5px; color:#a3a3a3;">{{ m.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex; align-items:center; gap:7px; font-size:12px; color:#525252; border-top:1px solid #f0f0f0; padding-top:10px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 7 13.5 15.5 8.5 10.5 2 17 M16 7h6v6"></path></svg>
+          Net positive every month this year · avg <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600; color:#248716;">{{ cfAvgNet }}</span> /mo
+        </div>
+      </div>
+    </div>
+
+    <!-- Row: Cash cushion · Books health · Coming up -->
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;">
+
+      <!-- 11 · Cash cushion -->
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:11px;">
+        <div style="display:flex; align-items:baseline; gap:8px;">
+          <span style="font-size:13.5px; font-weight:600;">Cash cushion</span>
+          <span style="font-size:11px; color:#a3a3a3;">if income stopped today</span>
+        </div>
+        <div style="display:flex; align-items:baseline; gap:6px;">
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:24px; font-weight:600; letter-spacing:-0.01em;">{{ cushionMonths }}</span>
+          <span style="font-size:13px; color:#525252;">months of expenses in the bank</span>
+        </div>
+        <div style="display:flex; height:8px; border-radius:9999px; overflow:hidden; gap:2px;">
+          <sc-for list="{{ cushionSegs }}" as="cs" hint-placeholder-count="4">
+            <div style="flex:1; background:{{ cs.c }};"></div>
+          </sc-for>
+        </div>
+        <div style="font-size:12px; color:#737373;">{{ cushionNote }}</div>
+      </div>
+
+      <!-- 12 · Books health -->
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:11px;">
+        <div style="font-size:13.5px; font-weight:600;">Books health</div>
+        <div>
+          <div style="display:flex; justify-content:space-between; font-size:12px; color:#525252; margin-bottom:5px;">
+            <span>Automated this month</span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600; color:#17540f;">94%</span>
+          </div>
+          <div style="height:8px; border-radius:9999px; background:#f0f0f0; overflow:hidden;"><div style="height:100%; width:94%; border-radius:9999px; background:#2ca01c;"></div></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:#525252;">
+          <div style="display:flex; justify-content:space-between;"><span>Awaiting your approval</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600; color:#b54708;">7</span></div>
+          <div style="display:flex; justify-content:space-between;"><span>Oldest unreviewed</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600;">3 days</span></div>
+          <div style="display:flex; justify-content:space-between;"><span>Books closed through</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600;">Apr 2026</span></div>
+        </div>
+        <button onClick="{{ goReports }}" style="margin-top:auto; display:flex; align-items:center; justify-content:center; gap:6px; height:30px; border-radius:9px; border:1px solid #e5e5e5; background:#ffffff; color:#0a0a0a; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">Close May 2026 →</button>
+      </div>
+
+      <!-- 13 · Coming up -->
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; align-items:baseline; gap:8px;">
+          <span style="font-size:13.5px; font-weight:600;">Coming up</span>
+          <span style="font-size:11px; color:#a3a3a3;">next 30 days</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:7px;">
+          <sc-for list="{{ upcoming }}" as="u" hint-placeholder-count="5">
+            <div style="display:flex; align-items:center; gap:8px; font-size:12.5px;">
+              <span style="width:7px; height:7px; border-radius:9999px; background:{{ u.dot }}; flex-shrink:0;"></span>
+              <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ u.label }}</span>
+              <span style="color:#a3a3a3; font-size:11.5px;">{{ u.when }}</span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:500; color:{{ u.color }};">{{ u.amount }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:auto; display:flex; align-items:center; gap:7px; font-size:12px; color:#525252; border-top:1px solid #f0f0f0; padding-top:9px;">
+          Expected net impact <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600; color:{{ upcomingNetColor }};">{{ upcomingNet }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10 · Activity feed -->
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px;">
+      <div style="font-size:13.5px; font-weight:600; margin-bottom:12px;">Activity</div>
+      <div style="display:flex; flex-direction:column;">
+        <sc-for list="{{ activity }}" as="a" hint-placeholder-count="5">
+          <div style="display:flex; align-items:center; gap:11px; padding:9px 6px; border-radius:8px; cursor:default; transition:background 120ms ease-out;" style-hover="background:#fafafa;">
+            <span style="width:26px; height:26px; border-radius:8px; background:{{ a.iconBg }}; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{ a.iconColor }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ a.d }}"></path></svg>
+            </span>
+            <span style="flex:1; min-width:0; font-size:13px;">{{ a.text }}</span>
+            <span style="font-size:11.5px; color:#a3a3a3; flex-shrink:0;">{{ a.when }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { rangeKey: "this", periodMenuOpen: false, customOpen: false, selStart: null, selEnd: null, custom: null };
+
+  pickDay(serial) {
+    this.setState(st => {
+      if (!st.selStart || (st.selStart && st.selEnd)) return { selStart: serial, selEnd: null };
+      if (serial < st.selStart) return { selStart: serial, selEnd: st.selStart };
+      return { selEnd: serial };
+    });
+  }
+
+  serialLabel(serial) {
+    const m = Math.floor(serial / 100), dd = serial % 100;
+    return (m === 5 ? "May " : "Jun ") + dd;
+  }
+
+  fmt(n, opts) {
+    const o = opts || {};
+    const sign = n < 0 ? "-" : (o.plus ? "+" : "");
+    const abs = Math.abs(n);
+    const str = abs.toLocaleString("en-US", { minimumFractionDigits: o.cents ? 2 : 0, maximumFractionDigits: o.cents ? 2 : 0 });
+    return sign + "$" + str;
+  }
+
+  data() {
+    const entityId = this.props.entityId || "z360";
+    if (entityId === "crescent") {
+      return {
+        cashTotal: 24118.06, cashSub: "1 bank account · Crescent Studio LLC",
+        accounts: [
+          { name: "Relay Checking", mask: "····2210", balance: 24118.06, logo: "RL", logoBg: "#0f3a5e", stale: false }
+        ],
+        spark: [19.2, 19.6, 19.1, 20.4, 20.2, 21.0, 21.8, 21.4, 22.3, 22.0, 22.8, 23.4, 23.1, 24.1],
+        pl: {
+          this: { income: 8400, expenses: 5210, net: 3190, delta: "▲ 12% vs. same point in May", up: true },
+          last: { income: 16800, expenses: 11240, net: 5560, delta: "▲ 4% vs. April", up: true }
+        },
+        plBars: [[12.1, 9.4], [13.0, 10.2], [14.4, 9.8], [16.1, 10.7], [16.8, 11.2], [8.4, 5.2]],
+        donut: {
+          this: { total: 5210, cats: [["Contractors", 2400], ["Software & SaaS", 610], ["Marketing & Ads", 850], ["Office & Supplies", 320], ["Payment fees", 180], ["Other", 850]] },
+          last: { total: 11240, cats: [["Contractors", 5200], ["Software & SaaS", 1320], ["Marketing & Ads", 1980], ["Office & Supplies", 690], ["Payment fees", 390], ["Other", 1660]] }
+        },
+        ar: { total: 5600, aging: [3200, 2400, 0, 0], overdue: [{ customer: "Dune Hospitality", late: "9 days late", amount: 2400 }] },
+        ap: { total: 1150, sub: "2 bills open", next: [{ vendor: "Adobe", due: "due Jun 20", amount: 350 }, { vendor: "Print Partners", due: "due Jun 28", amount: 800 }] },
+        customers: { this: [["Dune Hospitality", 4200], ["Sona Café Group", 2100], ["Field & Frame", 1300], ["+ 2 others", 800]], last: [["Dune Hospitality", 8100], ["Sona Café Group", 4400], ["Field & Frame", 2700], ["+ 3 others", 1600]] },
+        cf: [[12.1, 9.4], [13.0, 10.2], [14.4, 9.8], [16.1, 10.7], [16.8, 11.2], [8.4, 5.2]],
+        cfAvgNet: 4280,
+        payroll: { last: "May 31", total: 4800, cur: "2 contractors · all USD", next: "Jun 30" },
+        upcoming: [
+          { label: "Stripe payouts (~weekly)", when: "ongoing", amount: 3800 },
+          { label: "Dune Hospitality invoice", when: "overdue", amount: 2400 },
+          { label: "Adobe", when: "Jun 20", amount: -350 },
+          { label: "Print Partners", when: "Jun 28", amount: -800 },
+          { label: "Contractor payroll", when: "Jun 30", amount: -4800 }
+        ],
+        activity: [
+          { kind: "ai", text: "AI categorized 6 transactions (avg confidence 97%)", when: "Tue" },
+          { kind: "invoice", text: "Invoice #214 paid by Sona Café Group — $2,100", when: "Jun 6" },
+          { kind: "rule", text: "Rule \u201CAdobe → Software & SaaS\u201D fired", when: "Jun 4" }
+        ]
+      };
+    }
+    return {
+      cashTotal: 107765.10, cashSub: "2 bank accounts · Z360 Labs LLC",
+      accounts: [
+        { name: "Mercury Checking", mask: "····4421", balance: 86420.18, logo: "M", logoBg: "#3b2fa3", stale: false },
+        { name: "Chase Business", mask: "····1187", balance: 21344.92, logo: "CH", logoBg: "#0a4386", stale: true, tip: "Last synced 2 days ago — Chase needs you to sign in again" },
+        { name: "Amex Business", mask: "····9901", balance: -4212.55, logo: "AX", logoBg: "#1d6bb5", stale: false, credit: true }
+      ],
+      spark: [82.4, 84.1, 83.2, 86.0, 85.1, 88.3, 87.2, 90.4, 92.8, 91.6, 95.2, 97.8, 96.4, 100.2, 103.6, 102.1, 105.4, 107.8],
+      pl: {
+        this: { income: 21860, expenses: 13910, net: 7950, delta: "▲ 9% vs. same point in May", up: true },
+        last: { income: 52410, expenses: 38170, net: 14240, delta: "▼ 17% vs. April", up: false }
+      },
+      plBars: [[44.2, 31.0], [39.4, 33.1], [47.0, 35.2], [48.4, 31.4], [52.4, 38.2], [21.9, 13.9]],
+      donut: {
+        this: { total: 13910, cats: [["Payroll & Contractors", 7410], ["Cloud / Infrastructure", 1860], ["Software & SaaS", 1244], ["Marketing & Ads", 980], ["Payment fees", 312], ["Other", 2104]] },
+        last: { total: 38170, cats: [["Payroll & Contractors", 18200], ["Software & SaaS", 4836], ["Cloud / Infrastructure", 3210], ["Professional Services", 3800], ["Marketing & Ads", 2930], ["Other", 5194]] }
+      },
+      ar: { total: 23800, aging: [11200, 8400, 4200, 0], overdue: [
+        { customer: "Halpern Co", late: "14 days late", amount: 8400 },
+        { customer: "Meridian Health", late: "6 days late", amount: 4200 },
+        { customer: "Beacon Press", late: "2 days late", amount: 2400 }
+      ]},
+      ap: { total: 6890.40, sub: "3 bills open · $2,400 due this week", next: [
+        { vendor: "WeWork", due: "due Jun 15", amount: 2400 },
+        { vendor: "Amazon Web Services", due: "due Jun 18", amount: 1838.40 },
+        { vendor: "Figma (annual)", due: "due Jun 24", amount: 2652 }
+      ]},
+      customers: {
+        this: [["Halpern Co", 11400], ["Meridian Health", 4100], ["Beacon Press", 2900], ["Arclight Media", 1860], ["Tonal Labs", 1100], ["+ 4 others", 500]],
+        last: [["Halpern Co", 19980], ["Meridian Health", 9400], ["Beacon Press", 7100], ["Arclight Media", 5900], ["Tonal Labs", 4830], ["+ 6 others", 5200]]
+      },
+      cf: [[44.2, 31.0], [39.4, 33.1], [47.0, 35.2], [48.4, 31.4], [52.4, 38.2], [21.9, 13.9]],
+      cfAvgNet: 11910,
+      payroll: { last: "May 31", total: 17757, cur: "$6,000 · ₨2,140,000 · ₹344,000", next: "Jun 30" },
+      upcoming: [
+        { label: "Stripe payouts (~weekly)", when: "ongoing", amount: 16800 },
+        { label: "Arclight Media invoice #1040", when: "Jun 25", amount: 5400 },
+        { label: "Tonal Labs invoice #1037", when: "Jun 28", amount: 3400 },
+        { label: "WeWork rent", when: "Jun 15", amount: -2400 },
+        { label: "AWS usage bill", when: "~Jun 18", amount: -1838 },
+        { label: "Figma annual renewal", when: "Jun 24", amount: -2652 },
+        { label: "June payroll run", when: "Jun 30", amount: -17783 }
+      ],
+      activity: [
+        { kind: "ai", text: "AI categorized 23 transactions (avg confidence 96%)", when: "9:14 AM" },
+        { kind: "payout", text: "Stripe payout $4,180.55 reconciled — 14 payments − $61.20 fees", when: "Yesterday" },
+        { kind: "invoice", text: "Invoice #1042 paid by Arclight Media — $2,400", when: "Yesterday" },
+        { kind: "rule", text: "Rule \u201CAWS → Cloud / Infrastructure\u201D fired 3 times", when: "Mon" },
+        { kind: "payroll", text: "Payroll run for May marked paid — 6 people, 3 currencies", when: "Jun 2" }
+      ]
+    };
+  }
+
+  sparkPaths(values) {
+    const w = 280, h = 64, pad = 2;
+    const min = Math.min(...values), max = Math.max(...values);
+    const span = max - min || 1;
+    const pts = values.map((v, i) => {
+      const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+      const y = h - 6 - ((v - min) / span) * (h - 14);
+      return [x.toFixed(1), y.toFixed(1)];
+    });
+    const line = "M" + pts.map(p => p.join(",")).join(" L");
+    const fill = line + " L" + (w - pad) + "," + (h - 2) + " L" + pad + "," + (h - 2) + " Z";
+    return { line, fill };
+  }
+
+  renderVals() {
+    const entityId = this.props.entityId || "z360";
+    const onNavigate = this.props.onNavigate || (() => {});
+    const inboxCount = this.props.inboxCount != null ? this.props.inboxCount : 11;
+    const allMode = entityId === "all";
+    const d = this.data();
+    const s = this.state;
+    const key = s.rangeKey;
+
+    // ---- range aggregation over the monthly series (values in $k) ----
+    const series = d.plBars;
+    const agg = (fracs) => {
+      let inc = 0, exp = 0;
+      fracs.forEach(f => { inc += series[f.i][0] * 1000 * f.frac; exp += series[f.i][1] * 1000 * f.frac; });
+      return { inc: Math.round(inc), exp: Math.round(exp) };
+    };
+    const customFracs = () => {
+      const c = s.custom || { start: 501, end: 610 };
+      const out = [];
+      const sm = Math.floor(c.start / 100), sd = c.start % 100;
+      const em = Math.floor(c.end / 100), ed = c.end % 100;
+      if (sm === 5) { const last = em === 5 ? ed : 31; out.push({ i: 4, frac: (last - sd + 1) / 31 }); }
+      if (em === 6) { const first = sm === 6 ? sd : 1; const last = Math.min(ed, 10); if (last >= first) out.push({ i: 5, frac: (last - first + 1) / 10 }); }
+      return out;
+    };
+
+    let pl, donut, customers, rangeText;
+    if (key === "this" || key === "last") {
+      pl = d.pl[key]; donut = d.donut[key]; customers = d.customers[key];
+      rangeText = key === "this" ? "Jun 1 – 10, 2026" : "May 1 – 31, 2026";
+    } else {
+      let fracs, deltaStr = "", up = true;
+      if (key === "3mo") {
+        fracs = [{ i: 3, frac: 1 }, { i: 4, frac: 1 }, { i: 5, frac: 1 }];
+        const cur = agg(fracs), prior = agg([{ i: 0, frac: 1 }, { i: 1, frac: 1 }, { i: 2, frac: 1 }]);
+        const pct = Math.round(((cur.inc - cur.exp) - (prior.inc - prior.exp)) / Math.abs(prior.inc - prior.exp) * 100);
+        up = pct >= 0; deltaStr = (up ? "▲ " : "▼ ") + Math.abs(pct) + "% vs. prior 3 months";
+        rangeText = "Apr 1 – Jun 10, 2026";
+      } else if (key === "ytd") {
+        fracs = [0, 1, 2, 3, 4, 5].map(i => ({ i, frac: 1 }));
+        rangeText = "Jan 1 – Jun 10, 2026";
+      } else {
+        fracs = customFracs();
+        const c = s.custom || { start: 501, end: 610 };
+        rangeText = this.serialLabel(c.start) + " – " + this.serialLabel(c.end) + ", 2026";
+      }
+      const a = agg(fracs);
+      pl = { income: a.inc, expenses: a.exp, net: a.inc - a.exp, delta: deltaStr, up };
+      const ratio = a.exp / d.donut.last.total;
+      donut = { total: a.exp, cats: d.donut.last.cats.map(([n, v]) => [n, Math.max(10, Math.round(v * ratio / 10) * 10)]) };
+      const custBase = d.customers.last;
+      const custTotalBase = custBase.reduce((x, c) => x + c[1], 0);
+      const cRatio = a.inc / custTotalBase;
+      customers = custBase.map(([n, v]) => [n, Math.max(50, Math.round(v * cRatio / 10) * 10)]);
+    }
+
+    // donut segments
+    const C = 2 * Math.PI * 40;
+    const palette = ["#0e9384", "#475467", "#f79009", "#92cc7a", "#9da8b6", "#d7dce2"];
+    let acc = 0;
+    const donutSegs = donut.cats.map(([name, v], i) => {
+      const frac = v / donut.total;
+      const seg = {
+        color: palette[i % palette.length],
+        dash: (frac * C - 1.5).toFixed(2) + " " + (C - frac * C + 1.5).toFixed(2),
+        offset: (-acc * C).toFixed(2)
+      };
+      acc += frac;
+      return seg;
+    });
+    const donutLegend = donut.cats.slice(0, 5).map(([name, v], i) => ({
+      name, color: palette[i % palette.length],
+      amount: "$" + (v >= 10000 ? (v / 1000).toFixed(1) + "k" : v.toLocaleString("en-US"))
+    }));
+
+    // PL mini bars
+    const plMax = Math.max(...d.plBars.flat());
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+    const plBars = d.plBars.map(([i, o], idx) => ({
+      label: months[idx],
+      inH: Math.max(3, (i / plMax) * 38).toFixed(0) + "px",
+      outH: Math.max(3, (o / plMax) * 38).toFixed(0) + "px"
+    }));
+
+    // cash flow bars
+    const cfMax = Math.max(...d.cf.flat());
+    const cfBars = d.cf.map(([i, o], idx) => ({
+      label: months[idx],
+      inH: Math.max(4, (i / cfMax) * 88).toFixed(0) + "px",
+      outH: Math.max(4, (o / cfMax) * 88).toFixed(0) + "px",
+      inTip: "In $" + i.toFixed(1) + "k", outTip: "Out $" + o.toFixed(1) + "k"
+    }));
+
+    // AR aging
+    const agingColors = ["#92cc7a", "#f7c54c", "#f79009", "#d92d20"];
+    const agingTotal = d.ar.aging.reduce((a, b) => a + b, 0) || 1;
+    const arAging = d.ar.aging.map((v, i) => ({
+      color: v > 0 ? agingColors[i] : "#f0f0f0",
+      w: Math.max(3, (v / agingTotal) * 100).toFixed(1) + "%",
+      tip: ["0–30 days", "31–60 days", "61–90 days", "90+ days"][i] + ": " + this.fmt(v)
+    }));
+
+    // customers bars
+    const custMax = Math.max(...customers.map(c => c[1]));
+    const custTotal = customers.reduce((a, c) => a + c[1], 0);
+    const topShare = Math.round((customers[0][1] / custTotal) * 100);
+    const topCustomers = customers.map((c, i) => ({
+      name: c[0],
+      amount: "$" + (c[1] >= 10000 ? (c[1] / 1000).toFixed(1) + "k" : c[1].toLocaleString("en-US")),
+      w: Math.max(2, (c[1] / custMax) * 100).toFixed(1) + "%",
+      opacity: String(1 - i * 0.13)
+    }));
+
+    const iconMap = {
+      ai: { d: "M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z", bg: "#f1f8ee", color: "#1d6b12" },
+      payout: { d: "M12 2v20 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6", bg: "#eff8ff", color: "#175cd3" },
+      invoice: { d: "M20 6 9 17l-5-5", bg: "#f1f8ee", color: "#248716" },
+      rule: { d: "M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z", bg: "#f5f5f5", color: "#525252" },
+      payroll: { d: "M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0", bg: "#f5f5f5", color: "#525252" }
+    };
+    const activity = d.activity.map(a => ({ ...a, ...{ d: iconMap[a.kind].d, iconBg: iconMap[a.kind].bg, iconColor: iconMap[a.kind].color } }));
+
+    const sp = this.sparkPaths(d.spark);
+    const entityNames = { z360: "Z360 Labs LLC", crescent: "Crescent Studio LLC", all: "All entities" };
+
+    return {
+      pageTitle: allMode ? "All businesses" : "Dashboard",
+      pageSub: allMode ? "Combined view across your workspace" : entityNames[entityId] + " · " + rangeText,
+      allMode, notAllMode: !allMode,
+
+      // period / date range
+      periodLabel: ({ this: "This month", last: "Last month", "3mo": "Last 3 months", ytd: "Year to date" })[key] || rangeText.replace(", 2026", ""),
+      periodMenuOpen: s.periodMenuOpen,
+      togglePeriod: () => this.setState(st => ({ periodMenuOpen: !st.periodMenuOpen })),
+      closePeriodMenu: () => this.setState({ periodMenuOpen: false }),
+      periodOptions: [
+        { id: "this", label: "This month" },
+        { id: "last", label: "Last month" },
+        { id: "3mo", label: "Last 3 months" },
+        { id: "ytd", label: "Year to date" }
+      ].map(p => ({
+        label: p.label, active: key === p.id,
+        pick: () => this.setState({ rangeKey: p.id, periodMenuOpen: false, customOpen: false })
+      })),
+      menuWidth: s.customOpen ? "584px" : "172px",
+      customOpen: s.customOpen,
+      toggleCustom: () => this.setState(st => ({ customOpen: !st.customOpen })),
+      customBtnBg: key === "custom" || s.customOpen ? "#f1f8ee" : "transparent",
+      customBtnColor: key === "custom" || s.customOpen ? "#17540f" : "#0a0a0a",
+      customBtnWeight: key === "custom" ? "600" : "400",
+      calMonths: [
+        { name: "May 2026", m: 5, firstDow: 5, days: 31 },
+        { name: "June 2026", m: 6, firstDow: 1, days: 30 }
+      ].map(cal => {
+        const cells = [];
+        for (let b = 0; b < cal.firstDow; b++) cells.push({ n: "", blank: true, pick: () => {}, bg: "transparent", hoverBg: "transparent", color: "transparent", weight: "400", radius: "6px", cursor: "default" });
+        const lo = s.selStart && s.selEnd ? Math.min(s.selStart, s.selEnd) : s.selStart;
+        const hi = s.selStart && s.selEnd ? Math.max(s.selStart, s.selEnd) : s.selStart;
+        for (let dd = 1; dd <= cal.days; dd++) {
+          const serial = cal.m * 100 + dd;
+          const future = serial > 610;
+          const isEdge = serial === lo || serial === hi;
+          const inRange = lo && hi && serial > lo && serial < hi;
+          cells.push({
+            n: String(dd), blank: future,
+            pick: () => { if (!future) this.pickDay(serial); },
+            bg: isEdge ? "#2ca01c" : (inRange ? "#f1f8ee" : "transparent"),
+            hoverBg: isEdge ? "#2ca01c" : (future ? "transparent" : "#f0f0f0"),
+            color: future ? "#d4d4d4" : (isEdge ? "#ffffff" : (inRange ? "#17540f" : "#0a0a0a")),
+            weight: isEdge ? "600" : "400",
+            radius: "6px",
+            cursor: future ? "default" : "pointer"
+          });
+        }
+        return { name: cal.name, cells };
+      }),
+      customSelLabel: !s.selStart ? "Pick a start date" : (!s.selEnd ? this.serialLabel(s.selStart) + " — now pick an end date" : this.serialLabel(Math.min(s.selStart, s.selEnd)) + " – " + this.serialLabel(Math.max(s.selStart, s.selEnd))),
+      customApplyDisabled: !(s.selStart && s.selEnd),
+      applyBg: s.selStart && s.selEnd ? "#2ca01c" : "#d4d4d4",
+      applyHoverBg: s.selStart && s.selEnd ? "#248716" : "#d4d4d4",
+      applyCustom: () => {
+        if (!(s.selStart && s.selEnd)) return;
+        this.setState(st => ({
+          rangeKey: "custom",
+          custom: { start: Math.min(st.selStart, st.selEnd), end: Math.max(st.selStart, st.selEnd) },
+          periodMenuOpen: false, customOpen: false
+        }));
+      },
+
+      // all-entities
+      allEntityCards: [
+        { name: "Z360 Labs LLC", initial: "Z", bg: "#dcefd2", fg: "#17540f", cash: "$107,765.10", net: "+$7,950", inbox: "9 items" },
+        { name: "Crescent Studio LLC", initial: "C", bg: "#eff8ff", fg: "#175cd3", cash: "$24,118.06", net: "+$3,190", inbox: "2 items" }
+      ],
+
+      // hero
+      cashTotal: this.fmt(d.cashTotal, { cents: true }),
+      cashSub: d.cashSub,
+      sparkPath: sp.line, sparkFill: sp.fill,
+      accounts: d.accounts.map(a => ({
+        ...a,
+        balance: this.fmt(a.balance, { cents: true }),
+        balColor: a.balance < 0 ? "#525252" : "#0a0a0a",
+        tip: a.tip || (a.credit ? "Credit card balance" : "Synced 12 min ago")
+      })),
+
+      // P&L
+      plIncome: this.fmt(pl.income), plExpenses: this.fmt(pl.expenses),
+      plNet: (pl.net >= 0 ? "+" : "") + this.fmt(pl.net),
+      plDelta: pl.delta, plDeltaColor: pl.up ? "#248716" : "#d92d20",
+      plBars,
+
+      // donut
+      donutSegs, donutLegend,
+      donutTotal: "$" + (donut.total >= 10000 ? (donut.total / 1000).toFixed(1) + "k" : donut.total.toLocaleString("en-US")),
+
+      // inbox
+      inboxCount, hasInboxItems: inboxCount > 0, inboxZero: inboxCount === 0,
+      inboxBreakdown: [
+        { label: "Needs category", n: 6 }, { label: "Receipts", n: 1 }, { label: "Transfer", n: 1 },
+        { label: "Payout", n: 1 }, { label: "Connection", n: 1 }, { label: "Question", n: 1 }
+      ],
+      goInbox: () => onNavigate("inbox"),
+
+      // AR / AP
+      arTotal: this.fmt(d.ar.total), arAging,
+      arOverdue: d.ar.overdue.map(o => ({ ...o, amount: this.fmt(o.amount) })),
+      apTotal: this.fmt(d.ap.total, { cents: true }), apSub: d.ap.sub,
+      apNext: d.ap.next.map(b => ({ ...b, amount: this.fmt(b.amount, { cents: b.amount % 1 !== 0 }) })),
+      goInvoices: () => onNavigate("income"),
+      goBills: () => onNavigate("bills"),
+      goReports: () => onNavigate("reports"),
+      goPayroll: () => onNavigate("payroll"),
+
+      // customers
+      topCustomers,
+      showConcentration: topShare > 50,
+      concentrationNote: customers[0][0] + " is " + topShare + "% of revenue this period — concentration risk worth watching.",
+
+      // cash flow
+      cfBars, cfAvgNet: this.fmt(d.cfAvgNet),
+
+      // payroll
+      payrollLastDate: d.payroll.last,
+      payrollTotal: this.fmt(d.payroll.total),
+      payrollCurrencies: d.payroll.cur,
+      payrollNext: d.payroll.next,
+
+      // cash cushion
+      cushionMonths: (() => {
+        const avgExp = series.slice(0, 5).reduce((a, m) => a + m[1], 0) / 5 * 1000;
+        return (d.cashTotal / avgExp).toFixed(1);
+      })(),
+      cushionSegs: (() => {
+        const avgExp = series.slice(0, 5).reduce((a, m) => a + m[1], 0) / 5 * 1000;
+        const m = d.cashTotal / avgExp;
+        return [0, 1, 2, 3].map(i => ({ c: i + 1 <= m ? "#2ca01c" : (i < m ? "#92cc7a" : "#f0f0f0") }));
+      })(),
+      cushionNote: (() => {
+        const avgExp = series.slice(0, 5).reduce((a, m) => a + m[1], 0) / 5 * 1000;
+        return "An average month costs $" + (avgExp / 1000).toFixed(1) + "k all-in — and you've been cash-flow positive every month this year.";
+      })(),
+
+      // coming up
+      upcoming: d.upcoming.map(u => ({
+        label: u.label, when: u.when,
+        amount: (u.amount > 0 ? "+$" : "−$") + Math.abs(u.amount).toLocaleString("en-US"),
+        color: u.amount > 0 ? "#248716" : "#0a0a0a",
+        dot: u.amount > 0 ? "#2ca01c" : "#cbd2d9"
+      })),
+      upcomingNet: (() => {
+        const n = d.upcoming.reduce((a, u) => a + u.amount, 0);
+        return (n >= 0 ? "+$" : "−$") + Math.abs(n).toLocaleString("en-US");
+      })(),
+      upcomingNetColor: d.upcoming.reduce((a, u) => a + u.amount, 0) >= 0 ? "#248716" : "#b54708",
+
+      // activity
+      activity
+    };
+  }
+}
+</script>
+</body>
+</html>

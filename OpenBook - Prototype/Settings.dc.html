@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+    @keyframes ob-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div style="font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:14px; color:#0a0a0a; line-height:1.5; padding:24px 28px 48px; max-width:1100px; margin:0 auto;">
+
+  <div style="margin-bottom:18px;">
+    <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em; line-height:1.2;">Settings</div>
+    <div style="font-size:13px; color:#737373;">Your workspace, your keys, your data</div>
+  </div>
+
+  <div style="display:flex; gap:28px; align-items:flex-start;">
+
+    <!-- Subnav -->
+    <div style="width:190px; min-width:190px; display:flex; flex-direction:column; gap:1px;">
+      <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="8">
+        <button onClick="{{ sec.pick }}" style="display:flex; align-items:center; gap:8px; padding:8px 11px; border-radius:8px; border:none; cursor:pointer; font-family:inherit; font-size:13px; text-align:left; width:100%; background:{{ sec.bg }}; color:{{ sec.color }}; font-weight:{{ sec.weight }};" style-hover="background:{{ sec.hoverBg }};">{{ sec.label }}</button>
+      </sc-for>
+    </div>
+
+    <!-- Content -->
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:16px;">
+
+      <!-- ===== BUSINESSES ===== -->
+      <sc-if value="{{ onBusinesses }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="width:28px; height:28px; border-radius:8px; background:#dcefd2; color:#17540f; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:600;">Z</span>
+              <span style="font-size:14.5px; font-weight:600;">Z360 Labs LLC</span>
+            </div>
+            <div style="font-size:12.5px; color:#737373; margin-top:8px;">Software · base currency USD · fiscal year Jan</div>
+            <div style="font-size:12px; color:#a3a3a3; margin-top:4px;">3 bank accounts · 1 Stripe account · 1,412 transactions</div>
+          </div>
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="width:28px; height:28px; border-radius:8px; background:#eff8ff; color:#175cd3; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:600;">C</span>
+              <span style="font-size:14.5px; font-weight:600;">Crescent Studio LLC</span>
+            </div>
+            <div style="font-size:12.5px; color:#737373; margin-top:8px;">Agency · base currency USD · fiscal year Jan</div>
+            <div style="font-size:12px; color:#a3a3a3; margin-top:4px;">1 bank account · 218 transactions</div>
+          </div>
+        </div>
+        <button style="align-self:flex-start; height:34px; padding:0 14px; border-radius:10px; border:1px dashed #d4d4d4; background:transparent; color:#737373; cursor:pointer; font-family:inherit; font-size:13px;" style-hover="background:#fafafa; color:#0a0a0a;">+ Add a business</button>
+      </sc-if>
+
+      <!-- ===== TAX & FISCAL YEAR ===== -->
+      <sc-if value="{{ onTax }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:14px;">
+          <div style="font-size:13.5px; font-weight:600;">Fiscal year & accounting basis</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Fiscal year starts</div>
+              <select style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+                <option>January</option><option>April</option><option>July</option><option>October</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Books begin</div>
+              <select style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+                <option>Jan 1, 2026</option><option>Jan 1, 2025</option><option>First connected transaction</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:7px;">Default reporting basis</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <button onClick="{{ setTaxBasisAccrual }}" style="display:flex; flex-direction:column; gap:6px; padding:13px 14px; border-radius:12px; cursor:pointer; font-family:inherit; text-align:left; transition:border-color 120ms ease-out; border:1.5px solid {{ accrualCardBorder }}; background:{{ accrualCardBg }};">
+                <span style="display:flex; align-items:center; gap:7px;">
+                  <span style="width:14px; height:14px; border-radius:9999px; border:1.5px solid {{ accrualDotBorder }}; background:{{ accrualDotBg }}; box-shadow:{{ accrualDotShadow }};"></span>
+                  <span style="font-size:13px; font-weight:600;">Accrual</span>
+                </span>
+                <span style="font-size:11.5px; color:#737373; line-height:1.45;">Counts income when earned and expenses when incurred. What most CPAs file.</span>
+              </button>
+              <button onClick="{{ setTaxBasisCash }}" style="display:flex; flex-direction:column; gap:6px; padding:13px 14px; border-radius:12px; cursor:pointer; font-family:inherit; text-align:left; transition:border-color 120ms ease-out; border:1.5px solid {{ cashCardBorder }}; background:{{ cashCardBg }};">
+                <span style="display:flex; align-items:center; gap:7px;">
+                  <span style="width:14px; height:14px; border-radius:9999px; border:1.5px solid {{ cashDotBorder }}; background:{{ cashDotBg }}; box-shadow:{{ cashDotShadow }};"></span>
+                  <span style="font-size:13px; font-weight:600;">Cash</span>
+                </span>
+                <span style="font-size:11.5px; color:#737373; line-height:1.45;">Counts money only when it moves. Reports always let you switch per view.</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:14px;">
+          <div style="font-size:13.5px; font-weight:600;">Tax identity</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Legal name</div>
+              <input value="Z360 Labs LLC" style="width:100%; height:36px; padding:0 11px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; outline:none;" style-focus="border-color:#63b347; box-shadow:0 0 0 3px rgba(99,179,71,0.25);"></input>
+            </div>
+            <div>
+              <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Entity type</div>
+              <select style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+                <option>LLC</option><option>S-Corporation</option><option>C-Corporation</option><option>Sole proprietorship</option><option>Partnership</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">EIN / Tax ID</div>
+              <input value="••-•••4821" readOnly="{{ true }}" style="width:100%; height:36px; padding:0 11px; border-radius:10px; border:1px solid #e5e5e5; font-family:'Geist Mono',ui-monospace,monospace; font-size:12.5px; color:#525252; background:#fafafa; outline:none;"></input>
+            </div>
+            <div>
+              <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Home state</div>
+              <select style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+                <option>Texas</option><option>Delaware</option><option>California</option><option>New York</option><option>Other</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+          <div style="display:flex; align-items:flex-start; gap:12px;">
+            <div style="flex:1;">
+              <div style="font-size:13.5px; font-weight:600;">Quarterly tax set-aside</div>
+              <div style="font-size:12px; color:#737373; margin-top:3px;">Reserve a share of profit each month so estimated taxes never surprise you.</div>
+            </div>
+            <button onClick="{{ toggleSetAside }}" style="width:34px; height:19px; border-radius:9999px; border:none; cursor:pointer; position:relative; transition:background 120ms ease-out; background:{{ setAsideBg }}; flex-shrink:0; margin-top:2px;">
+              <span style="position:absolute; top:2px; width:15px; height:15px; border-radius:9999px; background:#ffffff; box-shadow:0 1px 2px rgba(0,0,0,0.2); transition:left 120ms ease-out; left:{{ setAsideLeft }};"></span>
+            </button>
+          </div>
+          <sc-if value="{{ setAsideOn }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:11px; background:#f1f8ee; animation:ob-fade 140ms ease-out;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+              <span style="flex:1; font-size:12.5px; color:#17540f;">At 25% of net profit, set aside <span style="font-family:'Geist Mono',ui-monospace,monospace; font-weight:600;">~$3,560</span> for Q2. The AI nudges you in the Inbox when it's time to move it.</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:16px 20px; display:flex; align-items:flex-start; gap:12px;">
+          <div style="flex:1;">
+            <div style="font-size:13.5px; font-weight:600;">Track sales tax</div>
+            <div style="font-size:12px; color:#737373; margin-top:3px;">Add a sales-tax liability line and a rate per location. Most service businesses leave this off.</div>
+          </div>
+          <button onClick="{{ toggleSalesTax }}" style="width:34px; height:19px; border-radius:9999px; border:none; cursor:pointer; position:relative; transition:background 120ms ease-out; background:{{ salesTaxBg }}; flex-shrink:0; margin-top:2px;">
+            <span style="position:absolute; top:2px; width:15px; height:15px; border-radius:9999px; background:#ffffff; box-shadow:0 1px 2px rgba(0,0,0,0.2); transition:left 120ms ease-out; left:{{ salesTaxLeft }};"></span>
+          </button>
+        </div>
+      </sc-if>
+
+      <!-- ===== CONNECTIONS ===== -->
+      <sc-if value="{{ onConnections }}" hint-placeholder-val="{{ true }}">
+        <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase;">Banks · via your Plaid keys</div>
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+          <div style="padding:16px 20px; display:flex; flex-direction:column; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="width:34px; height:34px; border-radius:10px; background:#3b2fa3; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">M</span>
+              <div style="flex:1;">
+                <div style="font-size:13.5px; font-weight:600;">Mercury</div>
+                <div style="font-size:11.5px; color:#737373;">Connected · synced 12 min ago</div>
+              </div>
+              <span style="display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:9999px; background:#f1f8ee; font-size:11px; color:#17540f; font-weight:500;"><span style="width:6px; height:6px; border-radius:9999px; background:#2ca01c;"></span>Healthy</span>
+            </div>
+            <sc-for list="{{ mercuryAccounts }}" as="ma" hint-placeholder-count="2">
+              <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px; background:#fafafa; margin-left:46px;">
+                <span style="flex:1; font-size:12.5px;">{{ ma.name }} <span style="font-family:'Geist Mono',ui-monospace,monospace; color:#a3a3a3; font-size:11px;">{{ ma.mask }}</span></span>
+                <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12px; color:#525252;">{{ ma.balance }}</span>
+                <button onClick="{{ ma.toggle }}" style="width:32px; height:18px; border-radius:9999px; border:none; cursor:pointer; position:relative; transition:background 120ms ease-out; background:{{ ma.swBg }};">
+                  <span style="position:absolute; top:2px; width:14px; height:14px; border-radius:9999px; background:#ffffff; box-shadow:0 1px 2px rgba(0,0,0,0.2); transition:left 120ms ease-out; left:{{ ma.swLeft }};"></span>
+                </button>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:16px 20px; border-top:1px solid #f0f0f0; display:flex; align-items:center; gap:12px;">
+            <span style="width:34px; height:34px; border-radius:10px; background:#0a4386; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;">CH</span>
+            <div style="flex:1;">
+              <div style="font-size:13.5px; font-weight:600;">Chase</div>
+              <div style="font-size:11.5px; color:#b54708;">Sign-in expired · last synced 2 days ago</div>
+            </div>
+            <button style="height:30px; padding:0 13px; border-radius:9px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#248716;">Reconnect</button>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button style="height:32px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">+ Connect a bank</button>
+          <button style="height:32px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; color:#525252; cursor:pointer; font-family:inherit; font-size:12.5px;" style-hover="background:#f5f5f5;">Import CSV / OFX instead</button>
+        </div>
+
+        <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase; margin-top:8px;">Stripe · restricted keys</div>
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:16px 20px; display:flex; align-items:center; gap:12px;">
+          <span style="width:34px; height:34px; border-radius:10px; background:#635bff; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:14px; font-weight:700;">S</span>
+          <div style="flex:1;">
+            <div style="font-size:13.5px; font-weight:600;">Z360 Labs — main</div>
+            <div style="font-size:11.5px; color:#737373;">rk_live_••••8f2a · read charges, payouts, customers · write invoices only</div>
+          </div>
+          <span style="display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:9999px; background:#f1f8ee; font-size:11px; color:#17540f; font-weight:500;">Clearing at $0.00</span>
+        </div>
+        <button style="align-self:flex-start; height:32px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">+ Add Stripe account</button>
+      </sc-if>
+
+      <!-- ===== AI ===== -->
+      <sc-if value="{{ onAI }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:14px;">
+          <div style="font-size:13.5px; font-weight:600;">Your model, your key</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Provider</div>
+              <select style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+                <option>Anthropic</option><option>OpenAI</option><option>Google</option><option>Ollama (local)</option><option>Custom OpenAI-compatible URL</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">API key</div>
+              <div style="display:flex; gap:8px;">
+                <input value="sk-ant-••••••••••••3kF9" readOnly="{{ true }}" style="flex:1; height:36px; padding:0 11px; border-radius:10px; border:1px solid #e5e5e5; font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#525252; outline:none; background:#fafafa; min-width:0;"></input>
+                <button style="height:36px; padding:0 12px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500; flex-shrink:0;" style-hover="background:#f5f5f5;">Test</button>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Chat model</div>
+              <select style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+                <option>claude-sonnet-4-5</option><option>claude-opus-4-6</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Categorization model</div>
+              <select style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+                <option>claude-haiku-4-5 (cheap, batched)</option><option>claude-sonnet-4-5</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:9px; background:#f1f8ee; font-size:12px; color:#17540f;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+            Connection healthy · keys are encrypted and never leave your server
+          </div>
+        </div>
+
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+          <div style="font-size:13.5px; font-weight:600;">How much should AI do on its own?</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+            <sc-for list="{{ autonomyCards }}" as="ac" hint-placeholder-count="3">
+              <button onClick="{{ ac.pick }}" style="display:flex; flex-direction:column; gap:7px; padding:14px 14px; border-radius:12px; cursor:pointer; font-family:inherit; text-align:left; transition:border-color 120ms ease-out; border:1.5px solid {{ ac.border }}; background:{{ ac.bg }};">
+                <span style="display:flex; align-items:center; gap:7px;">
+                  <span style="width:14px; height:14px; border-radius:9999px; border:1.5px solid {{ ac.dotBorder }}; background:{{ ac.dotBg }}; box-shadow:{{ ac.dotShadow }};"></span>
+                  <span style="font-size:13px; font-weight:600;">{{ ac.name }}</span>
+                </span>
+                <span style="font-size:11.5px; color:#737373; line-height:1.45;">{{ ac.desc }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px;">
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="font-size:13.5px; font-weight:600;">AI spend this month</span>
+            <span style="font-size:11.5px; color:#a3a3a3;">your API bill, not ours</span>
+          </div>
+          <div style="display:flex; align-items:baseline; gap:8px; margin-top:8px;">
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600;">$4.82</span>
+            <span style="font-size:12px; color:#737373;">of ~$9 estimated · 1,412 transactions categorized, 38 chats</span>
+          </div>
+          <div style="height:6px; border-radius:9999px; background:#f0f0f0; margin-top:10px; overflow:hidden;">
+            <div style="height:100%; width:54%; border-radius:9999px; background:#2ca01c;"></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ===== CATEGORIES ===== -->
+      <sc-if value="{{ onCategories }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:13px; color:#737373;">Categories are your chart of accounts wearing plain clothes.</span>
+          <div style="flex:1;"></div>
+          <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#525252; cursor:pointer; user-select:none;">
+            Accountant mode
+            <button onClick="{{ toggleAcctMode }}" style="width:34px; height:19px; border-radius:9999px; border:none; cursor:pointer; position:relative; transition:background 120ms ease-out; background:{{ acctModeBg }};">
+              <span style="position:absolute; top:2px; width:15px; height:15px; border-radius:9999px; background:#ffffff; box-shadow:0 1px 2px rgba(0,0,0,0.2); transition:left 120ms ease-out; left:{{ acctModeLeft }};"></span>
+            </button>
+          </label>
+        </div>
+        <sc-for list="{{ catGroups }}" as="cg" hint-placeholder-count="3">
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+            <div style="padding:11px 18px; background:#f7f7f7; font-size:12px; font-weight:600; color:#737373;">{{ cg.label }}</div>
+            <sc-for list="{{ cg.cats }}" as="cat" hint-placeholder-count="5">
+              <div style="display:flex; align-items:center; gap:10px; padding:9px 18px; border-top:1px solid #f3f3f3;">
+                <span style="width:6px; height:6px; border-radius:9999px; background:{{ cat.dot }};"></span>
+                <span style="flex:1; font-size:13px;">{{ cat.name }}</span>
+                <sc-if value="{{ acctMode }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11px; color:#a3a3a3;">{{ cat.number }} · {{ cat.type }}</span>
+                </sc-if>
+                <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12px; color:#737373;">{{ cat.ytd }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </sc-if>
+
+      <!-- ===== RULES ===== -->
+      <sc-if value="{{ onRules }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ hasPendingRule }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; align-items:center; gap:10px; padding:13px 16px; border-radius:12px; background:#f1f8ee;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+            <span style="flex:1; font-size:13px; color:#17540f;">AI suggests: <span style="font-weight:600;">If description contains "ANTHROPIC" → Cloud / Infrastructure</span> — you've corrected this 3 times.</span>
+            <button onClick="{{ approvePending }}" style="height:28px; padding:0 12px; border-radius:8px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#248716;">Approve</button>
+            <button onClick="{{ dismissPending }}" style="height:28px; padding:0 12px; border-radius:8px; border:1px solid #bbe0a9; background:#ffffff; color:#17540f; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#f5f5f5;">Not now</button>
+          </div>
+        </sc-if>
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+          <sc-for list="{{ rules }}" as="ru" hint-placeholder-count="5">
+            <div style="display:flex; align-items:center; gap:12px; padding:12px 18px; border-top:1px solid #f3f3f3; opacity:{{ ru.opacity }};">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c9c9c9" stroke-width="2" stroke-linecap="round" style="cursor:grab; flex-shrink:0;"><path d="M9 5h.01 M9 12h.01 M9 19h.01 M15 5h.01 M15 12h.01 M15 19h.01"></path></svg>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11px; color:#a3a3a3; min-width:20px;">#{{ ru.order }}</span>
+              <div style="flex:1; min-width:0;">
+                <div style="font-size:13px; font-weight:500;">{{ ru.name }}</div>
+                <div style="font-size:11.5px; color:#737373;">{{ ru.summary }}</div>
+              </div>
+              <sc-if value="{{ ru.aiMade }}" hint-placeholder-val="{{ false }}">
+                <span style="height:18px; padding:0 7px; border-radius:9999px; background:#f1f8ee; font-size:10px; color:#1d6b12; font-weight:500; display:inline-flex; align-items:center;">AI-drafted</span>
+              </sc-if>
+              <span style="font-size:11.5px; color:#a3a3a3; min-width:72px; text-align:right;">{{ ru.hits }}</span>
+              <button onClick="{{ ru.toggle }}" style="width:34px; height:19px; border-radius:9999px; border:none; cursor:pointer; position:relative; transition:background 120ms ease-out; background:{{ ru.swBg }}; flex-shrink:0;">
+                <span style="position:absolute; top:2px; width:15px; height:15px; border-radius:9999px; background:#ffffff; box-shadow:0 1px 2px rgba(0,0,0,0.2); transition:left 120ms ease-out; left:{{ ru.swLeft }};"></span>
+              </button>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size:12px; color:#a3a3a3;">Rules run top-down, first match wins. Drag to reprioritize. Every rule can be tested against your last 90 days before it goes live.</div>
+      </sc-if>
+
+      <!-- ===== NOTIFICATIONS ===== -->
+      <sc-if value="{{ onNotifications }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; align-items:center; gap:10px; padding:11px 16px; border-radius:12px; background:#fafafa; border:1px solid #ececec;">
+          <span style="font-size:12.5px; color:#525252;">Sent to</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:12.5px; color:#0a0a0a;">ansar@z360.dev</span>
+          <div style="flex:1;"></div>
+          <button style="height:28px; padding:0 12px; border-radius:8px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#f5f5f5;">Change email</button>
+        </div>
+        <sc-for list="{{ notifGroups }}" as="ng" hint-placeholder-count="3">
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+            <div style="padding:11px 18px; background:#f7f7f7; font-size:12px; font-weight:600; color:#737373;">{{ ng.label }}</div>
+            <sc-for list="{{ ng.items }}" as="ni" hint-placeholder-count="3">
+              <div style="display:flex; align-items:center; gap:12px; padding:12px 18px; border-top:1px solid #f3f3f3;">
+                <div style="flex:1; min-width:0;">
+                  <div style="font-size:13px; font-weight:500;">{{ ni.title }}</div>
+                  <div style="font-size:11.5px; color:#737373;">{{ ni.sub }}</div>
+                </div>
+                <button onClick="{{ ni.toggle }}" style="width:34px; height:19px; border-radius:9999px; border:none; cursor:pointer; position:relative; transition:background 120ms ease-out; background:{{ ni.swBg }}; flex-shrink:0;">
+                  <span style="position:absolute; top:2px; width:15px; height:15px; border-radius:9999px; background:#ffffff; box-shadow:0 1px 2px rgba(0,0,0,0.2); transition:left 120ms ease-out; left:{{ ni.swLeft }};"></span>
+                </button>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+        <div style="font-size:12px; color:#a3a3a3;">Anything urgent always lands in your Inbox too — these settings only control the email and digest copies.</div>
+      </sc-if>
+
+      <!-- ===== TEAM ===== -->
+      <sc-if value="{{ onTeam }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+          <sc-for list="{{ team }}" as="tm" hint-placeholder-count="3">
+            <div style="display:flex; align-items:center; gap:12px; padding:13px 18px; border-top:1px solid #f3f3f3;">
+              <span style="width:30px; height:30px; border-radius:9999px; background:{{ tm.avatarBg }}; color:{{ tm.avatarFg }}; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:600;">{{ tm.initials }}</span>
+              <div style="flex:1;">
+                <div style="font-size:13px; font-weight:500;">{{ tm.name }}</div>
+                <div style="font-size:11.5px; color:#737373;">{{ tm.email }}</div>
+              </div>
+              <sc-if value="{{ tm.pending }}" hint-placeholder-val="{{ false }}">
+                <span style="height:20px; padding:0 8px; border-radius:9999px; background:#fffaeb; font-size:10.5px; color:#b54708; font-weight:500; display:inline-flex; align-items:center;">Invite sent</span>
+              </sc-if>
+              <span title="{{ tm.roleDesc }}" style="height:24px; padding:0 10px; border-radius:9999px; background:#f5f5f5; font-size:11.5px; color:#525252; font-weight:500; display:inline-flex; align-items:center; cursor:help;">{{ tm.role }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size:12px; color:#a3a3a3;">Owner: everything · Staff: transactions, payroll &amp; bills, no settings · Accountant: read everything + journal entries.</div>
+        <button style="align-self:flex-start; height:32px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">Invite by email</button>
+      </sc-if>
+
+      <!-- ===== DATA ===== -->
+      <sc-if value="{{ onData }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+          <div style="font-size:13.5px; font-weight:600;">Your data is a file you own</div>
+          <div style="font-size:12.5px; color:#737373;">Everything exports, any time. A nightly JSON snapshot also lands in your Docker volume — the Bench lesson, learned.</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button style="height:32px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">CSV bundle (every table)</button>
+            <button style="height:32px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">JSON dump</button>
+            <button style="height:32px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">General Ledger — for your accountant</button>
+          </div>
+        </div>
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(217,45,32,0.25), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px;">
+          <div style="font-size:13px; font-weight:600; color:#b42318;">Danger zone</div>
+          <div style="font-size:12.5px; color:#737373; margin-top:4px;">Deleting a business removes its books permanently after a 30-day export window.</div>
+          <button style="margin-top:10px; height:32px; padding:0 13px; border-radius:10px; border:1px solid #f1c2bd; background:#ffffff; color:#b42318; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#fef3f2;">Delete a business…</button>
+        </div>
+      </sc-if>
+
+      <!-- ===== AUDIT LOG ===== -->
+      <sc-if value="{{ onAudit }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+          <div style="display:grid; grid-template-columns:120px 130px 1fr; gap:10px; padding:9px 18px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+            <span>When</span><span>Who / what</span><span>Action</span>
+          </div>
+          <sc-for list="{{ auditRows }}" as="au" hint-placeholder-count="8">
+            <div style="display:grid; grid-template-columns:120px 130px 1fr; gap:10px; padding:10px 18px; border-top:1px solid #f3f3f3; font-size:12.5px; align-items:center;">
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#a3a3a3;">{{ au.when }}</span>
+              <span><span style="height:20px; padding:0 8px; border-radius:9999px; font-size:10.5px; font-weight:500; display:inline-flex; align-items:center; background:{{ au.actorBg }}; color:{{ au.actorColor }};">{{ au.actor }}</span></span>
+              <span style="color:#3d3d3d;">{{ au.action }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size:12px; color:#a3a3a3;">Every posting is recorded — who or what did it, and why. Corrections never overwrite; they reverse and repost.</div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    section: "connections",
+    includeToggles: { savings: false, checking: true },
+    acctMode: false,
+    autonomy: "balanced",
+    pendingRule: true,
+    ruleStates: { 1: true, 2: true, 3: true, 4: true, 5: true, 6: false, 7: true },
+    notifStates: { review: true, digest: true, sync: true, owed: true, close: true, anomaly: true, marketing: false },
+    digestDay: "Monday",
+    taxBasis: "accrual",
+    setAsideOn: true,
+    salesTaxOn: false
+  };
+
+  renderVals() {
+    const s = this.state;
+    const sections = [
+      { id: "businesses", label: "Businesses" },
+      { id: "tax", label: "Tax & fiscal year" },
+      { id: "connections", label: "Connections" },
+      { id: "ai", label: "AI" },
+      { id: "categories", label: "Categories" },
+      { id: "rules", label: "Rules" },
+      { id: "notifications", label: "Notifications" },
+      { id: "team", label: "Team" },
+      { id: "data", label: "Data" },
+      { id: "audit", label: "Audit log" }
+    ].map(sec => ({
+      ...sec,
+      pick: () => this.setState({ section: sec.id }),
+      bg: s.section === sec.id ? "#f1f8ee" : "transparent",
+      hoverBg: s.section === sec.id ? "#f1f8ee" : "#f5f5f5",
+      color: s.section === sec.id ? "#17540f" : "#454545",
+      weight: s.section === sec.id ? "600" : "450"
+    }));
+
+    const sw = (on) => ({ swBg: on ? "#2ca01c" : "#d4d4d4", swLeft: on ? "17px" : "2px" });
+
+    const autonomyCards = [
+      { id: "suggest", name: "Suggest everything", desc: "AI never posts on its own. Every transaction comes to your Inbox first." },
+      { id: "balanced", name: "Balanced", desc: "Auto-posts when it's ≥90% sure. The rest waits for you. Recommended." },
+      { id: "autopilot", name: "Autopilot", desc: "Auto-posts at ≥75% and sends a weekly digest instead of per-item questions." }
+    ].map(a => {
+      const on = s.autonomy === a.id;
+      return {
+        ...a,
+        pick: () => this.setState({ autonomy: a.id }),
+        border: on ? "#2ca01c" : "#e5e5e5",
+        bg: on ? "#fbfdf9" : "#ffffff",
+        dotBorder: on ? "#2ca01c" : "#c9c9c9",
+        dotBg: on ? "#2ca01c" : "#ffffff",
+        dotShadow: on ? "inset 0 0 0 3px #ffffff" : "none"
+      };
+    });
+
+    const catGroups = [
+      { label: "Income", cats: [
+        ["Services income", "4010", "income", "$197.4k"], ["Product sales", "4020", "income", "$34.0k"], ["Other income", "4090", "income", "$1.2k"]
+      ], dot: "#2ca01c" },
+      { label: "Expenses", cats: [
+        ["Payroll & Contractors", "5010", "expense", "$89.8k"], ["Cloud / Infrastructure", "5020", "expense", "$15.2k"], ["Software & SaaS", "5030", "expense", "$12.5k"],
+        ["Marketing & Ads", "5040", "expense", "$15.5k"], ["Rent", "5050", "expense", "$12.0k"], ["Professional Services", "5060", "expense", "$9.1k"],
+        ["Payment Processing Fees", "5070", "expense", "$3.2k"], ["Travel", "5080", "expense", "$6.1k"], ["Meals", "5090", "expense", "$1.8k"], ["Office & Supplies", "5100", "expense", "$1.8k"]
+      ], dot: "#a3a3a3" },
+      { label: "Other", cats: [
+        ["Owner's draw", "3020", "equity", "$10.0k"], ["Uncategorized income", "4999", "system", "$0"], ["Uncategorized expense", "5999", "system", "$0"]
+      ], dot: "#d4d4d4" }
+    ].map(g => ({
+      label: g.label,
+      cats: g.cats.map(c => ({ name: c[0], number: c[1], type: c[2], ytd: c[3], dot: g.dot }))
+    }));
+
+    const rulesData = [
+      { order: 1, name: "WeWork → Rent", summary: "If description contains \u201CWEWORK\u201D → Rent, auto-post", hits: "fired 18×", ai: false },
+      { order: 2, name: "Gusto → Payroll", summary: "If description contains \u201CGUSTO\u201D → Payroll & Contractors, auto-post", hits: "fired 12×", ai: false },
+      { order: 3, name: "Wise payroll transfers", summary: "If description contains \u201CWISE TRANSFER\u201D and amount > $500 → match to payroll run", hits: "fired 22×", ai: true },
+      { order: 4, name: "AWS → Cloud", summary: "If description contains \u201CAWS\u201D or \u201CAMZN WEB\u201D → Cloud / Infrastructure, auto-post", hits: "fired 31×", ai: false },
+      { order: 5, name: "UBER → Travel", summary: "If description contains \u201CUBER\u201D → Travel, auto-post", hits: "fired 3×", ai: true },
+      { order: 6, name: "Old: Heroku → Cloud", summary: "If description contains \u201CHEROKU\u201D → Cloud / Infrastructure", hits: "fired 0× this year", ai: false },
+      { order: 7, name: "Google Ads → Marketing", summary: "If description contains \u201CGOOGLE ADS\u201D → Marketing & Ads, auto-post", hits: "fired 9×", ai: false }
+    ];
+
+    const team = [
+      { name: "Ansar Ullah", email: "ansar@z360.dev", role: "Owner", roleDesc: "Full access to everything", initials: "AU", avatarBg: "#17540f", avatarFg: "#ffffff" },
+      { name: "Sarah Chen", email: "sarah@z360.dev", role: "Staff", roleDesc: "Transactions, payroll & bills — no settings, no keys", initials: "SC", avatarBg: "#f0f0f0", avatarFg: "#525252" },
+      { name: "Diane Okafor, CPA", email: "diane@okaforcpa.com", role: "Accountant", roleDesc: "Read everything + create journal entries", initials: "DO", avatarBg: "#eff8ff", avatarFg: "#175cd3", pending: true }
+    ];
+
+    const auditRows = [
+      { when: "Today 9:14", actor: "AI", action: "Posted 23 transactions (avg confidence 96%) — batch cat_8812", kind: "ai" },
+      { when: "Today 9:02", actor: "Rule #4", action: "AMZN WEB SERVICES $1,612.40 → Cloud / Infrastructure, auto-posted", kind: "rule" },
+      { when: "Yesterday", actor: "System", action: "Stripe payout po_1QbT4x reconciled — clearing account returned to $0.00", kind: "system" },
+      { when: "Yesterday", actor: "Ansar", action: "Recategorized ANTHROPIC $487.20: Software & SaaS → Cloud / Infrastructure (reversed + reposted)", kind: "user" },
+      { when: "Jun 9", actor: "Ansar", action: "Approved rule #5 \u201CUBER → Travel\u201D (drafted by AI after 3 corrections)", kind: "user" },
+      { when: "Jun 8", actor: "AI", action: "Matched receipt \u201CThe Coffee Counter $18.75\u201D to Amex transaction (94% similarity)", kind: "ai" },
+      { when: "Jun 2", actor: "Ansar", action: "Marked May payroll run paid — 6 lines settled, FX loss $12.40 posted", kind: "user" },
+      { when: "Jun 1", actor: "System", action: "Period lock moved to Apr 30 — backdated edits now warn", kind: "system" }
+    ];
+    const actorStyle = { ai: { bg: "#f1f8ee", color: "#1d6b12" }, rule: { bg: "#f5f5f5", color: "#525252" }, user: { bg: "#eff8ff", color: "#175cd3" }, system: { bg: "#f5f5f5", color: "#737373" } };
+
+    const notifData = [
+      { id: "review", group: "From the AI", title: "Needs your input", sub: "When the AI is unsure and parks a transaction in your Inbox" },
+      { id: "digest", group: "From the AI", title: "Weekly digest", sub: "A Monday-morning recap of what posted, what's owed and what's due" },
+      { id: "anomaly", group: "From the AI", title: "Unusual activity", sub: "Duplicate charges, silent price hikes, a spend 3× the usual" },
+      { id: "sync", group: "Accounts & money", title: "Sync problems", sub: "A bank sign-in expired or a Stripe key stopped working" },
+      { id: "owed", group: "Accounts & money", title: "Money owed", sub: "An invoice goes overdue, or a bill is due in 3 days" },
+      { id: "close", group: "Accounts & money", title: "Month-end close", sub: "A reminder to lock the books a few days after month end" },
+      { id: "marketing", group: "Other", title: "Product updates", sub: "Occasional notes on new features — off by default" }
+    ];
+    const notifGroups = ["From the AI", "Accounts & money", "Other"].map(g => ({
+      label: g,
+      items: notifData.filter(n => n.group === g).map(n => ({
+        title: n.title, sub: n.sub,
+        ...sw(s.notifStates[n.id]),
+        toggle: () => this.setState(st => ({ notifStates: { ...st.notifStates, [n.id]: !st.notifStates[n.id] } }))
+      }))
+    }));
+
+    return {
+      sections,
+      onBusinesses: s.section === "businesses",
+      onTax: s.section === "tax",
+      onConnections: s.section === "connections",
+      onAI: s.section === "ai",
+      onCategories: s.section === "categories",
+      onRules: s.section === "rules",
+      onNotifications: s.section === "notifications",
+      onTeam: s.section === "team",
+      onData: s.section === "data",
+      onAudit: s.section === "audit",
+
+      notifGroups,
+      setTaxBasisAccrual: () => this.setState({ taxBasis: "accrual" }),
+      setTaxBasisCash: () => this.setState({ taxBasis: "cash" }),
+      accrualCardBorder: s.taxBasis === "accrual" ? "#2ca01c" : "#e5e5e5",
+      accrualCardBg: s.taxBasis === "accrual" ? "#fbfdf9" : "#ffffff",
+      accrualDotBorder: s.taxBasis === "accrual" ? "#2ca01c" : "#c9c9c9",
+      accrualDotBg: s.taxBasis === "accrual" ? "#2ca01c" : "#ffffff",
+      accrualDotShadow: s.taxBasis === "accrual" ? "inset 0 0 0 3px #ffffff" : "none",
+      cashCardBorder: s.taxBasis === "cash" ? "#2ca01c" : "#e5e5e5",
+      cashCardBg: s.taxBasis === "cash" ? "#fbfdf9" : "#ffffff",
+      cashDotBorder: s.taxBasis === "cash" ? "#2ca01c" : "#c9c9c9",
+      cashDotBg: s.taxBasis === "cash" ? "#2ca01c" : "#ffffff",
+      cashDotShadow: s.taxBasis === "cash" ? "inset 0 0 0 3px #ffffff" : "none",
+      setAsideOn: s.setAsideOn,
+      toggleSetAside: () => this.setState(st => ({ setAsideOn: !st.setAsideOn })),
+      setAsideBg: s.setAsideOn ? "#2ca01c" : "#d4d4d4",
+      setAsideLeft: s.setAsideOn ? "17px" : "2px",
+      salesTaxOn: s.salesTaxOn,
+      toggleSalesTax: () => this.setState(st => ({ salesTaxOn: !st.salesTaxOn })),
+      salesTaxBg: s.salesTaxOn ? "#2ca01c" : "#d4d4d4",
+      salesTaxLeft: s.salesTaxOn ? "17px" : "2px",
+
+      mercuryAccounts: [
+        { id: "checking", name: "Mercury Checking", mask: "····4421", balance: "$86,420.18" },
+        { id: "savings", name: "Mercury Savings", mask: "····7708", balance: "$40,012.00" }
+      ].map(a => ({
+        ...a,
+        ...sw(s.includeToggles[a.id]),
+        toggle: () => this.setState(st => ({ includeToggles: { ...st.includeToggles, [a.id]: !st.includeToggles[a.id] } }))
+      })),
+
+      autonomyCards,
+
+      acctMode: s.acctMode,
+      toggleAcctMode: () => this.setState(st => ({ acctMode: !st.acctMode })),
+      acctModeBg: s.acctMode ? "#2ca01c" : "#d4d4d4",
+      acctModeLeft: s.acctMode ? "17px" : "2px",
+      catGroups,
+
+      hasPendingRule: s.pendingRule,
+      approvePending: () => this.setState({ pendingRule: false }),
+      dismissPending: () => this.setState({ pendingRule: false }),
+      rules: rulesData.map(r => ({
+        ...r,
+        aiMade: r.ai,
+        opacity: s.ruleStates[r.order] ? "1" : "0.5",
+        ...sw(s.ruleStates[r.order]),
+        toggle: () => this.setState(st => ({ ruleStates: { ...st.ruleStates, [r.order]: !st.ruleStates[r.order] } }))
+      })),
+
+      team,
+      auditRows: auditRows.map(a => ({ ...a, actorBg: actorStyle[a.kind].bg, actorColor: actorStyle[a.kind].color }))
+    };
+  }
+}
+</script>
+</body>
+</html>

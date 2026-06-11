@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+    @keyframes ob-pop { 0% { opacity: 0; transform: scale(0.97); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes ob-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div style="font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:14px; color:#0a0a0a; line-height:1.5; padding:24px 28px 48px; max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:16px;">
+
+  <!-- Header -->
+  <div style="display:flex; align-items:center; gap:12px;">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em; line-height:1.2;">Expenses</div>
+      <div style="font-size:13px; color:#737373;">Where money goes, by category and vendor · Z360 Labs LLC</div>
+    </div>
+    <div style="flex:1;"></div>
+    <div style="display:flex; align-items:center; gap:2px; height:34px; padding:2px; border-radius:10px; background:#f5f5f5;">
+      <sc-for list="{{ periods }}" as="pp" hint-placeholder-count="2">
+        <button onClick="{{ pp.pick }}" style="height:30px; padding:0 13px; border-radius:8px; border:none; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500; background:{{ pp.bg }}; color:{{ pp.color }}; box-shadow:{{ pp.shadow }};">{{ pp.label }}</button>
+      </sc-for>
+    </div>
+    <button onClick="{{ openAddCat }}" style="height:34px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; white-space:nowrap; flex-shrink:0;" style-hover="background:#f5f5f5;">Add category</button>
+  </div>
+
+  <!-- KPIs -->
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px;">
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:14px 18px;">
+      <div style="font-size:12px; color:#737373; font-weight:500;">{{ kpiSpentLabel }}</div>
+      <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600; letter-spacing:-0.01em;">{{ kpiSpent }}</div>
+      <div style="font-size:11.5px; color:{{ kpiSpentDeltaColor }};">{{ kpiSpentDelta }}</div>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:14px 18px;">
+      <div style="font-size:12px; color:#737373; font-weight:500;">Recurring spend</div>
+      <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600; letter-spacing:-0.01em;">$11,430<span style="font-size:13px; color:#737373; font-weight:500;"> /mo</span></div>
+      <div style="font-size:11.5px; color:#a3a3a3;">82% of your spend is predictable</div>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:14px 18px;">
+      <div style="font-size:12px; color:#737373; font-weight:500;">Biggest movement</div>
+      <div style="font-size:15px; font-weight:600; margin-top:3px;">{{ kpiMove }}</div>
+      <div style="font-size:11.5px; color:#a3a3a3;">{{ kpiMoveSub }}</div>
+    </div>
+  </div>
+
+  <!-- Category breakdown -->
+  <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+    <div style="display:grid; grid-template-columns:18px 1.4fr 70px 1fr 90px 110px 14px; gap:10px; padding:9px 18px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase; align-items:center;">
+      <span></span><span>Category</span><span style="text-align:right;">Txns</span><span>Share</span><span style="text-align:right;">vs last</span><span style="text-align:right;">Amount</span><span></span>
+    </div>
+    <sc-for list="{{ catRows }}" as="c" hint-placeholder-count="9">
+      <div onClick="{{ c.toggle }}" style="display:grid; grid-template-columns:18px 1.4fr 70px 1fr 90px 110px 14px; gap:10px; padding:10px 18px; border-top:1px solid #f3f3f3; align-items:center; cursor:pointer; transition:background 120ms ease-out;" style-hover="background:#fafafa;">
+        <span style="width:8px; height:8px; border-radius:3px; background:{{ c.dot }};"></span>
+        <span style="display:flex; align-items:center; gap:8px; min-width:0;">
+          <span style="font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ c.name }}</span>
+          <sc-if value="{{ c.isNew }}" hint-placeholder-val="{{ false }}">
+            <span style="height:18px; padding:0 7px; border-radius:9999px; background:#f1f8ee; font-size:10px; color:#1d6b12; font-weight:600; display:inline-flex; align-items:center;">new</span>
+          </sc-if>
+        </span>
+        <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#737373;">{{ c.txns }}</span>
+        <span style="display:block; height:12px; border-radius:4px; background:#f5f5f5; overflow:hidden;"><span style="display:block; height:100%; border-radius:4px; background:{{ c.dot }}; width:{{ c.w }};"></span></span>
+        <span style="text-align:right; font-size:11.5px; color:{{ c.deltaColor }};">{{ c.delta }}</span>
+        <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:600;">{{ c.amount }}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 120ms ease-out; transform:rotate({{ c.rot }});"><path d="m9 18 6-6-6-6"></path></svg>
+      </div>
+      <sc-if value="{{ c.expanded }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#fbfbfb; border-top:1px solid #f3f3f3; padding:6px 18px 12px 46px; animation:ob-fade 140ms ease-out;">
+          <sc-for list="{{ c.vendors }}" as="v" hint-placeholder-count="3">
+            <div style="display:flex; align-items:center; gap:10px; padding:6px 0; font-size:12.5px;">
+              <span style="flex:1; color:#525252;">{{ v.name }}</span>
+              <span style="font-size:11px; color:#a3a3a3;">{{ v.note }}</span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:500; min-width:90px; text-align:right;">{{ v.amount }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </sc-for>
+    <div style="display:flex; justify-content:space-between; padding:12px 18px; border-top:1px solid #ececec; background:#fbfbfb; font-size:13px; font-weight:600;">
+      <span>Total</span>
+      <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; padding-right:24px;">{{ totalAmount }}</span>
+    </div>
+  </div>
+
+  <!-- Recurring -->
+  <div>
+    <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:8px;">
+      <span style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase;">Recurring</span>
+      <span style="font-size:11.5px; color:#a3a3a3;">detected from your last 6 months of transactions</span>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <sc-for list="{{ recurring }}" as="rc" hint-placeholder-count="6">
+        <div style="display:flex; align-items:center; gap:13px; padding:11px 18px; border-top:1px solid #f3f3f3;">
+          <span style="width:28px; height:28px; border-radius:8px; background:{{ rc.logoBg }}; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:700; flex-shrink:0;">{{ rc.logo }}</span>
+          <span style="flex:1; min-width:0;">
+            <span style="display:block; font-size:13px; font-weight:500;">{{ rc.vendor }}</span>
+            <span style="display:block; font-size:11.5px; color:#a3a3a3;">{{ rc.category }}</span>
+          </span>
+          <span style="height:20px; padding:0 8px; border-radius:9999px; font-size:10.5px; font-weight:500; display:inline-flex; align-items:center; background:{{ rc.cadBg }}; color:{{ rc.cadColor }};">{{ rc.cadence }}</span>
+          <span style="font-size:11.5px; color:#737373; min-width:110px;">next {{ rc.next }}</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:600; min-width:90px; text-align:right;">{{ rc.amount }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ===== ADD CATEGORY MODAL ===== -->
+  <sc-if value="{{ addCatOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeAddCat }}" style="position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:80;"></div>
+    <div style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:440px; background:#ffffff; border-radius:14px; z-index:90; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.08); animation:ob-pop 160ms ease-out; padding:22px 24px;">
+      <div style="font-size:17px; font-weight:600;">New category</div>
+      <div style="font-size:12.5px; color:#737373; margin-top:2px;">It becomes a real account in your books — usable in transactions, rules and reports right away.</div>
+      <div style="display:flex; flex-direction:column; gap:13px; margin-top:18px;">
+        <div>
+          <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Name</div>
+          <input value="{{ ncName }}" onChange="{{ onNcName }}" placeholder="e.g. Conferences & Events" style="width:100%; height:36px; padding:0 11px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; outline:none;" style-focus="border-color:#63b347; box-shadow:0 0 0 3px rgba(99,179,71,0.25);"></input>
+        </div>
+        <div>
+          <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Group</div>
+          <select value="{{ ncGroup }}" onChange="{{ onNcGroup }}" style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+            <option>Expenses</option><option>Income</option><option>Other</option>
+          </select>
+          <div style="font-size:11px; color:#a3a3a3; margin-top:4px;">Behind the scenes this creates account 6xxx under Expenses — visible in accountant mode.</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:20px;">
+        <button onClick="{{ closeAddCat }}" style="height:36px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500;" style-hover="background:#f5f5f5;">Cancel</button>
+        <div style="flex:1;"></div>
+        <button onClick="{{ saveCat }}" style="height:36px; padding:0 18px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Create category</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // June so far — matches the transactions register
+    this.cats = [
+      { name: "Payroll & Contractors", dot: "#475467", txns: 2, amount: 6647.20, delta: "+1%", warn: false,
+        vendors: [{ name: "Gusto (US team)", note: "monthly", amount: 6000 }, { name: "Wise — Hammas Khan", note: "₨180,000 @ 278.1", amount: 647.20 }] },
+      { name: "Cloud / Infrastructure", dot: "#0e9384", txns: 3, amount: 2449.60, delta: "+38%", warn: true,
+        vendors: [{ name: "Amazon Web Services", note: "rule #4 auto-posts", amount: 1612.40 }, { name: "Anthropic", note: "3× usual — flagged in Inbox", amount: 487.20 }, { name: "Vercel", note: "monthly", amount: 350 }] },
+      { name: "Rent", dot: "#8c6a3f", txns: 1, amount: 2400, delta: "0%", warn: false,
+        vendors: [{ name: "WeWork — Congress Ave", note: "monthly", amount: 2400 }] },
+      { name: "Marketing & Ads", dot: "#f79009", txns: 1, amount: 640, delta: "−12%", warn: false,
+        vendors: [{ name: "Google Ads", note: "rule #7 auto-posts", amount: 640 }] },
+      { name: "Office & Supplies", dot: "#9da8b6", txns: 1, amount: 214.90, delta: "+44%", warn: false,
+        vendors: [{ name: "H.M. Supplies Co", note: "new vendor", amount: 214.90 }] },
+      { name: "Software & SaaS", dot: "#2c2c2c", txns: 2, amount: 64, delta: "−97%", warn: false,
+        vendors: [{ name: "GitHub", note: "monthly", amount: 40 }, { name: "Figma", note: "monthly seat", amount: 24 }] },
+      { name: "Payment Processing Fees", dot: "#635bff", txns: 1, amount: 63.30, delta: "+4%", warn: false,
+        vendors: [{ name: "Stripe fees", note: "split from payouts automatically", amount: 63.30 }] },
+      { name: "Travel", dot: "#1d6bb5", txns: 1, amount: 38.40, delta: "−95%", warn: false,
+        vendors: [{ name: "Uber", note: "rule pending", amount: 38.40 }] },
+      { name: "Meals", dot: "#b54708", txns: 1, amount: 18.75, delta: "−71%", warn: false,
+        vendors: [{ name: "The Coffee Counter", note: "receipt attached", amount: 18.75 }] }
+    ];
+    this.catsLast = [
+      { name: "Payroll & Contractors", dot: "#475467", txns: 7, amount: 18240, delta: "+2%", warn: false,
+        vendors: [{ name: "Gusto (US team)", note: "monthly", amount: 6000 }, { name: "Wise transfers (4)", note: "PKR + INR", amount: 11600 }, { name: "FX difference", note: "auto-posted", amount: 640 }] },
+      { name: "Software & SaaS", dot: "#2c2c2c", txns: 9, amount: 4836, delta: "+184%", warn: true,
+        vendors: [{ name: "Figma — annual renewal", note: "annual", amount: 2652 }, { name: "Linear, Notion, GitHub +5", note: "monthly", amount: 2184 }] },
+      { name: "Professional Services", dot: "#5a4632", txns: 2, amount: 3800, delta: "+245%", warn: true,
+        vendors: [{ name: "Counsel & Co — Halpern MSA", note: "one-time", amount: 2700 }, { name: "Bench CPA Review", note: "one-time", amount: 1100 }] },
+      { name: "Cloud / Infrastructure", dot: "#0e9384", txns: 6, amount: 3210, delta: "+23%", warn: false,
+        vendors: [{ name: "Amazon Web Services", note: "rule #4", amount: 1545.10 }, { name: "Vercel + Anthropic + Cloudflare", note: "monthly", amount: 1664.90 }] },
+      { name: "Marketing & Ads", dot: "#f79009", txns: 4, amount: 2930, delta: "+17%", warn: false,
+        vendors: [{ name: "Google Ads", note: "rule #7", amount: 1980 }, { name: "LinkedIn Ads", note: "monthly", amount: 950 }] },
+      { name: "Rent", dot: "#8c6a3f", txns: 1, amount: 2400, delta: "0%", warn: false,
+        vendors: [{ name: "WeWork — Congress Ave", note: "monthly", amount: 2400 }] },
+      { name: "Travel", dot: "#1d6bb5", txns: 5, amount: 1700, delta: "+89%", warn: false,
+        vendors: [{ name: "Delta Air Lines", note: "receipt attached", amount: 842.60 }, { name: "Marriott + Uber (4)", note: "", amount: 857.40 }] },
+      { name: "Payment Processing Fees", dot: "#635bff", txns: 4, amount: 612, delta: "−7%", warn: false,
+        vendors: [{ name: "Stripe fees", note: "split from payouts automatically", amount: 612 }] },
+      { name: "Meals", dot: "#b54708", txns: 6, amount: 400, delta: "+33%", warn: false,
+        vendors: [{ name: "DoorDash, The Coffee Counter +2", note: "", amount: 400 }] },
+      { name: "Office & Supplies", dot: "#9da8b6", txns: 2, amount: 200, delta: "−50%", warn: false,
+        vendors: [{ name: "Amazon", note: "default category rule", amount: 200 }] }
+    ];
+    this.state = { period: "this", expanded: {}, addCatOpen: false, ncName: "", ncGroup: "Expenses", newCats: [] };
+  }
+
+  fmt(n) { return "$" + n.toLocaleString("en-US", { minimumFractionDigits: n % 1 ? 2 : 0 }); }
+
+  renderVals() {
+    const s = this.state;
+    const base = s.period === "this" ? this.cats : this.catsLast;
+    const cats = base.concat(s.newCats);
+    const total = cats.reduce((a, c) => a + c.amount, 0);
+    const max = Math.max(...cats.map(c => c.amount));
+
+    const catRows = cats.map((c, i) => {
+      const key = s.period + ":" + c.name;
+      const expanded = !!s.expanded[key];
+      return {
+        ...c,
+        isNew: !!c.isNew,
+        txns: String(c.txns),
+        amount: this.fmt(c.amount),
+        w: Math.max(c.amount > 0 ? 2 : 0, (c.amount / max) * 100).toFixed(1) + "%",
+        deltaColor: c.warn ? "#b54708" : (c.delta.startsWith("−") ? "#248716" : "#a3a3a3"),
+        rot: expanded ? "90deg" : "0deg",
+        expanded,
+        toggle: () => this.setState(st => ({ expanded: { ...st.expanded, [key]: !st.expanded[key] } })),
+        vendors: (c.vendors || []).map(v => ({ ...v, amount: this.fmt(v.amount) }))
+      };
+    });
+
+    const cad = (kind) => kind === "Annual" ? { bg: "#eff8ff", color: "#175cd3" } : { bg: "#f5f5f5", color: "#525252" };
+    const recurring = [
+      { vendor: "Gusto payroll", category: "Payroll & Contractors", logo: "G", logoBg: "#f45d48", cadence: "Monthly", next: "Jul 1", amount: 6000 },
+      { vendor: "WeWork", category: "Rent", logo: "WW", logoBg: "#0f0f0f", cadence: "Monthly", next: "Jul 1", amount: 2400 },
+      { vendor: "Amazon Web Services", category: "Cloud / Infrastructure", logo: "AWS", logoBg: "#1b2a3a", cadence: "Monthly", next: "~Jul 3", amount: 1612.40 },
+      { vendor: "Google Ads", category: "Marketing & Ads", logo: "GA", logoBg: "#1a73e8", cadence: "Monthly", next: "~Jul 3", amount: 640 },
+      { vendor: "Vercel", category: "Cloud / Infrastructure", logo: "V", logoBg: "#000000", cadence: "Monthly", next: "Jul 7", amount: 350 },
+      { vendor: "GitHub", category: "Software & SaaS", logo: "GH", logoBg: "#24292f", cadence: "Monthly", next: "Jul 8", amount: 40 },
+      { vendor: "Figma — org plan", category: "Software & SaaS", logo: "F", logoBg: "#2c2c2c", cadence: "Annual", next: "May 2027", amount: 2652 }
+    ].map(r => ({ ...r, amount: this.fmt(r.amount), cadBg: cad(r.cadence).bg, cadColor: cad(r.cadence).color }));
+
+    return {
+      periods: [
+        { id: "this", label: "This month" },
+        { id: "last", label: "Last month" }
+      ].map(p => ({
+        ...p, pick: () => this.setState({ period: p.id }),
+        bg: s.period === p.id ? "#ffffff" : "transparent",
+        color: s.period === p.id ? "#0a0a0a" : "#737373",
+        shadow: s.period === p.id ? "0 1px 2px rgba(0,0,0,0.08)" : "none"
+      })),
+
+      kpiSpentLabel: s.period === "this" ? "Spent · Jun 1–10" : "Spent · May 2026",
+      kpiSpent: this.fmt(total),
+      kpiSpentDelta: s.period === "this" ? "▼ 4% vs. same point in May" : "▲ 21% vs. April",
+      kpiSpentDeltaColor: s.period === "this" ? "#248716" : "#b54708",
+      kpiMove: s.period === "this" ? "Cloud / Infrastructure ▲ 38%" : "Software & SaaS ▲ 184%",
+      kpiMoveSub: s.period === "this" ? "Anthropic usage is 3× usual — flagged in your Inbox" : "the annual Figma renewal ($2,652) landed in May",
+
+      catRows,
+      totalAmount: this.fmt(total),
+      recurring,
+
+      addCatOpen: s.addCatOpen,
+      openAddCat: () => this.setState({ addCatOpen: true, ncName: "", ncGroup: "Expenses" }),
+      closeAddCat: () => this.setState({ addCatOpen: false }),
+      ncName: s.ncName,
+      onNcName: (e) => this.setState({ ncName: e.target.value }),
+      ncGroup: s.ncGroup,
+      onNcGroup: (e) => this.setState({ ncGroup: e.target.value }),
+      saveCat: () => {
+        const name = (this.state.ncName || "").trim();
+        if (!name) { this.setState({ addCatOpen: false }); return; }
+        this.setState(st => ({
+          addCatOpen: false,
+          newCats: [...st.newCats, { name, dot: "#92cc7a", txns: 0, amount: 0, delta: "—", warn: false, isNew: true, vendors: [{ name: "No transactions yet", note: "pick it on any transaction, or build a rule", amount: 0 }] }]
+        }));
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

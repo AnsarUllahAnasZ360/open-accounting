@@ -1,0 +1,43 @@
+/* OpenBooks typography tokens.
+   Families come from the codebase (Geist / Geist Mono). Base UI size is 14px (shadcn baseline).
+   Money figures always use Geist Mono or tabular numbers — amounts must align in columns. */
+
+:root {
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --font-heading: var(--font-sans);
+
+  /* Size scale */
+  --text-xs: 0.75rem;     /* 12 — table meta, timestamps, badges */
+  --text-sm: 0.875rem;    /* 14 — base UI: body, tables, inputs */
+  --text-base: 1rem;      /* 16 — emphasized body, dialog titles */
+  --text-lg: 1.125rem;    /* 18 — card group titles */
+  --text-xl: 1.25rem;     /* 20 — section headers */
+  --text-2xl: 1.5rem;     /* 24 — page titles */
+  --text-3xl: 1.875rem;   /* 30 — dashboard metrics */
+  --text-4xl: 2.25rem;    /* 36 — hero figures (total balance) */
+
+  /* Weights — Geist variable axis */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Semantic styles */
+  --text-page-title-size: var(--text-2xl);
+  --text-page-title-weight: var(--weight-semibold);
+  --text-card-title-size: var(--text-base);
+  --text-card-title-weight: var(--weight-semibold);
+  --text-card-label-size: var(--text-sm);    /* muted metric labels */
+  --text-card-label-weight: var(--weight-medium);
+  --text-metric-size: var(--text-3xl);
+  --text-metric-weight: var(--weight-semibold);
+  --text-metric-tracking: -0.01em;
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+
+  /* Money figures: tabular lining numerals, never proportional */
+  --font-figures: var(--font-mono);
+  --figures-feature: "tnum" 1, "lnum" 1; /* @kind font */
+}

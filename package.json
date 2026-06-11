@@ -1,19 +1,33 @@
 {
-  "name": "ottex-ai-accounting",
+  "name": "openbooks",
   "version": "0.0.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.26.2",
   "scripts": {
-    "dev": "pnpm --filter @ottex/web dev",
-    "build": "pnpm --filter @ottex/web build",
-    "lint": "pnpm --filter @ottex/web lint",
-    "typecheck": "pnpm --filter @ottex/web typecheck",
+    "dev": "pnpm --filter @openbooks/web dev",
+    "build": "pnpm --filter @openbooks/web build",
+    "lint": "pnpm --filter @openbooks/web lint",
+    "typecheck": "pnpm --filter @openbooks/web typecheck",
+    "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests",
+    "test:e2e": "playwright test",
+    "preflight": "node scripts/preflight.mjs",
+    "verify": "pnpm typecheck && pnpm lint && pnpm build && pnpm test:unit",
     "convex:dev": "convex dev",
     "convex:deploy": "convex deploy"
   },
   "devDependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1066.0",
+    "@edge-runtime/vm": "^5.0.0",
+    "@playwright/test": "^1.60.0",
     "@types/node": "^20.19.42",
-    "typescript": "^5.9.3"
+    "convex-test": "^0.0.53",
+    "next": "16.2.7",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "@auth/core": "^0.37.0",

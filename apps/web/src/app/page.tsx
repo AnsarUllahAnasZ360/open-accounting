@@ -99,7 +99,7 @@ export default function Home() {
                   <Sparkles className="text-primary" data-icon="inline-start" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-semibold">Ottex AI Accounting</h1>
+                  <h1 className="text-2xl font-semibold">OpenBooks</h1>
                   <p className="text-sm text-muted-foreground">
                     Ledger-first bookkeeping for small service businesses
                   </p>

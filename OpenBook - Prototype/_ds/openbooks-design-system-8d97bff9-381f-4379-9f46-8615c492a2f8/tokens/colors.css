@@ -1,0 +1,80 @@
+/* OpenBooks color tokens.
+   Neutrals are lifted verbatim from apps/web/src/app/globals.css (shadcn/ui baseline).
+   The green ramp is the OpenBooks brand color (logo mark green). */
+
+:root {
+  /* ---- Brand green ramp ---- */
+  --ob-green-50: #f1f8ee;
+  --ob-green-100: #dcefd2;
+  --ob-green-200: #bbe0a9;
+  --ob-green-300: #92cc7a;
+  --ob-green-400: #63b347;
+  --ob-green-500: #2ca01c; /* brand primary — logo mark */
+  --ob-green-600: #248716;
+  --ob-green-700: #1d6b12;
+  --ob-green-800: #17540f;
+  --ob-green-900: #123f0c;
+
+  /* ---- Neutrals (from codebase globals.css) ---- */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+
+  /* ---- Brand-mapped semantic roles ---- */
+  --primary: var(--ob-green-500);
+  --primary-foreground: oklch(1 0 0);
+  --primary-hover: var(--ob-green-600);
+  --primary-active: var(--ob-green-700);
+  --ring: var(--ob-green-400);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(1 0 0);
+
+  /* ---- Money semantics ---- */
+  --positive: var(--ob-green-600);      /* income, inflow, paid */
+  --positive-surface: var(--ob-green-50);
+  --negative: #d92d20;                  /* expense, outflow, overdue */
+  --negative-surface: #fef3f2;
+  --warning: #b54708;                   /* needs review, uncategorized */
+  --warning-surface: #fffaeb;
+  --info: #175cd3;                      /* synced, informational */
+  --info-surface: #eff8ff;
+  --ai: var(--ob-green-700);            /* AI suggestions use brand green, never purple */
+  --ai-surface: var(--ob-green-50);
+
+  /* ---- Charts (finance palette) ---- */
+  --chart-1: var(--ob-green-500);
+  --chart-2: #0e9384; /* teal — secondary series */
+  --chart-3: #f79009; /* amber — projections / budget */
+  --chart-4: #475467; /* slate — comparison / prior period */
+  --chart-5: #d92d20; /* red — outflows */
+  --chart-grid: oklch(0.945 0 0);
+
+  /* ---- Sidebar (app shell) ---- */
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.37 0 0);
+  --sidebar-primary: var(--ob-green-700);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: var(--ob-green-50);
+  --sidebar-accent-foreground: var(--ob-green-800);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: var(--ob-green-400);
+
+  /* ---- Surface aliases ---- */
+  --surface-page: var(--background);
+  --surface-card: var(--card);
+  --surface-sunken: oklch(0.978 0 0);   /* table header rows, wells */
+  --text-body: var(--foreground);
+  --text-secondary: oklch(0.45 0 0);
+  --text-muted: var(--muted-foreground);
+}

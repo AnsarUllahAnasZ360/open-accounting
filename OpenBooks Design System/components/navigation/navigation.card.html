@@ -1,0 +1,56 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Navigation" subtitle="SideNav, PageHeader" -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+</head>
+<body style="margin:0;background:var(--surface-page);">
+<div id="root"></div>
+<script type="text/babel">
+const { SideNav, PageHeader, Button, Select } = window.OpenBooksDesignSystem_8d97bf;
+
+function Demo() {
+  const [active, setActive] = React.useState("dashboard");
+  return (
+    <div style={{ display: "flex", height: 384, overflow: "hidden" }}>
+      <SideNav
+        logoSrc="../../assets/logo/openbooks-mark.png"
+        activeId={active}
+        onSelect={setActive}
+        items={[
+          { id: "dashboard", label: "Dashboard", icon: "layout-dashboard" },
+          { id: "inbox", label: "Inbox", icon: "inbox", count: 14 },
+          { section: "Money" },
+          { id: "transactions", label: "Transactions", icon: "receipt" },
+          { id: "income", label: "Income", icon: "arrow-up-right" },
+          { id: "expenses", label: "Expenses", icon: "arrow-down-right" },
+          { id: "cashflow", label: "Cash flow", icon: "chart-column" },
+          { section: "Insights" },
+          { id: "reports", label: "Reports", icon: "file-text" },
+        ]}
+        footerItems={[{ id: "settings", label: "Settings", icon: "settings" }]}
+      />
+      <div style={{ flex: 1, padding: 24 }}>
+        <PageHeader
+          title="Reports"
+          description="Standard and custom reports for any period"
+          actions={<>
+            <Select options={["This quarter", "Year to date", "Last year"]} defaultValue="This quarter" />
+            <Button variant="outline" icon="download">Export</Button>
+            <Button icon="plus">Custom report</Button>
+          </>}
+        />
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+</script>
+</body>
+</html>

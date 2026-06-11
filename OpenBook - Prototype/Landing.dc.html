@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+    ::selection { background: #dcefd2; }
+    /* Pills, chips and button-style links are single-line by design — never wrap their labels */
+    [style*="9999px"], a[style*="inline-flex"] { white-space: nowrap; }
+  </style>
+</helmet>
+
+<div style="font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:15px; color:#0a0a0a; line-height:1.6; background:#ffffff;">
+
+  <!-- ===== NAV ===== -->
+  <div style="position:sticky; top:0; z-index:50; background:rgba(255,255,255,0.92); backdrop-filter:blur(8px); border-bottom:1px solid #ececec;">
+    <div style="max-width:1080px; margin:0 auto; height:60px; display:flex; align-items:center; gap:24px; padding:0 24px;">
+      <div style="display:flex; align-items:center; gap:9px;">
+        <div style="width:28px; height:28px; border-radius:9999px; background:#2ca01c; color:#ffffff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px;">ob</div>
+        <span style="font-weight:600; font-size:15px; letter-spacing:-0.01em;">open books</span>
+      </div>
+      <div style="flex:1;"></div>
+      <a href="#features" style="font-size:13.5px; color:#525252; text-decoration:none;" style-hover="color:#0a0a0a;">Features</a>
+      <a href="#mobile" style="font-size:13.5px; color:#525252; text-decoration:none;" style-hover="color:#0a0a0a;">Mobile</a>
+      <a href="#free" style="font-size:13.5px; color:#525252; text-decoration:none;" style-hover="color:#0a0a0a;">Why it's free</a>
+      <a href="#compare" style="font-size:13.5px; color:#525252; text-decoration:none;" style-hover="color:#0a0a0a;">Compare</a>
+      <a href="#faq" style="font-size:13.5px; color:#525252; text-decoration:none;" style-hover="color:#0a0a0a;">FAQ</a>
+      <a href="OpenBooks.dc.html" style="display:inline-flex; align-items:center; height:36px; padding:0 16px; border-radius:10px; background:#2ca01c; color:#ffffff; font-size:13.5px; font-weight:500; text-decoration:none; transition:background 120ms ease-out;" style-hover="background:#248716;">Open the app</a>
+    </div>
+  </div>
+
+  <!-- ===== HERO ===== -->
+  <div style="max-width:1080px; margin:0 auto; padding:80px 24px 0; text-align:center;">
+    <div style="display:inline-flex; align-items:center; gap:7px; height:28px; padding:0 12px; border-radius:9999px; background:#f1f8ee; color:#17540f; font-size:12.5px; font-weight:500;">Free · open source · self-hosted</div>
+    <h1 style="font-size:56px; font-weight:600; letter-spacing:-0.025em; line-height:1.06; margin:24px auto 0; max-width:680px;">Your books, always done.</h1>
+    <p style="font-size:18px; color:#525252; margin:20px auto 0; max-width:560px; text-wrap:pretty;">OpenBooks connects your banks and Stripe, and an AI bookkeeper running on your own model key keeps a real double-entry ledger — asking you only when it isn't sure.</p>
+    <div style="display:flex; gap:10px; justify-content:center; margin-top:30px;">
+      <a href="OpenBooks.dc.html" style="display:inline-flex; align-items:center; height:46px; padding:0 24px; border-radius:12px; background:#2ca01c; color:#ffffff; font-size:15px; font-weight:500; text-decoration:none; transition:background 120ms ease-out;" style-hover="background:#248716;">Try the live demo</a>
+      <a href="https://github.com/AnsarUllahAnasZ360/open-accounting" style="display:inline-flex; align-items:center; gap:8px; height:46px; padding:0 22px; border-radius:12px; border:1px solid #e5e5e5; color:#0a0a0a; font-size:15px; font-weight:500; text-decoration:none; transition:background 120ms ease-out;" style-hover="background:#f5f5f5;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.17c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.78 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.35.77 1.05.77 2.12v3.15c0 .3.21.66.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"></path></svg>
+        Star on GitHub
+      </a>
+    </div>
+    <div style="display:flex; gap:26px; justify-content:center; margin-top:30px; font-size:12.5px; color:#737373;">
+      <span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-weight:600; color:#0a0a0a;">$0</span>/month, forever</span>
+      <span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-weight:600; color:#0a0a0a;">15 min</span> to first dashboard</span>
+      <span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-weight:600; color:#0a0a0a;">MIT</span> licensed</span>
+    </div>
+
+    <!-- Hero screenshot in browser frame -->
+    <div style="max-width:960px; margin:52px auto 0; border-radius:14px 14px 0 0; background:#ffffff; box-shadow:0 0 0 1px rgba(10,10,10,0.09), 0 24px 48px -20px rgba(0,0,0,0.22); overflow:hidden;">
+      <div style="display:flex; align-items:center; gap:6px; height:36px; padding:0 14px; background:#fafafa; border-bottom:1px solid #ececec;">
+        <span style="width:10px; height:10px; border-radius:9999px; background:#e5e5e5;"></span>
+        <span style="width:10px; height:10px; border-radius:9999px; background:#e5e5e5;"></span>
+        <span style="width:10px; height:10px; border-radius:9999px; background:#e5e5e5;"></span>
+        <span style="flex:1;"></span>
+        <span style="display:inline-flex; align-items:center; gap:6px; height:22px; padding:0 12px; border-radius:7px; background:#ffffff; border:1px solid #ececec; font-family:'Geist Mono',ui-monospace,monospace; font-size:11px; color:#737373;">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          app.openbooks.dev
+        </span>
+        <span style="flex:1;"></span>
+      </div>
+      <img src="assets/shots/app-dashboard.png" alt="OpenBooks dashboard — cash position, P&amp;L, where money went, inbox, aging and payroll at a glance" style="display:block; width:100%; height:auto;"></img>
+    </div>
+  </div>
+
+  <!-- ===== THE LOOP ===== -->
+  <div style="border-top:1px solid #ececec; background:#fafafa;">
+    <div style="max-width:1080px; margin:0 auto; padding:64px 24px;">
+      <div style="font-size:12.5px; font-weight:600; color:#1d6b12; letter-spacing:0.06em; text-transform:uppercase;">The whole loop</div>
+      <h2 style="font-size:30px; font-weight:600; letter-spacing:-0.02em; margin:10px 0 0; max-width:560px;">Money moves. The ledger posts. You answer a question now and then.</h2>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-top:36px;">
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07); padding:24px;">
+          <div style="font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#a3a3a3;">01</div>
+          <div style="font-size:16px; font-weight:600; margin-top:8px;">Connect your accounts</div>
+          <p style="font-size:13.5px; color:#525252; margin:8px 0 0; text-wrap:pretty;">Banks via Plaid, payments via Stripe, or a plain CSV. Every transaction syncs in on its own — up to 24 months of history.</p>
+        </div>
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07); padding:24px;">
+          <div style="font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#a3a3a3;">02</div>
+          <div style="font-size:16px; font-weight:600; margin-top:8px;">AI categorizes everything</div>
+          <p style="font-size:13.5px; color:#525252; margin:8px 0 0; text-wrap:pretty;">Rules, memory of your corrections, then your own AI model — cheapest signal first. Confident calls post automatically. Uncertain ones wait in your Inbox.</p>
+        </div>
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07); padding:24px;">
+          <div style="font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#a3a3a3;">03</div>
+          <div style="font-size:16px; font-weight:600; margin-top:8px;">Real statements fall out</div>
+          <p style="font-size:13.5px; color:#525252; margin:8px 0 0; text-wrap:pretty;">A true double-entry ledger underneath means the Profit &amp; Loss, Balance Sheet and Cash Flow are correct — the kind your CPA accepts.</p>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px; margin-top:24px; padding:14px 18px; border-radius:12px; background:#ffffff; box-shadow:0 0 0 1px rgba(10,10,10,0.07);">
+        <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:13px; color:#17540f; font-weight:600;">"AI proposes. The ledger engine posts."</span>
+        <span style="font-size:12.5px; color:#737373;">— accounting correctness comes before automation. Posted entries are never edited; corrections are new, linked entries.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FEATURE: INBOX ===== -->
+  <div id="features" style="max-width:1080px; margin:0 auto; padding:88px 24px 44px; display:grid; grid-template-columns:0.85fr 1.15fr; gap:48px; align-items:center;">
+    <div>
+      <div style="font-size:12.5px; font-weight:600; color:#1d6b12; letter-spacing:0.06em; text-transform:uppercase;">The inbox</div>
+      <h2 style="font-size:28px; font-weight:600; letter-spacing:-0.02em; margin:10px 0 0;">Five minutes, not five hours.</h2>
+      <p style="font-size:14.5px; color:#525252; margin:12px 0 0; text-wrap:pretty;">The only mandatory workflow in OpenBooks. The AI posts everything it's sure about; the handful of calls it won't make alone queue here — categories, receipt matches, transfers, payout mismatches, even its own questions.</p>
+      <div style="display:flex; flex-direction:column; gap:9px; margin-top:18px;">
+        <div style="display:flex; gap:10px; font-size:13.5px; color:#3d3d3d;"><span style="color:#248716; font-weight:600;">→</span><span>Confirm, change, split or exclude — one keystroke each</span></div>
+        <div style="display:flex; gap:10px; font-size:13.5px; color:#3d3d3d;"><span style="color:#248716; font-weight:600;">→</span><span>"Why this suggestion" shows the evidence behind every call</span></div>
+        <div style="display:flex; gap:10px; font-size:13.5px; color:#3d3d3d;"><span style="color:#248716; font-weight:600;">→</span><span>Every answer becomes memory — the same question never comes back</span></div>
+      </div>
+    </div>
+    <div style="border-radius:12px; overflow:hidden; box-shadow:0 0 0 1px rgba(10,10,10,0.09), 0 16px 36px -16px rgba(0,0,0,0.2);">
+      <img src="assets/shots/app-inbox.png" alt="OpenBooks Inbox — AI suggestion with confidence, confirm / split / exclude actions" style="display:block; width:100%; height:auto;"></img>
+    </div>
+  </div>
+
+  <!-- ===== FEATURE: ASK AI ===== -->
+  <div style="max-width:1080px; margin:0 auto; padding:44px 24px; display:grid; grid-template-columns:1.15fr 0.85fr; gap:48px; align-items:center;">
+    <div style="border-radius:12px; overflow:hidden; box-shadow:0 0 0 1px rgba(10,10,10,0.09), 0 16px 36px -16px rgba(0,0,0,0.2);">
+      <img src="assets/shots/app-askai.png" alt="Ask AI panel answering questions from the ledger, proposing a rule" style="display:block; width:100%; height:auto;"></img>
+    </div>
+    <div>
+      <div style="font-size:12.5px; font-weight:600; color:#1d6b12; letter-spacing:0.06em; text-transform:uppercase;">Ask AI</div>
+      <h2 style="font-size:28px; font-weight:600; letter-spacing:-0.02em; margin:10px 0 0;">Ask your books anything.</h2>
+      <p style="font-size:14.5px; color:#525252; margin:12px 0 0; text-wrap:pretty;">A side panel that lives next to every screen. Answers come straight from the ledger — and when the AI wants to act, it proposes first and posts only after you say yes.</p>
+      <div style="display:flex; flex-wrap:wrap; gap:7px; margin-top:18px;">
+        <span style="height:28px; display:inline-flex; align-items:center; padding:0 12px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#525252;">"Who owes me money right now?"</span>
+        <span style="height:28px; display:inline-flex; align-items:center; padding:0 12px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#525252;">"How did May compare to April?"</span>
+        <span style="height:28px; display:inline-flex; align-items:center; padding:0 12px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#525252;">"What did Stripe take in fees?"</span>
+        <span style="height:28px; display:inline-flex; align-items:center; padding:0 12px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#525252;">"Just handle Uber rides for me"</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TOUR: the money screens ===== -->
+  <div style="border-top:1px solid #ececec; background:#fafafa;">
+    <div style="max-width:1080px; margin:0 auto; padding:72px 24px;">
+      <div style="font-size:12.5px; font-weight:600; color:#1d6b12; letter-spacing:0.06em; text-transform:uppercase;">The tour</div>
+      <h2 style="font-size:30px; font-weight:600; letter-spacing:-0.02em; margin:10px 0 0;">Every screen money touches.</h2>
+      <p style="font-size:15px; color:#737373; margin:10px 0 0; max-width:560px;">Two transaction concepts instead of five. About 30 categories instead of 154. No payments upsell anywhere.</p>
+      <div style="display:flex; gap:8px; margin-top:28px; flex-wrap:wrap;">
+        <sc-for list="{{ tourTabs }}" as="t" hint-placeholder-count="5">
+          <button onClick="{{ t.pick }}" style="height:34px; padding:0 16px; border-radius:9999px; border:1px solid {{ t.border }}; background:{{ t.bg }}; color:{{ t.color }}; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:{{ t.weight }}; transition:background 120ms ease-out;" style-hover="background:{{ t.hoverBg }};" style-active="transform:translateY(1px);">{{ t.label }}</button>
+        </sc-for>
+      </div>
+      <div style="margin-top:20px;">
+        <sc-if value="{{ tourTransactions }}" hint-placeholder-val="{{ true }}">
+          <div style="border-radius:12px; overflow:hidden; box-shadow:0 0 0 1px rgba(10,10,10,0.09), 0 16px 36px -16px rgba(0,0,0,0.18);">
+            <img src="assets/shots/app-transactions.png" alt="Transactions — every account in one register with AI categories and approval queue" style="display:block; width:100%; height:auto;"></img>
+          </div>
+          <p style="font-size:13.5px; color:#525252; margin:16px 0 0; max-width:640px;"><span style="font-weight:600; color:#0a0a0a;">Transactions.</span> Every account in one register. Rules, matches and high-confidence AI post automatically; the rest wait for one-click approval — with the AI's confidence shown on every line.</p>
+        </sc-if>
+        <sc-if value="{{ tourIncome }}" hint-placeholder-val="{{ false }}">
+          <div style="border-radius:12px; overflow:hidden; box-shadow:0 0 0 1px rgba(10,10,10,0.09), 0 16px 36px -16px rgba(0,0,0,0.18);">
+            <img src="assets/shots/app-income.png" alt="Income — payments, invoices and receivables with Stripe payouts reconciled" style="display:block; width:100%; height:auto;"></img>
+          </div>
+          <p style="font-size:13.5px; color:#525252; margin:16px 0 0; max-width:640px;"><span style="font-weight:600; color:#0a0a0a;">Income.</span> Payments, invoices and receivables in one place. Stripe payouts arrive as one deposit — OpenBooks splits them back into gross revenue by customer, minus fees, reconciled to the penny.</p>
+        </sc-if>
+        <sc-if value="{{ tourExpenses }}" hint-placeholder-val="{{ false }}">
+          <div style="border-radius:12px; overflow:hidden; box-shadow:0 0 0 1px rgba(10,10,10,0.09), 0 16px 36px -16px rgba(0,0,0,0.18);">
+            <img src="assets/shots/app-expenses.png" alt="Expenses — spend by category with share bars, recurring spend detection and biggest movement" style="display:block; width:100%; height:auto;"></img>
+          </div>
+          <p style="font-size:13.5px; color:#525252; margin:16px 0 0; max-width:640px;"><span style="font-weight:600; color:#0a0a0a;">Expenses.</span> Where money goes, by category and vendor — with recurring spend detected from history and the biggest movement flagged. Anthropic usage 3× usual? It's already in your Inbox.</p>
+        </sc-if>
+        <sc-if value="{{ tourBills }}" hint-placeholder-val="{{ false }}">
+          <div style="border-radius:12px; overflow:hidden; box-shadow:0 0 0 1px rgba(10,10,10,0.09), 0 16px 36px -16px rgba(0,0,0,0.18);">
+            <img src="assets/shots/app-bills.png" alt="Bills — what you owe and when it's due, with amounts extracted from PDF invoices" style="display:block; width:100%; height:auto;"></img>
+          </div>
+          <p style="font-size:13.5px; color:#525252; margin:16px 0 0; max-width:640px;"><span style="font-weight:600; color:#0a0a0a;">Bills.</span> What you owe and when it's due. Amounts extracted from PDF invoices, recurring charges found automatically and offered as bills — nothing sneaks up on you.</p>
+        </sc-if>
+        <sc-if value="{{ tourPayroll }}" hint-placeholder-val="{{ false }}">
+          <div style="border-radius:12px; overflow:hidden; box-shadow:0 0 0 1px rgba(10,10,10,0.09), 0 16px 36px -16px rgba(0,0,0,0.18);">
+            <img src="assets/shots/app-payroll.png" alt="Payroll — a multi-currency register with runs by month and per-currency totals" style="display:block; width:100%; height:auto;"></img>
+          </div>
+          <p style="font-size:13.5px; color:#525252; margin:16px 0 0; max-width:640px;"><span style="font-weight:600; color:#0a0a0a;">Payroll.</span> A register, not a processor — for teams paid in USD, PKR, INR, any currency. Run, review, approve; FX differences post themselves.</p>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FEATURE: REPORTS ===== -->
+  <div style="max-width:1080px; margin:0 auto; padding:80px 24px;">
+    <div style="text-align:center;">
+      <div style="font-size:12.5px; font-weight:600; color:#1d6b12; letter-spacing:0.06em; text-transform:uppercase;">Reports</div>
+      <h2 style="font-size:30px; font-weight:600; letter-spacing:-0.02em; margin:10px 0 0;">Statements your CPA accepts.</h2>
+      <p style="font-size:15px; color:#737373; margin:10px auto 0; max-width:540px;">Every number comes straight from the ledger. Any date range, cash or accrual, with a month-end close that locks the books.</p>
+    </div>
+    <div style="max-width:880px; margin:36px auto 0; border-radius:12px; overflow:hidden; box-shadow:0 0 0 1px rgba(10,10,10,0.09), 0 16px 36px -16px rgba(0,0,0,0.2);">
+      <img src="assets/shots/app-reports.png" alt="Reports — Monthly Review, statements, money owed and insights, with month-end close" style="display:block; width:100%; height:auto;"></img>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:28px; max-width:760px; margin-left:auto; margin-right:auto;">
+      <span style="height:30px; display:inline-flex; align-items:center; gap:7px; padding:0 13px; border-radius:9999px; background:#f1f8ee; color:#17540f; font-size:12.5px; font-weight:500;">Monthly Review</span>
+      <span style="height:30px; display:inline-flex; align-items:center; padding:0 13px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#3d3d3d;">Profit &amp; Loss</span>
+      <span style="height:30px; display:inline-flex; align-items:center; padding:0 13px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#3d3d3d;">Balance Sheet</span>
+      <span style="height:30px; display:inline-flex; align-items:center; padding:0 13px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#3d3d3d;">Cash Flow Statement</span>
+      <span style="height:30px; display:inline-flex; align-items:center; padding:0 13px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#3d3d3d;">A/R Aging</span>
+      <span style="height:30px; display:inline-flex; align-items:center; padding:0 13px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#3d3d3d;">A/P Aging</span>
+      <span style="height:30px; display:inline-flex; align-items:center; padding:0 13px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#3d3d3d;">Expenses</span>
+      <span style="height:30px; display:inline-flex; align-items:center; padding:0 13px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#3d3d3d;">Income by Customer</span>
+      <span style="height:30px; display:inline-flex; align-items:center; padding:0 13px; border-radius:9999px; border:1px solid #e5e5e5; font-size:12.5px; color:#3d3d3d;">Payroll Summary</span>
+      <span style="height:30px; display:inline-flex; align-items:center; padding:0 13px; border-radius:9999px; border:1px dashed #d4d4d4; font-size:12.5px; color:#737373;">Trial Balance · General Ledger · Journal exports</span>
+    </div>
+  </div>
+
+  <!-- ===== MOBILE ===== -->
+  <div id="mobile" style="border-top:1px solid #ececec; background:#fafafa;">
+    <div style="max-width:1080px; margin:0 auto; padding:72px 24px;">
+      <div style="display:grid; grid-template-columns:0.9fr 1.1fr; gap:48px; align-items:center;">
+        <div>
+          <div style="font-size:12.5px; font-weight:600; color:#1d6b12; letter-spacing:0.06em; text-transform:uppercase;">On your phone</div>
+          <h2 style="font-size:28px; font-weight:600; letter-spacing:-0.02em; margin:10px 0 0;">The whole business, in your pocket.</h2>
+          <p style="font-size:14.5px; color:#525252; margin:12px 0 0; text-wrap:pretty;">Every metric from the desktop dashboard lives on the mobile home — cash with trend, in/out by month, aging, cushion, top expenses and what's coming up. Clear your inbox from the couch; the AI does the filing.</p>
+          <div style="display:flex; flex-direction:column; gap:9px; margin-top:18px;">
+            <div style="display:flex; gap:10px; font-size:13.5px; color:#3d3d3d;"><span style="color:#248716; font-weight:600;">→</span><span>Confirm AI suggestions with one thumb</span></div>
+            <div style="display:flex; gap:10px; font-size:13.5px; color:#3d3d3d;"><span style="color:#248716; font-weight:600;">→</span><span>Ask AI anywhere — answers from the same ledger</span></div>
+            <div style="display:flex; gap:10px; font-size:13.5px; color:#3d3d3d;"><span style="color:#248716; font-weight:600;">→</span><span>A web app — nothing to install, works on any phone</span></div>
+          </div>
+          <a href="OpenBooks Mobile.dc.html" style="display:inline-flex; align-items:center; gap:7px; margin-top:22px; height:40px; padding:0 18px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; color:#0a0a0a; font-size:13.5px; font-weight:500; text-decoration:none;" style-hover="background:#f5f5f5;">Try the mobile demo →</a>
+        </div>
+        <div style="display:flex; gap:18px; justify-content:center; align-items:flex-start;">
+          <div style="flex:1; max-width:200px;">
+            <div style="border-radius:22px; overflow:hidden; border:6px solid #0f0f0f; box-shadow:0 16px 36px -16px rgba(0,0,0,0.28);">
+              <img src="assets/shots/mobile-home.png" alt="Mobile home — cash position with trend, accounts, inbox call-to-action, aging" style="display:block; width:100%; height:auto;"></img>
+            </div>
+            <div style="text-align:center; font-size:12px; color:#737373; margin-top:10px;">Home · every metric</div>
+          </div>
+          <div style="flex:1; max-width:200px; margin-top:28px;">
+            <div style="border-radius:22px; overflow:hidden; border:6px solid #0f0f0f; box-shadow:0 16px 36px -16px rgba(0,0,0,0.28);">
+              <img src="assets/shots/mobile-inbox.png" alt="Mobile inbox — confirm AI categorizations with one tap" style="display:block; width:100%; height:auto;"></img>
+            </div>
+            <div style="text-align:center; font-size:12px; color:#737373; margin-top:10px;">Inbox · one-tap confirm</div>
+          </div>
+          <div style="flex:1; max-width:200px;">
+            <div style="border-radius:22px; overflow:hidden; border:6px solid #0f0f0f; box-shadow:0 16px 36px -16px rgba(0,0,0,0.28);">
+              <img src="assets/shots/mobile-askai.png" alt="Mobile Ask AI — answers from the ledger on the go" style="display:block; width:100%; height:auto;"></img>
+            </div>
+            <div style="text-align:center; font-size:12px; color:#737373; margin-top:10px;">Ask AI · on the go</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ROADMAP ===== -->
+  <div style="max-width:1080px; margin:0 auto; padding:80px 24px;">
+    <div style="font-size:12.5px; font-weight:600; color:#1d6b12; letter-spacing:0.06em; text-transform:uppercase;">Where it's going</div>
+    <h2 style="font-size:30px; font-weight:600; letter-spacing:-0.02em; margin:10px 0 0; max-width:600px;">The ledger makes harder things possible.</h2>
+    <p style="font-size:15px; color:#737373; margin:10px 0 0; max-width:560px;">Because every number is a balanced journal entry, these aren't guesses — they're arithmetic. On the roadmap, shaped by GitHub votes.</p>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-top:36px;">
+      <div style="border:1px solid #ececec; border-radius:14px; padding:22px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16 M7 16c1.5-2 3-6 5-6s3 3 5 1 2-5 3-6"></path></svg>
+        <div style="font-size:15px; font-weight:600; margin-top:10px;">13-week cash forecast</div>
+        <p style="font-size:13px; color:#525252; margin:7px 0 0; text-wrap:pretty;">A look ahead built from your recurring bills, payroll dates and invoice due dates — so you see the dip before it happens.</p>
+      </div>
+      <div style="border:1px solid #ececec; border-radius:14px; padding:22px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
+        <div style="font-size:15px; font-weight:600; margin-top:10px;">Quarterly tax set-asides</div>
+        <p style="font-size:13px; color:#525252; margin:7px 0 0; text-wrap:pretty;">An estimated-tax line computed from real profit, with a suggested amount to move to savings each month. No April surprises.</p>
+      </div>
+      <div style="border:1px solid #ececec; border-radius:14px; padding:22px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4 M12 17h.01 M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path></svg>
+        <div style="font-size:15px; font-weight:600; margin-top:10px;">Anomaly alerts</div>
+        <p style="font-size:13px; color:#525252; margin:7px 0 0; text-wrap:pretty;">Duplicate charges, silent price hikes, a vendor billing twice in a month — flagged in your Inbox before they compound.</p>
+      </div>
+      <div style="border:1px solid #ececec; border-radius:14px; padding:22px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <div style="font-size:15px; font-weight:600; margin-top:10px;">Accountant seat</div>
+        <p style="font-size:13px; color:#525252; margin:7px 0 0; text-wrap:pretty;">A read-only login for your CPA plus a year-end pack — statements, general ledger and journal — exported in one click.</p>
+      </div>
+      <div style="border:1px solid #ececec; border-radius:14px; padding:22px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6"></path></svg>
+        <div style="font-size:15px; font-weight:600; margin-top:10px;">Invoice nudges</div>
+        <p style="font-size:13px; color:#525252; margin:7px 0 0; text-wrap:pretty;">Polite, automatic reminders for overdue invoices — drafted by the AI, sent only with your approval, escalating on your schedule.</p>
+      </div>
+      <div style="border:1px solid #ececec; border-radius:14px; padding:22px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z"></path></svg>
+        <div style="font-size:15px; font-weight:600; margin-top:10px;">Multi-entity consolidation</div>
+        <p style="font-size:13px; color:#525252; margin:7px 0 0; text-wrap:pretty;">Run several businesses from one login today; consolidated statements with inter-company eliminations are next.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== WHY FREE ===== -->
+  <div id="free" style="border-top:1px solid #ececec; background:#0f1410;">
+    <div style="max-width:1080px; margin:0 auto; padding:80px 24px;">
+      <div style="font-size:12.5px; font-weight:600; color:#63b347; letter-spacing:0.06em; text-transform:uppercase;">Why it's free</div>
+      <h2 style="font-size:30px; font-weight:600; letter-spacing:-0.02em; margin:10px 0 0; color:#ffffff; max-width:560px;">Because you bring the keys, there's nothing to charge you for.</h2>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:48px; margin-top:44px; align-items:start;">
+        <div style="display:flex; flex-direction:column; gap:22px;">
+          <div style="display:flex; gap:14px;">
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:13px; color:#63b347; margin-top:2px;">→</span>
+            <div>
+              <div style="font-size:15px; font-weight:600; color:#ffffff;">Your own Plaid, Stripe and AI keys</div>
+              <p style="font-size:13.5px; color:#9aa59b; margin:5px 0 0; text-wrap:pretty;">Intelligence costs API pennies when it runs on your model key — Anthropic, OpenAI, Google or local Ollama. No $500/month bookkeeping service in the middle.</p>
+            </div>
+          </div>
+          <div style="display:flex; gap:14px;">
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:13px; color:#63b347; margin-top:2px;">→</span>
+            <div>
+              <div style="font-size:15px; font-weight:600; color:#ffffff;">Self-hosted, one Docker command</div>
+              <p style="font-size:13.5px; color:#9aa59b; margin:5px 0 0; text-wrap:pretty;">Your books live on your machine as data you can always export. No vendor can shut down overnight and take your records with it.</p>
+            </div>
+          </div>
+          <div style="display:flex; gap:14px;">
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:13px; color:#63b347; margin-top:2px;">→</span>
+            <div>
+              <div style="font-size:15px; font-weight:600; color:#ffffff;">Open source, MIT licensed</div>
+              <p style="font-size:13.5px; color:#9aa59b; margin:5px 0 0; text-wrap:pretty;">The ledger engine is public, auditable, and free to use anywhere — even inside your own products. No ads, no upsells, no payments funnel disguised as bookkeeping software.</p>
+            </div>
+          </div>
+        </div>
+        <div style="background:#161d17; border-radius:16px; border:1px solid #243126; padding:26px 28px;">
+          <div style="font-size:12.5px; color:#9aa59b; font-weight:500;">What a year of books costs</div>
+          <div style="display:flex; flex-direction:column; gap:14px; margin-top:18px;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline;">
+              <span style="font-size:13.5px; color:#cdd5ce;">QuickBooks + a bookkeeper</span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:15px; color:#cdd5ce;">$4,000–7,200</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline;">
+              <span style="font-size:13.5px; color:#cdd5ce;">Zeni, Digits, Puzzle tiers</span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:15px; color:#cdd5ce;">$1,200–6,000</span>
+            </div>
+            <div style="height:1px; background:#243126;"></div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline;">
+              <span style="font-size:14px; color:#ffffff; font-weight:600;">OpenBooks + your API keys</span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:20px; color:#63b347; font-weight:600;">~$30 /yr</span>
+            </div>
+            <div style="font-size:12px; color:#9aa59b;">Mostly your AI provider's usage. Plaid has free and low-cost tiers; CSV import is always free.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== COMPARE ===== -->
+  <div id="compare" style="max-width:1080px; margin:0 auto; padding:72px 24px;">
+    <h2 style="font-size:30px; font-weight:600; letter-spacing:-0.02em; margin:0;">Nobody else combines all five.</h2>
+    <p style="font-size:15px; color:#737373; margin:10px 0 0;">A real ledger, bank sync, an AI inbox, open source, and self-hosting — pick any four elsewhere.</p>
+    <div style="margin-top:32px; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr 1fr; padding:11px 20px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span></span><span style="text-align:center; color:#17540f;">OpenBooks</span><span style="text-align:center;">QuickBooks</span><span style="text-align:center;">Puzzle / Digits</span><span style="text-align:center;">Bigcapital</span>
+      </div>
+      <sc-for list="{{ compareRows }}" as="cr" hint-placeholder-count="6">
+        <div style="display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr 1fr; padding:11px 20px; border-top:1px solid #f3f3f3; font-size:13.5px; align-items:center; background:{{ cr.bg }};">
+          <span style="font-weight:{{ cr.weight }};">{{ cr.label }}</span>
+          <span style="text-align:center; font-family:'Geist Mono',ui-monospace,monospace; font-size:12.5px; color:#17540f; font-weight:600;">{{ cr.ob }}</span>
+          <span style="text-align:center; font-family:'Geist Mono',ui-monospace,monospace; font-size:12.5px; color:#737373;">{{ cr.qbo }}</span>
+          <span style="text-align:center; font-family:'Geist Mono',ui-monospace,monospace; font-size:12.5px; color:#737373;">{{ cr.ai }}</span>
+          <span style="text-align:center; font-family:'Geist Mono',ui-monospace,monospace; font-size:12.5px; color:#737373;">{{ cr.oss }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ===== FAQ ===== -->
+  <div id="faq" style="border-top:1px solid #ececec; background:#fafafa;">
+    <div style="max-width:760px; margin:0 auto; padding:72px 24px;">
+      <h2 style="font-size:26px; font-weight:600; letter-spacing:-0.02em; margin:0 0 28px;">Honest answers</h2>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <sc-for list="{{ faqs }}" as="f" hint-placeholder-count="4">
+          <div style="background:#ffffff; border-radius:12px; box-shadow:0 0 0 1px rgba(10,10,10,0.07); overflow:hidden;">
+            <button onClick="{{ f.toggle }}" style="width:100%; display:flex; align-items:center; gap:12px; padding:16px 20px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:14.5px; font-weight:600; text-align:left; color:#0a0a0a;">
+              <span style="flex:1;">{{ f.q }}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 140ms ease-out; transform:rotate({{ f.rot }});"><path d="m6 9 6 6 6-6"></path></svg>
+            </button>
+            <sc-if value="{{ f.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 20px 18px; font-size:13.5px; color:#525252; line-height:1.65; text-wrap:pretty;">{{ f.a }}</div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CTA + FOOTER ===== -->
+  <div style="max-width:1080px; margin:0 auto; padding:80px 24px 32px; text-align:center;">
+    <h2 style="font-size:34px; font-weight:600; letter-spacing:-0.02em; margin:0;">Connect your accounts. Answer a few questions a week.</h2>
+    <p style="font-size:16px; color:#737373; margin:12px 0 0;">Your books are always done — and they're yours.</p>
+    <div style="display:flex; gap:10px; justify-content:center; margin-top:28px;">
+      <a href="OpenBooks.dc.html" style="display:inline-flex; align-items:center; height:46px; padding:0 26px; border-radius:12px; background:#2ca01c; color:#ffffff; font-size:15px; font-weight:500; text-decoration:none; transition:background 120ms ease-out;" style-hover="background:#248716;">Try the live demo</a>
+      <a href="OpenBooks Mobile.dc.html" style="display:inline-flex; align-items:center; height:46px; padding:0 22px; border-radius:12px; border:1px solid #e5e5e5; color:#0a0a0a; font-size:15px; font-weight:500; text-decoration:none;" style-hover="background:#f5f5f5;">See it on mobile</a>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; gap:18px; margin-top:72px; padding-top:24px; border-top:1px solid #ececec; font-size:12.5px; color:#a3a3a3;">
+      <span style="display:inline-flex; align-items:center; gap:7px;"><span style="width:18px; height:18px; border-radius:9999px; background:#2ca01c; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:7.5px;">ob</span> open books</span>
+      <span>·</span>
+      <span>MIT licensed</span>
+      <span>·</span>
+      <a href="https://github.com/AnsarUllahAnasZ360/open-accounting" style="color:#a3a3a3; text-decoration:none;" style-hover="color:#0a0a0a;">GitHub</a>
+      <span>·</span>
+      <span>No tracking, no account required</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { faqOpen: 0, tour: "transactions" };
+
+  renderVals() {
+    const s = this.state;
+
+    const tabs = [
+      { id: "transactions", label: "Transactions" },
+      { id: "income", label: "Income" },
+      { id: "expenses", label: "Expenses" },
+      { id: "bills", label: "Bills" },
+      { id: "payroll", label: "Payroll" }
+    ].map(t => {
+      const active = s.tour === t.id;
+      return {
+        ...t,
+        pick: () => this.setState({ tour: t.id }),
+        bg: active ? "#2ca01c" : "#ffffff",
+        border: active ? "#2ca01c" : "#e5e5e5",
+        color: active ? "#ffffff" : "#525252",
+        weight: active ? "600" : "500",
+        hoverBg: active ? "#248716" : "#f5f5f5"
+      };
+    });
+
+    const compare = [
+      { label: "Real double-entry ledger", ob: "yes", qbo: "yes", ai: "yes", oss: "yes" },
+      { label: "Bank sync", ob: "BYO Plaid", qbo: "yes", ai: "yes", oss: "no" },
+      { label: "AI categorization + inbox", ob: "BYO model", qbo: "yes", ai: "yes", oss: "no" },
+      { label: "Stripe payout reconciliation", ob: "yes", qbo: "partial", ai: "yes", oss: "no" },
+      { label: "Open source", ob: "MIT", qbo: "no", ai: "no", oss: "AGPL" },
+      { label: "Self-hosted, you own the data", ob: "yes", qbo: "no", ai: "no", oss: "yes" },
+      { label: "Price per month", ob: "$0", qbo: "$38–275", ai: "$0–200", oss: "$0", total: true }
+    ];
+
+    const faqs = [
+      { q: "Is it really free? What's the catch?", a: "The software is free and MIT-licensed, forever. Your only costs are the keys you bring: AI usage (typically a few dollars a month for categorization) and Plaid if you outgrow its free tier — CSV import always works without it. There's no hosted tier to upsell you to yet, and the anti-scope list in the README rules out ads and payment-processing funnels permanently." },
+      { q: "What do I need to run it?", a: "A machine that runs Docker — a $5 VPS, a home server, or your laptop. One `docker compose up` starts the app and the database. Connect a bank or upload a CSV, paste an AI key (or skip it — rules and manual categorization still work), and the dashboard lights up in about 15 minutes." },
+      { q: "Will my accountant accept the books?", a: "That's the design test. Underneath the plain-English UI is a strict double-entry ledger: every transaction posts balanced journal entries, posted entries are immutable, and there are General Ledger, Trial Balance and Journal exports plus a month-end close. Your CPA gets accountant-grade records, not a spreadsheet export." },
+      { q: "What happens if the project dies?", a: "Nothing happens to your books. They live in your own database, with full CSV, JSON and general-ledger export at all times — that's a hard product principle, learned from watching hosted bookkeeping services shut down overnight. The code is MIT-licensed, so anyone can fork it and keep it alive." }
+    ].map((f, i) => ({
+      ...f,
+      open: s.faqOpen === i,
+      rot: s.faqOpen === i ? "180deg" : "0deg",
+      toggle: () => this.setState({ faqOpen: s.faqOpen === i ? -1 : i })
+    }));
+
+    return {
+      tourTabs: tabs,
+      tourTransactions: s.tour === "transactions",
+      tourIncome: s.tour === "income",
+      tourExpenses: s.tour === "expenses",
+      tourBills: s.tour === "bills",
+      tourPayroll: s.tour === "payroll",
+      compareRows: compare.map(c => ({
+        ...c,
+        bg: c.total ? "#f1f8ee" : "#ffffff",
+        weight: c.total ? "600" : "500"
+      })),
+      faqs
+    };
+  }
+}
+</script>
+</body>
+</html>

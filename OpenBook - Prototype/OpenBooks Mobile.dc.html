@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; height: 100%; background: #f5f5f5; }
+    * { box-sizing: border-box; }
+    @keyframes ob-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    @keyframes ob-pop { 0% { opacity: 0; transform: scale(0.96); } 100% { opacity: 1; transform: scale(1); } }
+  </style>
+</helmet>
+
+<div style="width:100%; max-width:430px; margin:0 auto; height:100vh; min-height:600px; background:#ffffff; color:#0a0a0a; font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:15px; line-height:1.5; display:flex; flex-direction:column; overflow:hidden;">
+
+  <!-- Top bar -->
+  <div style="height:54px; min-height:54px; display:flex; align-items:center; gap:10px; padding:0 16px; border-bottom:1px solid #ececec;">
+    <div style="width:28px; height:28px; border-radius:9999px; background:#2ca01c; color:#ffffff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px;">ob</div>
+    <div style="flex:1; min-width:0;">
+      <div style="font-size:14px; font-weight:600; line-height:1.2;">{{ screenTitle }}</div>
+      <div style="font-size:11px; color:#737373; line-height:1.3;">Z360 Labs LLC · synced 12 min ago</div>
+    </div>
+    <span style="width:8px; height:8px; border-radius:9999px; background:#2ca01c;" title="All accounts synced"></span>
+  </div>
+
+  <!-- Content -->
+  <div style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; background:#fafafa;">
+
+    <!-- ===== HOME ===== -->
+    <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Mobile Home" style="padding:16px 16px 24px; display:flex; flex-direction:column; gap:12px;">
+
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07), 0 1px 2px rgba(0,0,0,0.04); padding:16px 18px;">
+          <div style="font-size:12px; color:#737373; font-weight:500;">Cash position</div>
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:30px; font-weight:600; letter-spacing:-0.01em; margin-top:2px;">$107,765.10</div>
+            <div style="font-size:11.5px; color:#248716; font-weight:500;">▲ $12,340 / 90 days</div>
+          </div>
+          <svg width="100%" height="44" viewBox="0 0 320 44" preserveAspectRatio="none" style="margin-top:8px; display:block;">
+            <path d="M2,36 L20,33 L38,35 L56,30 L74,31 L92,26 L110,27 L128,22 L146,19 L164,21 L182,15 L200,12 L218,14 L236,9 L254,11 L272,7 L290,8 L318,4" fill="none" stroke="#2ca01c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px; border-top:1px solid #f0f0f0; padding-top:12px;">
+            <sc-for list="{{ accounts }}" as="a" hint-placeholder-count="3">
+              <div style="display:flex; align-items:center; gap:9px;">
+                <span style="width:22px; height:22px; border-radius:6px; background:{{ a.bg }}; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700;">{{ a.logo }}</span>
+                <span style="flex:1; font-size:13px;">{{ a.name }}</span>
+                <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:600;">{{ a.balance }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{ hasInbox }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ goInbox }}" style="display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:14px; border:none; background:#f1f8ee; cursor:pointer; font-family:inherit; text-align:left; width:100%;" style-active="transform:translateY(1px);">
+            <span style="width:34px; height:34px; border-radius:10px; background:#dcefd2; display:inline-flex; align-items:center; justify-content:center;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg>
+            </span>
+            <span style="flex:1;">
+              <span style="display:block; font-size:14px; font-weight:600; color:#17540f;">{{ inboxCount }} items need you</span>
+              <span style="display:block; font-size:12px; color:#5a7a52;">about 2 minutes — everything else is done</span>
+            </span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+          </button>
+        </sc-if>
+        <sc-if value="{{ inboxZero }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:14px; background:#f1f8ee;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+            <span style="font-size:13.5px; font-weight:500; color:#17540f;">Inbox zero — your books are up to date.</span>
+          </div>
+        </sc-if>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07), 0 1px 2px rgba(0,0,0,0.04); padding:14px 16px;">
+            <div style="font-size:12px; color:#737373; font-weight:500;">Owed to you</div>
+            <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:19px; font-weight:600;">$23,800</div>
+            <div style="display:flex; height:6px; border-radius:9999px; overflow:hidden; gap:2px; margin-top:7px;">
+              <div title="0–30 days: $11,200" style="background:#92cc7a; width:47%;"></div>
+              <div title="31–60 days: $8,400" style="background:#f7c54c; width:35%;"></div>
+              <div title="61–90 days: $4,200" style="background:#f79009; width:18%;"></div>
+            </div>
+            <div style="font-size:11px; color:#d92d20; margin-top:5px;">$12,600 overdue · Halpern Co 14d</div>
+          </div>
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07), 0 1px 2px rgba(0,0,0,0.04); padding:14px 16px;">
+            <div style="font-size:12px; color:#737373; font-weight:500;">You owe</div>
+            <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:19px; font-weight:600;">$6,890</div>
+            <div style="font-size:11px; color:#737373; margin-top:2px;">next: WeWork · Jun 15</div>
+          </div>
+        </div>
+
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07), 0 1px 2px rgba(0,0,0,0.04); padding:14px 16px;">
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="font-size:13px; font-weight:600;">June so far</span>
+            <span style="font-size:11px; color:#a3a3a3;">Jun 1 – 10</span>
+            <span style="flex:1;"></span>
+            <span style="display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:#737373;"><span style="width:7px; height:7px; border-radius:2px; background:#2ca01c;"></span>In</span>
+            <span style="display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:#737373;"><span style="width:7px; height:7px; border-radius:2px; background:#cbd2d9;"></span>Out</span>
+          </div>
+          <div style="display:flex; gap:18px; margin-top:10px;">
+            <div style="flex:1;">
+              <div style="font-size:11.5px; color:#737373;">In</div>
+              <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:16px; font-weight:600; color:#248716;">$21,860</div>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:11.5px; color:#737373;">Out</div>
+              <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:16px; font-weight:600;">$13,910</div>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:11.5px; color:#737373;">Net</div>
+              <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:16px; font-weight:600; color:#248716;">+$7,950</div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:flex-end; gap:0; margin-top:14px; border-top:1px solid #f0f0f0; padding-top:12px;">
+            <sc-for list="{{ cfMonths }}" as="m" hint-placeholder-count="6">
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                <div style="display:flex; align-items:flex-end; gap:3px; height:64px;">
+                  <div title="{{ m.inTip }}" style="width:11px; border-radius:3px 3px 0 0; background:#2ca01c; height:{{ m.inH }};"></div>
+                  <div title="{{ m.outTip }}" style="width:11px; border-radius:3px 3px 0 0; background:#cbd2d9; height:{{ m.outH }};"></div>
+                </div>
+                <div style="font-size:10px; color:#a3a3a3;">{{ m.label }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07), 0 1px 2px rgba(0,0,0,0.04); padding:14px 16px;">
+            <div style="font-size:12px; color:#737373; font-weight:500;">Cash cushion</div>
+            <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:19px; font-weight:600;">6.1 mo</div>
+            <div style="font-size:11px; color:#737373; margin-top:2px;">if income stopped today</div>
+          </div>
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07), 0 1px 2px rgba(0,0,0,0.04); padding:14px 16px;">
+            <div style="font-size:12px; color:#737373; font-weight:500;">Automated</div>
+            <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:19px; font-weight:600; color:#248716;">94%</div>
+            <div style="font-size:11px; color:#737373; margin-top:2px;">247 of 263 posted by AI</div>
+          </div>
+        </div>
+
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07), 0 1px 2px rgba(0,0,0,0.04); padding:14px 16px;">
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="font-size:13px; font-weight:600;">Top expenses</span>
+            <span style="font-size:11px; color:#a3a3a3;">June</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:9px; margin-top:11px;">
+            <sc-for list="{{ topExpenses }}" as="x" hint-placeholder-count="4">
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <div style="display:flex; align-items:baseline; gap:8px;">
+                  <span style="flex:1; font-size:12.5px;">{{ x.label }}</span>
+                  <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px; font-weight:600;">{{ x.amount }}</span>
+                </div>
+                <div style="height:5px; border-radius:9999px; background:#f0f0f0; overflow:hidden;">
+                  <div style="height:100%; border-radius:9999px; background:#92cc7a; width:{{ x.w }};"></div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07), 0 1px 2px rgba(0,0,0,0.04); padding:14px 16px;">
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="font-size:13px; font-weight:600;">Coming up</span>
+            <span style="font-size:11px; color:#a3a3a3;">next 3 weeks</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:1px; margin-top:7px;">
+            <sc-for list="{{ upcoming }}" as="u" hint-placeholder-count="5">
+              <div style="display:flex; align-items:center; gap:9px; padding:7px 0; border-top:1px solid #f5f5f5;">
+                <span style="flex:1; min-width:0; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ u.label }}</span>
+                <span style="font-size:11px; color:{{ u.whenColor }};">{{ u.when }}</span>
+                <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px; font-weight:600; min-width:72px; text-align:right; color:{{ u.amtColor }};">{{ u.amount }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ===== INBOX ===== -->
+    <sc-if value="{{ isInbox }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Mobile Inbox" style="padding:16px 16px 24px; display:flex; flex-direction:column; gap:12px;">
+        <sc-if value="{{ hasInbox }}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:12.5px; color:#737373;">Confirm or fix — one tap each. The AI learns from every answer.</div>
+          <sc-for list="{{ inboxCards }}" as="c" hint-placeholder-count="3">
+            <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.07), 0 1px 2px rgba(0,0,0,0.04); padding:16px; display:flex; flex-direction:column; gap:12px; animation:ob-fade 180ms ease-out;">
+              <div style="display:flex; align-items:center; gap:11px;">
+                <span style="width:34px; height:34px; border-radius:10px; background:{{ c.logoBg }}; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;">{{ c.logo }}</span>
+                <span style="flex:1; min-width:0;">
+                  <span style="display:block; font-size:14.5px; font-weight:600;">{{ c.merchant }}</span>
+                  <span style="display:block; font-size:12px; color:#737373;">{{ c.sub }}</span>
+                </span>
+                <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:15px; font-weight:600;">{{ c.amount }}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:7px; padding:9px 11px; border-radius:10px; background:#fbfdf9; border:1px solid #e3f0db;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+                <span style="flex:1; font-size:12.5px; color:#3d3d3d;"><span style="font-weight:600;">{{ c.category }}</span> · {{ c.conf }}% sure</span>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button onClick="{{ c.confirm }}" style="flex:1; height:44px; border-radius:11px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:14px; font-weight:600;" style-active="transform:translateY(1px);">Confirm</button>
+                <button onClick="{{ c.skip }}" style="height:44px; padding:0 16px; border-radius:11px; border:1px solid #e5e5e5; background:#ffffff; color:#525252; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:500;">Later</button>
+              </div>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{ inboxZero }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:10px; padding:64px 24px; text-align:center; animation:ob-pop 220ms ease-out;">
+            <span style="width:52px; height:52px; border-radius:9999px; background:#f1f8ee; display:flex; align-items:center; justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>
+            <div style="font-size:16px; font-weight:600;">Inbox zero</div>
+            <div style="font-size:13px; color:#737373;">Your books are up to date. 94% automated this month.</div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- ===== ACTIVITY ===== -->
+    <sc-if value="{{ isActivity }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Mobile Activity" style="padding:16px 0 24px; display:flex; flex-direction:column;">
+        <div style="padding:0 16px 10px; font-size:12.5px; color:#737373;">Latest transactions, every account.</div>
+        <sc-for list="{{ txns }}" as="t" hint-placeholder-count="10">
+          <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; border-top:1px solid #f0f0f0; background:#ffffff; min-height:60px;">
+            <span style="width:34px; height:34px; border-radius:10px; background:{{ t.logoBg }}; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; flex-shrink:0;">{{ t.logo }}</span>
+            <span style="flex:1; min-width:0;">
+              <span style="display:block; font-size:14px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.merchant }}</span>
+              <span style="display:block; font-size:11.5px; color:#a3a3a3;">{{ t.sub }}</span>
+            </span>
+            <span style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:14px; font-weight:600; color:{{ t.amtColor }};">{{ t.amount }}</span>
+              <sc-if value="{{ t.needsApproval }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ t.approve }}" style="height:28px; padding:0 12px; border-radius:8px; border:1px solid #bbe0a9; background:#f1f8ee; color:#17540f; cursor:pointer; font-family:inherit; font-size:12px; font-weight:600;">Approve</button>
+              </sc-if>
+              <sc-if value="{{ t.isAuto }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:10.5px; color:#a3a3a3;">{{ t.tag }}</span>
+              </sc-if>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <!-- ===== ASK AI ===== -->
+    <sc-if value="{{ isAi }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Mobile Ask AI" style="display:flex; flex-direction:column; min-height:100%; padding:16px 16px 8px; gap:12px;">
+        <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
+          <sc-if value="{{ noMsgs }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:40px 16px 16px; text-align:center;">
+              <span style="width:44px; height:44px; border-radius:9999px; background:#f1f8ee; display:flex; align-items:center; justify-content:center;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+              </span>
+              <div style="font-size:15px; font-weight:600;">Ask your books anything</div>
+              <div style="font-size:12.5px; color:#737373;">Answers come straight from the ledger.</div>
+            </div>
+          </sc-if>
+          <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="0">
+            <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}">
+              <div style="align-self:flex-end; max-width:85%; background:#f0f0f0; border-radius:14px 14px 4px 14px; padding:10px 13px; font-size:14px; animation:ob-fade 160ms ease-out;">{{ m.text }}</div>
+            </sc-if>
+            <sc-if value="{{ m.isAi }}" hint-placeholder-val="{{ false }}">
+              <div style="align-self:flex-start; max-width:92%; font-size:14px; white-space:pre-line; animation:ob-fade 160ms ease-out; background:#ffffff; border-radius:14px 14px 14px 4px; padding:10px 13px; box-shadow:0 0 0 1px rgba(10,10,10,0.06);">{{ m.text }}</div>
+            </sc-if>
+          </sc-for>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <sc-for list="{{ prompts }}" as="p" hint-placeholder-count="3">
+            <button onClick="{{ p.send }}" style="height:32px; padding:0 13px; border-radius:9999px; border:1px solid #e5e5e5; background:#ffffff; color:#525252; cursor:pointer; font-family:inherit; font-size:12.5px;" style-active="transform:translateY(1px);">{{ p.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex; gap:8px; padding-bottom:8px;">
+          <input value="{{ aiInput }}" onChange="{{ onAiInput }}" onKeyDown="{{ onAiKey }}" placeholder="Ask about your books…" style="flex:1; height:44px; padding:0 14px; border-radius:12px; border:1px solid #e5e5e5; background:#ffffff; font-family:inherit; font-size:14px; outline:none;" style-focus="border-color:#63b347; box-shadow:0 0 0 3px rgba(99,179,71,0.25);"></input>
+          <button onClick="{{ sendAi }}" style="width:44px; height:44px; border-radius:12px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; display:flex; align-items:center; justify-content:center;" style-active="transform:translateY(1px);">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7 M12 19V5"></path></svg>
+          </button>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- Bottom tabs -->
+  <div style="min-height:64px; border-top:1px solid #ececec; background:#ffffff; display:grid; grid-template-columns:repeat(4, 1fr); padding-bottom:env(safe-area-inset-bottom);">
+    <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="4">
+      <button onClick="{{ tb.go }}" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:none; background:transparent; cursor:pointer; font-family:inherit; padding:8px 0; color:{{ tb.color }}; position:relative;">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ tb.d }}"></path></svg>
+        <span style="font-size:10.5px; font-weight:{{ tb.weight }};">{{ tb.label }}</span>
+        <sc-if value="{{ tb.showBadge }}" hint-placeholder-val="{{ false }}">
+          <span style="position:absolute; top:5px; left:calc(50% + 6px); min-width:16px; height:16px; padding:0 4px; border-radius:9999px; background:#2ca01c; color:#ffffff; font-size:9.5px; font-weight:600; display:inline-flex; align-items:center; justify-content:center;">{{ tb.badge }}</span>
+        </sc-if>
+      </button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 390, &quot;height&quot;: 844}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.inboxItems = [
+      { id: "i1", merchant: "Figma", logo: "F", logoBg: "#2c2c2c", sub: "Jun 10 · Amex ····9901", amount: "−$24.00", category: "Software & SaaS", conf: 72 },
+      { id: "i2", merchant: "Anthropic", logo: "AN", logoBg: "#b3551f", sub: "Jun 9 · Mercury ····4421", amount: "−$487.20", category: "Cloud / Infrastructure", conf: 64 },
+      { id: "i3", merchant: "Uber", logo: "U", logoBg: "#0f0f0f", sub: "Jun 9 · Amex ····9901", amount: "−$38.40", category: "Travel", conf: 81 },
+      { id: "i4", merchant: "H.M. Supplies Co", logo: "HM", logoBg: "#475467", sub: "Jun 8 · Chase ····1187", amount: "−$214.90", category: "Office & Supplies", conf: 58 },
+      { id: "i5", merchant: "GitHub", logo: "GH", logoBg: "#24292f", sub: "Jun 8 · Amex ····9901", amount: "−$40.00", category: "Software & SaaS", conf: 94 }
+    ];
+    this.txnData = [
+      { id: "t1", merchant: "Figma", logo: "F", logoBg: "#2c2c2c", sub: "Jun 10 · Software & SaaS", amount: -24.00, state: "review" },
+      { id: "t2", merchant: "Anthropic", logo: "AN", logoBg: "#b3551f", sub: "Jun 9 · Cloud / Infrastructure", amount: -487.20, state: "review" },
+      { id: "t3", merchant: "Stripe payout", logo: "S", logoBg: "#635bff", sub: "Jun 6 · 14 payments − fees", amount: 4180.55, state: "auto", tag: "reconciled" },
+      { id: "t4", merchant: "Transfer to Chase", logo: "M", logoBg: "#3b2fa3", sub: "Jun 5 · between your accounts", amount: -10000, state: "auto", tag: "transfer" },
+      { id: "t5", merchant: "Arclight Media", logo: "AM", logoBg: "#7a4a8c", sub: "Jun 4 · Invoice #1042 paid", amount: 2400, state: "auto", tag: "matched" },
+      { id: "t6", merchant: "Amazon Web Services", logo: "AWS", logoBg: "#1b2a3a", sub: "Jun 3 · Cloud / Infrastructure", amount: -1612.40, state: "auto", tag: "rule #4" },
+      { id: "t7", merchant: "Google Ads", logo: "GA", logoBg: "#1a73e8", sub: "Jun 3 · Marketing & Ads", amount: -640, state: "auto", tag: "rule #7" },
+      { id: "t8", merchant: "Gusto Payroll", logo: "G", logoBg: "#f45d48", sub: "Jun 1 · May payroll settled", amount: -6000, state: "auto", tag: "payroll" },
+      { id: "t9", merchant: "WeWork", logo: "WW", logoBg: "#0f0f0f", sub: "Jun 1 · Rent", amount: -2400, state: "auto", tag: "rule #2" }
+    ];
+    this.state = { tab: "home", confirmed: {}, approved: {}, msgs: [], aiInput: "" };
+  }
+
+  answerFor(text) {
+    const t = (text || "").toLowerCase();
+    if (t.includes("owe") || t.includes("owed")) return "You're owed $23,800 across 4 open invoices. Halpern Co is the one to chase — $8,400, 14 days overdue.";
+    if (t.includes("expense") || t.includes("spend")) return "Top spend this quarter:\n1. Payroll — $44,460\n2. Cloud — $9,840\n3. Software — $6,420\nPayroll is 62% of total, steady vs. last quarter.";
+    if (t.includes("payroll")) return "Monthly payroll is about $17,800 in USD terms: $6,000 USD, ₨2,140,000 PKR and ₹344,000 INR at this month's rates.";
+    return "Net profit so far in June is +$7,950 on $21,860 in. Open the desktop app for the full reports.";
+  }
+
+  sendMessage(text) {
+    if (!text || !text.trim()) return;
+    const clean = text.trim();
+    this.setState(s => ({ msgs: [...s.msgs, { role: "user", text: clean }], aiInput: "" }));
+    setTimeout(() => this.setState(s => ({ msgs: [...s.msgs, { role: "ai", text: this.answerFor(clean) }] })), 600);
+  }
+
+  renderVals() {
+    const s = this.state;
+    const remaining = this.inboxItems.filter(i => !s.confirmed[i.id]);
+    const inboxCount = remaining.length;
+
+    const titles = { home: "OpenBooks", inbox: "Inbox", activity: "Activity", ai: "Ask AI" };
+    const tabDefs = [
+      { id: "home", label: "Home", d: "M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z" },
+      { id: "inbox", label: "Inbox", d: "M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" },
+      { id: "activity", label: "Activity", d: "M8 3 4 7l4 4 M4 7h16 M16 21l4-4-4-4 M20 17H4" },
+      { id: "ai", label: "Ask AI", d: "M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" }
+    ];
+
+    return {
+      screenTitle: titles[s.tab],
+      tabs: tabDefs.map(t => ({
+        ...t,
+        go: () => this.setState({ tab: t.id }),
+        color: s.tab === t.id ? "#17540f" : "#737373",
+        weight: s.tab === t.id ? "600" : "500",
+        showBadge: t.id === "inbox" && inboxCount > 0,
+        badge: String(inboxCount)
+      })),
+
+      isHome: s.tab === "home",
+      isInbox: s.tab === "inbox",
+      isActivity: s.tab === "activity",
+      isAi: s.tab === "ai",
+
+      accounts: [
+        { name: "Mercury Checking ····4421", logo: "M", bg: "#3b2fa3", balance: "$86,420.18" },
+        { name: "Chase Business ····1187", logo: "CH", bg: "#0a4386", balance: "$21,344.92" },
+        { name: "Amex Business ····9901", logo: "AX", bg: "#1d6bb5", balance: "−$4,212.55" }
+      ],
+      cfMonths: [[34200, 27800], [40100, 30400], [36400, 33100], [46800, 35600], [52410, 38170], [21860, 13910]].map(([inV, outV], i) => ({
+        label: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"][i],
+        inH: Math.max(4, (inV / 52410) * 64).toFixed(0) + "px",
+        outH: Math.max(4, (outV / 52410) * 64).toFixed(0) + "px",
+        inTip: "In: $" + inV.toLocaleString("en-US"),
+        outTip: "Out: $" + outV.toLocaleString("en-US")
+      })),
+      topExpenses: [
+        ["Payroll & Contractors", 6000], ["Cloud / Infrastructure", 2099], ["Software & SaaS", 1412], ["Marketing & Ads", 640]
+      ].map(([label, v]) => ({
+        label,
+        amount: "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2 }),
+        w: Math.round((v / 6000) * 100) + "%"
+      })),
+      upcoming: [
+        { label: "WeWork rent", when: "Jun 15", amount: -2400 },
+        { label: "AWS usage bill", when: "~Jun 18", amount: -1838 },
+        { label: "Figma annual renewal", when: "Jun 24", amount: -2652 },
+        { label: "Arclight Media invoice #1040", when: "Jun 25", amount: 5400 },
+        { label: "June payroll run", when: "Jun 30", amount: -17783 }
+      ].map(u => ({
+        ...u,
+        amount: (u.amount > 0 ? "+$" : "−$") + Math.abs(u.amount).toLocaleString("en-US"),
+        amtColor: u.amount > 0 ? "#248716" : "#0a0a0a",
+        whenColor: "#a3a3a3"
+      })),
+      hasInbox: inboxCount > 0,
+      inboxZero: inboxCount === 0,
+      inboxCount,
+      goInbox: () => this.setState({ tab: "inbox" }),
+
+      inboxCards: remaining.map(c => ({
+        ...c,
+        confirm: () => this.setState(st => ({ confirmed: { ...st.confirmed, [c.id]: true } })),
+        skip: () => {
+          const rest = this.inboxItems.filter(i => !this.state.confirmed[i.id] && i.id !== c.id);
+          this.inboxItems = rest.concat([c]);
+          this.forceUpdate();
+        }
+      })),
+
+      txns: this.txnData.map(t => {
+        const approved = !!s.approved[t.id];
+        return {
+          ...t,
+          amount: (t.amount > 0 ? "+$" : "−$") + Math.abs(t.amount).toLocaleString("en-US", { minimumFractionDigits: 2 }),
+          amtColor: t.amount > 0 ? "#248716" : "#0a0a0a",
+          needsApproval: t.state === "review" && !approved,
+          isAuto: t.state === "auto" || approved,
+          tag: approved ? "approved" : (t.tag || ""),
+          approve: () => this.setState(st => ({ approved: { ...st.approved, [t.id]: true } }))
+        };
+      }),
+
+      noMsgs: s.msgs.length === 0,
+      msgs: s.msgs.map(m => ({ ...m, isUser: m.role === "user", isAi: m.role === "ai" })),
+      prompts: [
+        { label: "Who owes me money?", send: () => this.sendMessage("Who owes me money right now?") },
+        { label: "Top expenses", send: () => this.sendMessage("Top expenses this quarter") },
+        { label: "Payroll cost", send: () => this.sendMessage("What's my monthly payroll cost?") }
+      ],
+      aiInput: s.aiInput,
+      onAiInput: (e) => this.setState({ aiInput: e.target.value }),
+      onAiKey: (e) => { if (e.key === "Enter") this.sendMessage(this.state.aiInput); },
+      sendAi: () => this.sendMessage(this.state.aiInput)
+    };
+  }
+}
+</script>
+</body>
+</html>

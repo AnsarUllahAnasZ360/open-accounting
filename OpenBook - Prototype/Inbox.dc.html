@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    * { box-sizing: border-box; }
+    @keyframes ob-pop { 0% { opacity: 0; transform: scale(0.92); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes ob-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div style="font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:14px; color:#0a0a0a; line-height:1.5; display:flex; height:100%; min-height:600px; background:#ffffff;">
+
+  <!-- ===== LEFT: item list ===== -->
+  <div style="width:330px; min-width:330px; border-right:1px solid #e5e5e5; display:flex; flex-direction:column; height:100%;">
+    <div style="padding:18px 18px 12px;">
+      <div style="font-size:20px; font-weight:600; letter-spacing:-0.01em;">Inbox</div>
+      <div style="font-size:12.5px; color:#737373; margin-top:1px;">{{ progressLabel }}</div>
+      <div style="height:4px; border-radius:9999px; background:#f0f0f0; margin-top:10px; overflow:hidden;">
+        <div style="height:100%; border-radius:9999px; background:#2ca01c; transition:width 240ms ease-out; width:{{ progressW }};"></div>
+      </div>
+    </div>
+
+    <sc-if value="{{ showBatch }}" hint-placeholder-val="{{ true }}">
+      <div style="margin:0 14px 10px; padding:10px 12px; border-radius:10px; background:#f1f8ee; display:flex; align-items:center; gap:9px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+        <span style="flex:1; font-size:12px; color:#17540f;">{{ batchLabel }}</span>
+        <button onClick="{{ confirmBatch }}" style="height:26px; padding:0 10px; border-radius:7px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:11.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Confirm all</button>
+      </div>
+    </sc-if>
+
+    <div style="flex:1; overflow-y:auto; padding:0 10px 16px;">
+      <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+        <div style="padding:10px 8px 5px; font-size:11px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase;">{{ g.label }} · {{ g.count }}</div>
+        <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="2">
+          <button onClick="{{ it.select }}" style="width:100%; display:flex; align-items:center; gap:10px; padding:10px 10px; border-radius:10px; border:none; cursor:pointer; font-family:inherit; text-align:left; background:{{ it.bg }};" style-hover="background:{{ it.hoverBg }};">
+            <span style="width:30px; height:30px; border-radius:9px; background:{{ it.iconBg }}; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{ it.iconColor }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ it.iconD }}"></path></svg>
+            </span>
+            <span style="flex:1; min-width:0;">
+              <span style="display:block; font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#0a0a0a;">{{ it.title }}</span>
+              <span style="display:block; font-size:11.5px; color:#737373; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ it.sub }}</span>
+            </span>
+            <sc-if value="{{ it.hasConf }}" hint-placeholder-val="{{ false }}">
+              <svg width="24" height="24" viewBox="0 0 24 24" style="flex-shrink:0;">
+                <circle cx="12" cy="12" r="9" fill="none" stroke="#ececec" stroke-width="2.5"></circle>
+                <circle cx="12" cy="12" r="9" fill="none" stroke="{{ it.confColor }}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="{{ it.confDash }}" transform="rotate(-90 12 12)"></circle>
+                <text x="12" y="15" text-anchor="middle" style="font-family:'Geist',sans-serif; font-size:7.5px; font-weight:600; fill:#525252;">{{ it.conf }}</text>
+              </svg>
+            </sc-if>
+          </button>
+        </sc-for>
+      </sc-for>
+      <sc-if value="{{ allClear }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px 12px; text-align:center; font-size:12.5px; color:#a3a3a3;">Nothing left — nice work.</div>
+      </sc-if>
+    </div>
+
+    <div style="padding:10px 18px; border-top:1px solid #ececec; display:flex; gap:12px; font-size:11px; color:#a3a3a3;">
+      <span><span style="font-family:'Geist Mono',ui-monospace,monospace; background:#f5f5f5; border-radius:4px; padding:1px 5px;">J</span> / <span style="font-family:'Geist Mono',ui-monospace,monospace; background:#f5f5f5; border-radius:4px; padding:1px 5px;">K</span> move</span>
+      <span><span style="font-family:'Geist Mono',ui-monospace,monospace; background:#f5f5f5; border-radius:4px; padding:1px 5px;">↵</span> confirm</span>
+      <span><span style="font-family:'Geist Mono',ui-monospace,monospace; background:#f5f5f5; border-radius:4px; padding:1px 5px;">E</span> exclude</span>
+    </div>
+  </div>
+
+  <!-- ===== RIGHT: detail ===== -->
+  <div style="flex:1; min-width:0; overflow-y:auto; background:#fafafa;">
+
+    <!-- INBOX ZERO -->
+    <sc-if value="{{ allClear }}" hint-placeholder-val="{{ false }}">
+      <div style="height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; animation:ob-pop 300ms ease-out;">
+        <div style="width:64px; height:64px; border-radius:9999px; background:#f1f8ee; display:flex; align-items:center; justify-content:center;">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#2ca01c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        </div>
+        <div style="font-size:20px; font-weight:600; letter-spacing:-0.01em;">Inbox zero</div>
+        <div style="font-size:13.5px; color:#737373; text-align:center; max-width:320px;">Your books are up to date. 94% of June was booked automatically — you handled the rest in under five minutes.</div>
+        <button onClick="{{ goTransactions }}" style="height:34px; padding:0 16px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; color:#0a0a0a; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500;" style-hover="background:#f5f5f5;">View transactions</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ hasSelection }}" hint-placeholder-val="{{ true }}">
+      <div style="max-width:640px; margin:0 auto; padding:28px 32px 48px; display:flex; flex-direction:column; gap:16px;">
+
+        <!-- ============ CATEGORIZE CARD ============ -->
+        <sc-if value="{{ isCat }}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase;">Needs a category</div>
+
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px;">
+            <div style="display:flex; align-items:flex-start; gap:14px;">
+              <div style="flex:1; min-width:0;">
+                <div style="font-size:17px; font-weight:600; letter-spacing:-0.01em;">{{ selMerchant }}</div>
+                <div style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11px; color:#a3a3a3; margin-top:2px;">{{ selRaw }}</div>
+                <div style="font-size:12.5px; color:#737373; margin-top:6px;">{{ selDate }} · {{ selAccount }}</div>
+              </div>
+              <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600; letter-spacing:-0.01em;">{{ selAmount }}</div>
+            </div>
+          </div>
+
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:16px 20px; display:flex; flex-direction:column; gap:12px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <svg width="26" height="26" viewBox="0 0 24 24" style="flex-shrink:0;">
+                <circle cx="12" cy="12" r="10" fill="none" stroke="#ececec" stroke-width="2.5"></circle>
+                <circle cx="12" cy="12" r="10" fill="none" stroke="{{ selConfColor }}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="{{ selConfDash }}" transform="rotate(-90 12 12)"></circle>
+                <text x="12" y="15.5" text-anchor="middle" style="font-family:'Geist',sans-serif; font-size:8px; font-weight:600; fill:#525252;">{{ selConf }}</text>
+              </svg>
+              <span style="font-size:13px; color:#525252;">AI suggests</span>
+              <div style="position:relative;">
+                <button onClick="{{ toggleCatMenu }}" style="display:flex; align-items:center; gap:7px; height:32px; padding:0 12px; border-radius:9999px; border:1px solid #bbe0a9; background:#f1f8ee; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; color:#17540f;" style-hover="background:#dcefd2;">
+                  <span style="width:7px; height:7px; border-radius:9999px; background:#737373;"></span>
+                  <span>{{ selCategory }}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+                </button>
+                <sc-if value="{{ catMenuOpen }}" hint-placeholder-val="{{ false }}">
+                  <div onClick="{{ closeCatMenu }}" style="position:fixed; inset:0; z-index:40;"></div>
+                  <div style="position:absolute; top:calc(100% + 4px); left:0; z-index:50; width:240px; background:#ffffff; border-radius:10px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 4px 6px -1px rgba(0,0,0,0.08); padding:6px; max-height:280px; overflow-y:auto;">
+                    <input value="{{ catSearch }}" onChange="{{ onCatSearch }}" placeholder="Search categories…" style="width:100%; height:30px; padding:0 10px; border-radius:7px; border:1px solid #e5e5e5; font-family:inherit; font-size:12.5px; outline:none; margin-bottom:4px;" style-focus="border-color:#63b347;"></input>
+                    <sc-for list="{{ catOptions }}" as="co" hint-placeholder-count="6">
+                      <button onClick="{{ co.pick }}" style="width:100%; display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:6px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:12.5px; text-align:left; color:#0a0a0a;" style-hover="background:#f5f5f5;">
+                        <span style="width:6px; height:6px; border-radius:9999px; background:#a3a3a3;"></span>
+                        <span style="flex:1;">{{ co.name }}</span>
+                        <sc-if value="{{ co.active }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2ca01c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+                      </button>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+
+            <button onClick="{{ toggleWhy }}" style="display:flex; align-items:center; gap:6px; border:none; background:transparent; padding:0; cursor:pointer; font-family:inherit; font-size:12.5px; color:#737373; align-self:flex-start;" style-hover="color:#0a0a0a;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 120ms ease-out; transform:rotate({{ whyRotate }});"><path d="m9 18 6-6-6-6"></path></svg>
+              Why this suggestion
+            </button>
+            <sc-if value="{{ whyOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="border-radius:10px; background:#fafafa; padding:12px 14px; display:flex; flex-direction:column; gap:9px; animation:ob-fade 140ms ease-out;">
+                <div style="font-size:12.5px; color:#525252;">{{ selReason }}</div>
+                <sc-if value="{{ hasSimilar }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:5px;">
+                    <sc-for list="{{ selSimilar }}" as="sim" hint-placeholder-count="3">
+                      <div style="display:flex; gap:10px; font-size:11.5px; color:#737373;">
+                        <span style="font-family:'Geist Mono',ui-monospace,monospace; min-width:46px;">{{ sim.date }}</span>
+                        <span style="flex:1;">{{ sim.desc }}</span>
+                        <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ sim.amount }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <div style="font-size:11px; color:#a3a3a3;">Decided by: {{ selDecidedBy }}</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ splitOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="border-radius:10px; border:1px solid #ececec; padding:12px 14px; display:flex; flex-direction:column; gap:9px; animation:ob-fade 140ms ease-out;">
+                <div style="font-size:12px; font-weight:600; color:#737373;">Split this transaction</div>
+                <div style="display:flex; align-items:center; gap:8px; font-size:12.5px;">
+                  <span style="flex:1;">{{ selCategory }}</span>
+                  <span style="color:#a3a3a3;">$</span>
+                  <input value="{{ splitA }}" onChange="{{ onSplitA }}" style="width:80px; height:28px; padding:0 8px; border-radius:7px; border:1px solid #e5e5e5; font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; text-align:right; outline:none;" style-focus="border-color:#63b347;"></input>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; font-size:12.5px;">
+                  <span style="flex:1;">Owner's draw (personal)</span>
+                  <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; color:#525252;">{{ splitB }}</span>
+                </div>
+                <div style="font-size:11px; color:#a3a3a3;">The two lines always total {{ selAmount }} — books stay balanced.</div>
+              </div>
+            </sc-if>
+
+            <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#525252; cursor:pointer; user-select:none;">
+              <input type="checkbox" checked="{{ ruleChecked }}" onChange="{{ toggleRuleCheck }}" style="accent-color:#2ca01c; width:14px; height:14px; cursor:pointer;"></input>
+              Always do this — create a rule for {{ selMerchant }}
+            </label>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button onClick="{{ confirmSel }}" style="height:36px; padding:0 18px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:500; display:flex; align-items:center; gap:8px; transition:background 120ms ease-out;" style-hover="background:#248716;" style-active="transform:translateY(1px);">
+              Confirm <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11px; opacity:0.75;">↵</span>
+            </button>
+            <button onClick="{{ toggleSplit }}" style="height:36px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; color:#0a0a0a; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500;" style-hover="background:#f5f5f5;">Split</button>
+            <div style="position:relative;">
+              <button onClick="{{ toggleExcludeMenu }}" style="height:36px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; color:#0a0a0a; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; display:flex; align-items:center; gap:6px;" style-hover="background:#f5f5f5;">
+                Exclude <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+              </button>
+              <sc-if value="{{ excludeMenuOpen }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ closeExcludeMenu }}" style="position:fixed; inset:0; z-index:40;"></div>
+                <div style="position:absolute; top:calc(100% + 4px); left:0; z-index:50; width:190px; background:#ffffff; border-radius:10px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 4px 6px -1px rgba(0,0,0,0.08); padding:4px;">
+                  <button onClick="{{ excludePersonal }}" style="width:100%; padding:8px 10px; border-radius:6px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:12.5px; text-align:left; color:#0a0a0a;" style-hover="background:#f5f5f5;">Personal expense</button>
+                  <button onClick="{{ excludeDuplicate }}" style="width:100%; padding:8px 10px; border-radius:6px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:12.5px; text-align:left; color:#0a0a0a;" style-hover="background:#f5f5f5;">Duplicate</button>
+                </div>
+              </sc-if>
+            </div>
+            <div style="flex:1;"></div>
+            <button onClick="{{ skipSel }}" style="height:36px; padding:0 12px; border-radius:10px; border:none; background:transparent; color:#737373; cursor:pointer; font-family:inherit; font-size:13px;" style-hover="background:#f0f0f0;">Skip for now</button>
+          </div>
+        </sc-if>
+
+        <!-- ============ RECEIPT CARD ============ -->
+        <sc-if value="{{ isReceipt }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase;">Receipt match</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:stretch;">
+            <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:16px 18px;">
+              <div style="font-size:11px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; margin-bottom:10px;">RECEIPT · forwarded by email</div>
+              <div style="border:1px dashed #d4d4d4; border-radius:10px; padding:14px; font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#525252; display:flex; flex-direction:column; gap:6px;">
+                <div style="font-weight:600; color:#0a0a0a; font-size:12.5px;">THE COFFEE COUNTER</div>
+                <div>Jun 8, 2026 · 10:42 AM</div>
+                <div style="border-top:1px dashed #e5e5e5; padding-top:6px; display:flex; justify-content:space-between;"><span>2× Flat white</span><span>$11.50</span></div>
+                <div style="display:flex; justify-content:space-between;"><span>1× Croissant</span><span>$5.25</span></div>
+                <div style="display:flex; justify-content:space-between;"><span>Tax</span><span>$2.00</span></div>
+                <div style="border-top:1px dashed #e5e5e5; padding-top:6px; display:flex; justify-content:space-between; font-weight:600; color:#0a0a0a;"><span>TOTAL</span><span>$18.75</span></div>
+              </div>
+            </div>
+            <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:16px 18px; display:flex; flex-direction:column;">
+              <div style="font-size:11px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; margin-bottom:10px;">LIKELY MATCH · 88%</div>
+              <div style="border-radius:10px; background:#f1f8ee; padding:12px 14px;">
+                <div style="font-size:13.5px; font-weight:600;">The Coffee Counter</div>
+                <div style="font-size:12px; color:#737373; margin-top:2px;">Jun 8 · Amex ····9901</div>
+                <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:17px; font-weight:600; margin-top:6px;">$18.75</div>
+                <div style="display:inline-flex; align-items:center; gap:5px; margin-top:8px; height:20px; padding:0 8px; border-radius:9999px; background:#ffffff; font-size:10.5px; color:#525252;">Meals · confirmed Jun 9</div>
+              </div>
+              <div style="font-size:11.5px; color:#737373; margin-top:10px;">Amount and date match exactly; merchant text is 94% similar.</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button onClick="{{ confirmSel }}" style="height:36px; padding:0 18px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Attach receipt</button>
+            <button onClick="{{ skipSel }}" style="height:36px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; color:#0a0a0a; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500;" style-hover="background:#f5f5f5;">Pick another transaction</button>
+            <button onClick="{{ skipSel }}" style="height:36px; padding:0 14px; border-radius:10px; border:none; background:transparent; color:#737373; cursor:pointer; font-family:inherit; font-size:13px;" style-hover="background:#f0f0f0;">Create new expense</button>
+          </div>
+        </sc-if>
+
+        <!-- ============ TRANSFER CARD ============ -->
+        <sc-if value="{{ isTransfer }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase;">Possible transfer</div>
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:0;">
+            <div style="display:flex; align-items:center; gap:12px; padding:10px 0;">
+              <span style="width:30px; height:30px; border-radius:8px; background:#3b2fa3; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700;">M</span>
+              <div style="flex:1;"><div style="font-size:13.5px; font-weight:500;">Mercury Checking ····4421</div><div style="font-size:12px; color:#737373;">Jun 5 · "ONLINE TRANSFER TO CHK 1187"</div></div>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:15px; font-weight:600; color:#525252;">−$10,000.00</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; padding:2px 0 2px 7px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14 M19 12l-7 7-7-7"></path></svg>
+              <span style="font-size:11.5px; color:#a3a3a3;">same amount, opposite direction, same day</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; padding:10px 0;">
+              <span style="width:30px; height:30px; border-radius:8px; background:#0a4386; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700;">CH</span>
+              <div style="flex:1;"><div style="font-size:13.5px; font-weight:500;">Chase Business ····1187</div><div style="font-size:12px; color:#737373;">Jun 5 · "ONLINE TRANSFER FROM MERCURY"</div></div>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:15px; font-weight:600; color:#248716;">+$10,000.00</span>
+            </div>
+            <div style="border-radius:9px; background:#fafafa; padding:10px 12px; font-size:12px; color:#737373; margin-top:8px;">Marking as a transfer moves money between your accounts without touching profit or expenses.</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button onClick="{{ confirmSel }}" style="height:36px; padding:0 18px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Mark as transfer</button>
+            <button onClick="{{ skipSel }}" style="height:36px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; color:#0a0a0a; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500;" style-hover="background:#f5f5f5;">These are separate</button>
+          </div>
+        </sc-if>
+
+        <!-- ============ PAYOUT MISMATCH ============ -->
+        <sc-if value="{{ isPayout }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase;">Stripe payout doesn't add up</div>
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="width:30px; height:30px; border-radius:8px; background:#635bff; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:700;">S</span>
+              <div style="flex:1;"><div style="font-size:13.5px; font-weight:500;">Payout po_1QbT4x · arrived Jun 6</div><div style="font-size:12px; color:#737373;">Deposit matched on Mercury ····4421</div></div>
+            </div>
+            <div style="border-radius:10px; border:1px solid #ececec; overflow:hidden;">
+              <div style="display:flex; justify-content:space-between; padding:9px 14px; font-size:12.5px; background:#f7f7f7; color:#737373; font-weight:500;"><span>Breakdown</span><span>Amount</span></div>
+              <div style="display:flex; justify-content:space-between; padding:9px 14px; font-size:13px; border-top:1px solid #f0f0f0;"><span>15 payments (gross)</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">$4,273.85</span></div>
+              <div style="display:flex; justify-content:space-between; padding:9px 14px; font-size:13px; border-top:1px solid #f0f0f0;"><span>Processing fees</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">−$63.30</span></div>
+              <div style="display:flex; justify-content:space-between; padding:9px 14px; font-size:13px; border-top:1px solid #f0f0f0; font-weight:600;"><span>Expected deposit</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">$4,210.55</span></div>
+              <div style="display:flex; justify-content:space-between; padding:9px 14px; font-size:13px; border-top:1px solid #f0f0f0; font-weight:600;"><span>Received</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">$4,180.55</span></div>
+              <div style="display:flex; justify-content:space-between; padding:9px 14px; font-size:13px; border-top:1px solid #f0f0f0; background:#fffaeb; color:#b54708; font-weight:600;"><span>Difference</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">−$30.00</span></div>
+            </div>
+            <div style="font-size:12.5px; color:#525252;">Stripe applied a <span style="font-weight:600;">$30.00 dispute fee</span> on charge ch_9921 (Beacon Press) after the payout was scheduled. Accepting books it under Payment Processing Fees and clears the difference.</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button onClick="{{ confirmSel }}" style="height:36px; padding:0 18px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Accept Stripe's numbers</button>
+            <button onClick="{{ skipSel }}" style="height:36px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; color:#0a0a0a; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500;" style-hover="background:#f5f5f5;">Investigate payout</button>
+          </div>
+        </sc-if>
+
+        <!-- ============ CONNECTION ============ -->
+        <sc-if value="{{ isConnection }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase;">Connection needs attention</div>
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:24px; display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center;">
+            <span style="width:44px; height:44px; border-radius:12px; background:#0a4386; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:15px; font-weight:700;">CH</span>
+            <div style="font-size:15px; font-weight:600;">Chase needs you to sign in again</div>
+            <div style="font-size:13px; color:#737373; max-width:380px;">Chase Business ····1187 stopped syncing 2 days ago. Reconnecting takes about a minute and picks up where it left off — no transactions are lost.</div>
+            <button onClick="{{ confirmSel }}" style="height:36px; padding:0 20px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Reconnect Chase</button>
+          </div>
+        </sc-if>
+
+        <!-- ============ AI QUESTION ============ -->
+        <sc-if value="{{ isQuestion }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase;">AI has a question</div>
+          <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px; display:flex; flex-direction:column; gap:14px;">
+            <div style="display:flex; gap:10px;">
+              <span style="width:26px; height:26px; border-radius:9999px; background:#f1f8ee; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+              </span>
+              <div style="font-size:13.5px;">I found 3 payments of <span style="font-family:'Geist Mono',ui-monospace,monospace; font-weight:600;">₨180,000</span> to "H. KHAN" — one each in March, April, and May, always within 2 days of month-end. They look like payroll. Is <span style="font-weight:600;">Hammas Khan</span> an employee?</div>
+            </div>
+            <div style="border-radius:10px; border:1px solid #ececec; overflow:hidden;">
+              <sc-for list="{{ khanRows }}" as="kr" hint-placeholder-count="3">
+                <div style="display:flex; gap:12px; padding:8px 14px; font-size:12.5px; border-top:1px solid #f0f0f0; align-items:center;">
+                  <span style="font-family:'Geist Mono',ui-monospace,monospace; min-width:48px; color:#737373;">{{ kr.date }}</span>
+                  <span style="flex:1;">{{ kr.desc }}</span>
+                  <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:500;">{{ kr.amount }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button onClick="{{ confirmSel }}" style="height:32px; padding:0 14px; border-radius:9999px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Yes — he's on payroll</button>
+              <button onClick="{{ confirmSel }}" style="height:32px; padding:0 14px; border-radius:9999px; border:1px solid #e5e5e5; background:#ffffff; color:#0a0a0a; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">No — a contractor</button>
+              <button onClick="{{ skipSel }}" style="height:32px; padding:0 14px; border-radius:9999px; border:1px solid #e5e5e5; background:#ffffff; color:#737373; cursor:pointer; font-family:inherit; font-size:12.5px;" style-hover="background:#f5f5f5;">Something else</button>
+            </div>
+            <div style="font-size:11.5px; color:#a3a3a3;">Answering "yes" matches these to payroll runs and will settle the May run's open line for Hammas.</div>
+          </div>
+        </sc-if>
+
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const items = [
+      { id: "c5", kind: "cat", merchant: "GitHub", raw: "GITHUB INC 4136 CA", date: "Jun 8", account: "Amex ····9901", amount: -40.00, category: "Software & SaaS", conf: 94, reason: "Monthly charge, identical to 11 past GitHub transactions filed as Software & SaaS.", decidedBy: "memory (embedding match, 0.97 similarity)", similar: [
+        { date: "May 8", desc: "GITHUB INC", amount: "$40.00" }, { date: "Apr 8", desc: "GITHUB INC", amount: "$40.00" }, { date: "Mar 8", desc: "GITHUB INC", amount: "$40.00" }] },
+      { id: "c6", kind: "cat", merchant: "Vercel", raw: "VERCEL INC SAN FRANCISCO CA", date: "Jun 7", account: "Mercury ····4421", amount: -350.00, category: "Cloud / Infrastructure", conf: 96, reason: "Matches rule candidate and 8 past Vercel charges filed as Cloud / Infrastructure.", decidedBy: "memory (embedding match, 0.98 similarity)", similar: [
+        { date: "May 7", desc: "VERCEL INC", amount: "$350.00" }, { date: "Apr 7", desc: "VERCEL INC", amount: "$350.00" }] },
+      { id: "c1", kind: "cat", merchant: "Figma", raw: "FIGMA MONTHLY RENEWAL SF CA", date: "Jun 10", account: "Amex ····9901", amount: -24.00, category: "Software & SaaS", conf: 72, reason: "Similar to 4 past Figma charges you filed as Software & SaaS — but this is a new \u201Cmonthly\u201D plan alongside your annual seat, so I wasn't fully sure.", decidedBy: "AI (Claude Haiku, batched)", similar: [
+        { date: "May 24", desc: "FIGMA ANNUAL RENEWAL", amount: "$2,652.00" }, { date: "Feb 10", desc: "FIGMA MONTHLY", amount: "$24.00" }, { date: "Jan 10", desc: "FIGMA MONTHLY", amount: "$24.00" }] },
+      { id: "c2", kind: "cat", merchant: "Uber", raw: "UBER *TRIP HELP.UBER.COM", date: "Jun 9", account: "Amex ····9901", amount: -38.40, category: "Travel", conf: 81, reason: "You've filed 7 past Uber charges as Travel. A rule would make this automatic.", decidedBy: "memory (embedding match, 0.91 similarity)", similar: [
+        { date: "May 28", desc: "UBER *TRIP", amount: "$24.10" }, { date: "May 14", desc: "UBER *TRIP", amount: "$31.75" }] },
+      { id: "c3", kind: "cat", merchant: "Anthropic", raw: "ANTHROPIC, PBC SAN FRANCISCO", date: "Jun 9", account: "Mercury ····4421", amount: -487.20, category: "Cloud / Infrastructure", conf: 64, reason: "Could be Software & SaaS, but you've filed API usage under Cloud / Infrastructure since March. The amount is 3× your usual — likely higher API volume.", decidedBy: "AI (Claude Haiku, batched)", similar: [
+        { date: "May 9", desc: "ANTHROPIC, PBC", amount: "$152.80" }, { date: "Apr 9", desc: "ANTHROPIC, PBC", amount: "$141.15" }] },
+      { id: "c4", kind: "cat", merchant: "H.M. Supplies Co", raw: "HM SUPPLIES CO 8842 AUSTIN TX", date: "Jun 8", account: "Chase ····1187", amount: -214.90, category: "Office & Supplies", conf: 58, reason: "New vendor — no history with them. Plaid's category prior suggests Shops › Office Supply, and the amount fits your supplies pattern.", decidedBy: "AI + Plaid prior", similar: [] },
+      { id: "r1", kind: "receipt", title: "Receipt: The Coffee Counter", sub: "$18.75 · likely match found" },
+      { id: "t1", kind: "transfer", title: "Possible transfer — $10,000.00", sub: "Mercury → Chase · Jun 5" },
+      { id: "p1", kind: "payout", title: "Stripe payout doesn't add up", sub: "−$30.00 difference · Jun 6" },
+      { id: "cn1", kind: "connection", title: "Chase needs you to sign in", sub: "Last synced 2 days ago" },
+      { id: "q1", kind: "question", title: "Is Hammas Khan an employee?", sub: "3 payments look like payroll" }
+    ];
+    this.initialTotal = items.length;
+    this.state = {
+      items, selectedId: "c1",
+      whyOpen: false, catMenuOpen: false, catSearch: "",
+      excludeMenuOpen: false, splitOpen: false, splitA: "150.00",
+      ruleChecks: { c2: true }
+    };
+  }
+
+  componentDidMount() {
+    this._onKey = (e) => {
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      const open = this.openItems();
+      if (!open.length) return;
+      const idx = open.findIndex(i => i.id === this.state.selectedId);
+      if (e.key === "j" || e.key === "J") {
+        const next = open[Math.min(idx + 1, open.length - 1)];
+        if (next) this.select(next.id);
+      } else if (e.key === "k" || e.key === "K") {
+        const prev = open[Math.max(idx - 1, 0)];
+        if (prev) this.select(prev.id);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        this.resolveSelected();
+      } else if (e.key === "e" || e.key === "E") {
+        const sel = this.selected();
+        if (sel && sel.kind === "cat") this.resolveSelected();
+      }
+    };
+    window.addEventListener("keydown", this._onKey);
+  }
+  componentWillUnmount() { window.removeEventListener("keydown", this._onKey); }
+
+  openItems() { return this.state.items.filter(i => !i.resolved); }
+  selected() { return this.state.items.find(i => i.id === this.state.selectedId && !i.resolved) || null; }
+
+  select(id) {
+    this.setState({ selectedId: id, whyOpen: false, catMenuOpen: false, excludeMenuOpen: false, splitOpen: false });
+  }
+
+  notifyCount(items) {
+    const n = items.filter(i => !i.resolved).length;
+    if (this.props.onCountChange) this.props.onCountChange(n);
+  }
+
+  resolve(ids) {
+    const idSet = Array.isArray(ids) ? ids : [ids];
+    this.setState(s => {
+      const items = s.items.map(i => idSet.includes(i.id) ? { ...i, resolved: true } : i);
+      const open = items.filter(i => !i.resolved);
+      const stillSelected = open.find(i => i.id === s.selectedId);
+      const oldOrder = s.items.filter(i => !i.resolved).map(i => i.id);
+      let nextId = stillSelected ? s.selectedId : null;
+      if (!nextId && open.length) {
+        const oldIdx = oldOrder.indexOf(s.selectedId);
+        const after = s.items.filter(i => !i.resolved && oldOrder.indexOf(i.id) > oldIdx)[0];
+        nextId = (after && !idSet.includes(after.id)) ? after.id : open[0].id;
+      }
+      this.notifyCount(items);
+      return { items, selectedId: nextId, whyOpen: false, catMenuOpen: false, excludeMenuOpen: false, splitOpen: false };
+    });
+  }
+
+  resolveSelected() { const sel = this.selected(); if (sel) this.resolve(sel.id); }
+
+  renderVals() {
+    const s = this.state;
+    const onNavigate = this.props.onNavigate || (() => {});
+    const open = this.openItems();
+    const cleared = this.initialTotal - open.length;
+    const sel = this.selected();
+
+    const kindMeta = {
+      cat: { icon: "M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z", bg: "#f1f8ee", color: "#1d6b12", group: "Needs category" },
+      receipt: { icon: "M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z M14 8H8 M16 12H8", bg: "#eff8ff", color: "#175cd3", group: "Receipts" },
+      transfer: { icon: "M8 3 4 7l4 4 M4 7h16 M16 21l4-4-4-4 M20 17H4", bg: "#f5f5f5", color: "#525252", group: "Possible transfers" },
+      payout: { icon: "M12 8v4 M12 16h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z", bg: "#fffaeb", color: "#b54708", group: "Payout issues" },
+      connection: { icon: "M12 8v4 M12 16h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z", bg: "#fef3f2", color: "#d92d20", group: "Connections" },
+      question: { icon: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z M12 17h.01 M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", bg: "#f1f8ee", color: "#1d6b12", group: "AI questions" }
+    };
+
+    const confColor = (c) => c >= 80 ? "#2ca01c" : (c >= 60 ? "#f79009" : "#d92d20");
+    const ringC = 2 * Math.PI * 9;
+
+    const groupOrder = ["Needs category", "Receipts", "Possible transfers", "Payout issues", "Connections", "AI questions"];
+    const groups = groupOrder.map(label => {
+      const items = open.filter(i => kindMeta[i.kind].group === label).map(i => {
+        const m = kindMeta[i.kind];
+        const isSel = i.id === s.selectedId;
+        return {
+          title: i.kind === "cat" ? (i.merchant + " · $" + Math.abs(i.amount).toFixed(2)) : i.title,
+          sub: i.kind === "cat" ? (i.date + " · " + i.account) : i.sub,
+          iconD: m.icon, iconBg: m.bg, iconColor: m.color,
+          bg: isSel ? "#f1f8ee" : "transparent",
+          hoverBg: isSel ? "#f1f8ee" : "#f7f7f7",
+          hasConf: i.kind === "cat",
+          conf: i.conf != null ? String(i.conf) : "",
+          confColor: confColor(i.conf || 0),
+          confDash: i.conf != null ? ((i.conf / 100) * ringC).toFixed(1) + " " + ringC.toFixed(1) : "0 100",
+          select: () => this.select(i.id)
+        };
+      });
+      return { label, count: items.length, items };
+    }).filter(g => g.count > 0);
+
+    const batchable = open.filter(i => i.kind === "cat" && i.conf >= 90);
+    const cats = ["Software & SaaS", "Cloud / Infrastructure", "Travel", "Meals", "Office & Supplies", "Marketing & Ads", "Professional Services", "Payroll & Contractors", "Payment Processing Fees", "Rent", "Utilities", "Bank Fees", "Other Expenses"];
+    const filteredCats = cats.filter(c => c.toLowerCase().includes(s.catSearch.toLowerCase()));
+
+    const selAmtAbs = sel && sel.amount != null ? Math.abs(sel.amount) : 0;
+    const splitANum = parseFloat(s.splitA) || 0;
+    const splitB = Math.max(0, selAmtAbs - splitANum);
+
+    return {
+      progressLabel: open.length > 0
+        ? open.length + " open · " + cleared + " cleared this session"
+        : "All " + this.initialTotal + " items cleared",
+      progressW: ((cleared / this.initialTotal) * 100).toFixed(0) + "%",
+      showBatch: batchable.length > 1,
+      batchLabel: batchable.length + " suggestions are ≥90% confident",
+      confirmBatch: () => this.resolve(batchable.map(b => b.id)),
+      groups,
+      allClear: open.length === 0,
+      goTransactions: () => onNavigate("transactions"),
+      hasSelection: !!sel,
+
+      isCat: !!sel && sel.kind === "cat",
+      isReceipt: !!sel && sel.kind === "receipt",
+      isTransfer: !!sel && sel.kind === "transfer",
+      isPayout: !!sel && sel.kind === "payout",
+      isConnection: !!sel && sel.kind === "connection",
+      isQuestion: !!sel && sel.kind === "question",
+
+      selMerchant: sel ? (sel.merchant || "") : "",
+      selRaw: sel ? (sel.raw || "") : "",
+      selDate: sel ? (sel.date || "") : "",
+      selAccount: sel ? (sel.account || "") : "",
+      selAmount: sel && sel.amount != null ? ("−$" + selAmtAbs.toLocaleString("en-US", { minimumFractionDigits: 2 })) : "",
+      selCategory: sel ? (sel.category || "") : "",
+      selConf: sel && sel.conf != null ? String(sel.conf) : "",
+      selConfColor: confColor(sel && sel.conf || 0),
+      selConfDash: sel && sel.conf != null ? (((sel.conf / 100) * 2 * Math.PI * 10).toFixed(1) + " " + (2 * Math.PI * 10).toFixed(1)) : "0 100",
+      selReason: sel ? (sel.reason || "") : "",
+      selDecidedBy: sel ? (sel.decidedBy || "") : "",
+      selSimilar: sel && sel.similar ? sel.similar : [],
+      hasSimilar: !!(sel && sel.similar && sel.similar.length),
+
+      whyOpen: s.whyOpen,
+      whyRotate: s.whyOpen ? "90deg" : "0deg",
+      toggleWhy: () => this.setState(st => ({ whyOpen: !st.whyOpen })),
+
+      catMenuOpen: s.catMenuOpen,
+      toggleCatMenu: () => this.setState(st => ({ catMenuOpen: !st.catMenuOpen })),
+      closeCatMenu: () => this.setState({ catMenuOpen: false }),
+      catSearch: s.catSearch,
+      onCatSearch: (e) => this.setState({ catSearch: e.target.value }),
+      catOptions: filteredCats.map(c => ({
+        name: c, active: !!sel && sel.category === c,
+        pick: () => this.setState(st => ({
+          items: st.items.map(i => i.id === st.selectedId ? { ...i, category: c } : i),
+          catMenuOpen: false, catSearch: ""
+        }))
+      })),
+
+      splitOpen: s.splitOpen,
+      toggleSplit: () => this.setState(st => ({ splitOpen: !st.splitOpen })),
+      splitA: s.splitA,
+      onSplitA: (e) => this.setState({ splitA: e.target.value }),
+      splitB: "$" + splitB.toLocaleString("en-US", { minimumFractionDigits: 2 }),
+
+      ruleChecked: !!(sel && s.ruleChecks[sel.id]),
+      toggleRuleCheck: () => { if (sel) this.setState(st => ({ ruleChecks: { ...st.ruleChecks, [sel.id]: !st.ruleChecks[sel.id] } })); },
+
+      excludeMenuOpen: s.excludeMenuOpen,
+      toggleExcludeMenu: () => this.setState(st => ({ excludeMenuOpen: !st.excludeMenuOpen })),
+      closeExcludeMenu: () => this.setState({ excludeMenuOpen: false }),
+      excludePersonal: () => this.resolveSelected(),
+      excludeDuplicate: () => this.resolveSelected(),
+
+      confirmSel: () => this.resolveSelected(),
+      skipSel: () => {
+        const o = this.openItems();
+        const idx = o.findIndex(i => i.id === s.selectedId);
+        const next = o[(idx + 1) % o.length];
+        if (next) this.select(next.id);
+      },
+
+      khanRows: [
+        { date: "Mar 30", desc: "WISE TRANSFER H. KHAN — Chase ····1187", amount: "₨180,000" },
+        { date: "Apr 29", desc: "WISE TRANSFER H. KHAN — Chase ····1187", amount: "₨180,000" },
+        { date: "May 30", desc: "WISE TRANSFER H. KHAN — Chase ····1187", amount: "₨180,000" }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

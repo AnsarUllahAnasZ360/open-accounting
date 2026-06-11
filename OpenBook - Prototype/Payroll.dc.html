@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+    @keyframes ob-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div ref="{{ rootRef }}" style="font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:14px; color:#0a0a0a; line-height:1.5; padding:24px 28px 48px; max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:16px;">
+
+  <div style="display:flex; align-items:center; gap:12px;">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em; line-height:1.2;">Payroll</div>
+      <div style="font-size:13px; color:#737373;">A register, not a processor — you pay people your way, the books stay right</div>
+    </div>
+    <div style="flex:1;"></div>
+    <sc-if value="{{ onEmployees }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ openAddEmp }}" style="height:34px; padding:0 14px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; flex-shrink:0; white-space:nowrap;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Add employee</button>
+    </sc-if>
+    <sc-if value="{{ showRunPayroll }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ runPayroll }}" style="height:34px; padding:0 16px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; flex-shrink:0; white-space:nowrap;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Run payroll · June</button>
+    </sc-if>
+  </div>
+
+  <div style="display:flex; align-items:center; gap:2px; border-bottom:1px solid #e5e5e5;">
+    <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="3">
+      <button onClick="{{ tb.pick }}" style="height:36px; padding:0 14px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; font-weight:{{ tb.weight }}; color:{{ tb.color }}; border-bottom:2px solid {{ tb.line }}; margin-bottom:-1px; white-space:nowrap; flex-shrink:0;" style-hover="color:#0a0a0a;">{{ tb.label }}</button>
+    </sc-for>
+  </div>
+
+  <!-- ===== EMPLOYEES ===== -->
+  <sc-if value="{{ onEmployees }}" hint-placeholder-val="{{ false }}">
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:1.5fr 130px 90px 150px 1fr 90px; gap:8px; padding:9px 18px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>Name</span><span>Country</span><span>Currency</span><span style="text-align:right;">Monthly salary</span><span>Paid via</span><span>Status</span>
+      </div>
+      <sc-for list="{{ employees }}" as="e" hint-placeholder-count="6">
+        <div style="display:grid; grid-template-columns:1.5fr 130px 90px 150px 1fr 90px; gap:8px; padding:12px 18px; border-top:1px solid #f3f3f3; align-items:center;">
+          <span style="display:flex; align-items:center; gap:10px;">
+            <span style="width:28px; height:28px; border-radius:9999px; background:#f0f0f0; color:#525252; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:600;">{{ e.initials }}</span>
+            <span><span style="display:block; font-size:13px; font-weight:500;">{{ e.name }}</span><span style="display:block; font-size:11px; color:#a3a3a3;">{{ e.role }}</span></span>
+          </span>
+          <span style="font-size:12.5px; color:#525252;">{{ e.country }}</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#737373;">{{ e.currency }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:600;">{{ e.salary }}</span>
+          <span style="font-size:12px; color:#737373;">{{ e.method }}</span>
+          <span><span style="display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:9999px; background:#f1f8ee; font-size:11px; color:#17540f; font-weight:500;"><span style="width:6px; height:6px; border-radius:9999px; background:#2ca01c;"></span>Active</span></span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size:12px; color:#a3a3a3;">{{ empFooter }}</div>
+  </sc-if>
+
+  <!-- ===== RUNS LIST ===== -->
+  <sc-if value="{{ onRunsList }}" hint-placeholder-val="{{ true }}">
+    <sc-if value="{{ juneNotStarted }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex; align-items:center; gap:10px; padding:12px 16px; border-radius:12px; background:#fafafa; border:1px solid #ececec;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path></svg>
+        <span style="flex:1; font-size:13px; color:#525252;">June hasn't been run yet. <span style="font-weight:600; color:#0a0a0a;">Run payroll</span> drafts the statement from everyone's salary — you review, adjust, then approve.</span>
+        <span style="font-size:12px; color:#a3a3a3;">due Jun 30</span>
+      </div>
+    </sc-if>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:1fr 90px 1.4fr 130px 110px; gap:8px; padding:9px 18px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>Period</span><span>People</span><span>By currency</span><span style="text-align:right;">Base total</span><span>Status</span>
+      </div>
+      <sc-for list="{{ runs }}" as="run" hint-placeholder-count="4">
+        <div onClick="{{ run.open }}" style="display:grid; grid-template-columns:1fr 90px 1.4fr 130px 110px; gap:8px; padding:13px 18px; border-top:1px solid #f3f3f3; align-items:center; cursor:pointer; transition:background 120ms ease-out;" style-hover="background:#fafafa;">
+          <span style="font-size:13.5px; font-weight:600;">{{ run.period }}</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:12.5px; color:#525252;">{{ run.people }}</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12px; color:#737373;">{{ run.currencies }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:600;">{{ run.base }}</span>
+          <span><span style="display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:9999px; font-size:11px; font-weight:500; background:{{ run.chipBg }}; color:{{ run.chipColor }};">{{ run.status }}</span></span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ===== RUN DETAIL ===== -->
+  <sc-if value="{{ onRunDetail }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button onClick="{{ backToRuns }}" style="display:flex; align-items:center; gap:6px; height:30px; padding:0 10px; border-radius:8px; border:none; background:transparent; color:#737373; cursor:pointer; font-family:inherit; font-size:12.5px;" style-hover="background:#f0f0f0;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7 M19 12H5"></path></svg>
+        Runs
+      </button>
+      <div style="font-size:16px; font-weight:600;">{{ detailTitle }}</div>
+      <span style="display:inline-flex; align-items:center; height:22px; padding:0 9px; border-radius:9999px; font-size:11px; font-weight:500; background:{{ runChipBg }}; color:{{ runChipColor }};">{{ runStatus }}</span>
+      <div style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+        <sc-for list="{{ runSteps }}" as="rs" hint-placeholder-count="3">
+          <span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:{{ rs.color }}; font-weight:{{ rs.weight }};">
+            <span style="width:16px; height:16px; border-radius:9999px; display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:600; background:{{ rs.dotBg }}; color:{{ rs.dotFg }};">{{ rs.n }}</span>
+            {{ rs.label }}
+          </span>
+          <sc-if value="{{ rs.hasArrow }}" hint-placeholder-val="{{ true }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></sc-if>
+        </sc-for>
+      </div>
+      <div style="flex:1;"></div>
+      <sc-if value="{{ isDraft }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ approveRun }}" style="height:34px; padding:0 16px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Approve run</button>
+      </sc-if>
+      <sc-if value="{{ isApproved }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ markAllPaid }}" style="height:34px; padding:0 16px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Mark all paid</button>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ isApproved }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; align-items:center; gap:9px; padding:11px 14px; border-radius:11px; background:#f1f8ee; font-size:12.5px; color:#17540f; animation:ob-fade 160ms ease-out;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        Approved — this records {{ totPKR }} + {{ totINR }} + {{ totUSD }} as June payroll expense. Lines settle as the bank payments arrive.
+      </div>
+    </sc-if>
+    <sc-if value="{{ isPaid }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; align-items:center; gap:9px; padding:11px 14px; border-radius:11px; background:#f1f8ee; font-size:12.5px; color:#17540f; animation:ob-fade 160ms ease-out;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        All 6 lines marked paid. They'll match automatically against the outgoing bank transfers; FX differences post as a small gain/loss line.
+      </div>
+    </sc-if>
+    <sc-if value="{{ isHistorical }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; align-items:center; gap:9px; padding:11px 14px; border-radius:11px; background:#fafafa; border:1px solid #ececec; font-size:12.5px; color:#525252; animation:ob-fade 160ms ease-out;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M12 7v5l3 3"></path></svg>
+        Settled and locked. Figures show the amounts and FX rates used on each payment. Reopen the period to correct anything.
+      </div>
+    </sc-if>
+
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:1.4fr 120px 110px 130px 90px 120px 70px; gap:8px; padding:9px 18px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>Employee</span><span style="text-align:right;">Base salary</span><span style="text-align:right;">Adjustment</span><span style="text-align:right;">Final</span><span style="text-align:right;">FX rate</span><span style="text-align:right;">USD equiv</span><span style="text-align:center;">Paid</span>
+      </div>
+      <sc-for list="{{ runLines }}" as="rl" hint-placeholder-count="6">
+        <div style="display:grid; grid-template-columns:1.4fr 120px 110px 130px 90px 120px 70px; gap:8px; padding:10px 18px; border-top:1px solid #f3f3f3; align-items:center;">
+          <span><span style="display:block; font-size:13px; font-weight:500;">{{ rl.name }}</span><span style="display:block; font-size:11px; color:#a3a3a3;">{{ rl.country }} · {{ rl.currency }}</span></span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px;">{{ rl.base }}</span>
+          <span style="display:flex; justify-content:flex-end;">
+            <input value="{{ rl.adj }}" onChange="{{ rl.onAdj }}" disabled="{{ rl.locked }}" style="width:88px; height:28px; padding:0 8px; border-radius:7px; border:1px solid #e5e5e5; font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; text-align:right; outline:none; background:{{ rl.adjBg }}; color:#0a0a0a;" style-focus="border-color:#63b347;"></input>
+          </span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px; font-weight:600;">{{ rl.final }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#737373;">{{ rl.fx }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px;">{{ rl.usd }}</span>
+          <span style="display:flex; justify-content:center;">
+            <input type="checkbox" checked="{{ rl.paid }}" onChange="{{ rl.togglePaid }}" disabled="{{ rl.paidDisabled }}" style="accent-color:#2ca01c; width:14px; height:14px; cursor:{{ rl.paidCursor }};"></input>
+          </span>
+        </div>
+      </sc-for>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:13px 18px; border-top:1px solid #ececec; background:#fbfbfb;">
+        <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12px; color:#525252;">{{ totUSD }} · {{ totPKR }} · {{ totINR }}</span>
+        <span style="font-size:13px;">Total in USD: <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600; font-size:15px;">{{ totBase }}</span></span>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ===== STATEMENT ===== -->
+  <sc-if value="{{ onStatement }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div style="font-size:16px; font-weight:600;">Payroll statement · May 2026</div>
+      <div style="flex:1;"></div>
+      <button style="height:32px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">Export PDF</button>
+      <button style="height:32px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">Export CSV</button>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <sc-for list="{{ stmtGroups }}" as="sg" hint-placeholder-count="3">
+        <div style="padding:14px 20px 4px; font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase; border-top:1px solid #f3f3f3;">{{ sg.label }}</div>
+        <sc-for list="{{ sg.lines }}" as="sl" hint-placeholder-count="2">
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 20px; font-size:13px;">
+            <span>{{ sl.name }}</span>
+            <span style="display:flex; gap:24px;">
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; color:#525252;">{{ sl.local }}</span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; min-width:90px; text-align:right;">{{ sl.usd }}</span>
+            </span>
+          </div>
+        </sc-for>
+        <div style="display:flex; justify-content:space-between; padding:8px 20px 14px; font-size:12.5px; font-weight:600; color:#525252;">
+          <span>Subtotal · {{ sg.label }}</span>
+          <span style="display:flex; gap:24px;">
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ sg.local }}</span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; min-width:90px; text-align:right;">{{ sg.usd }}</span>
+          </span>
+        </div>
+      </sc-for>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid #ececec; background:#f1f8ee;">
+        <span style="font-size:13.5px; font-weight:600; color:#17540f;">May 2026 total</span>
+        <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:17px; font-weight:600; color:#17540f;">$17,757.40</span>
+      </div>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px;">
+      <div style="font-size:13px; font-weight:600; margin-bottom:12px;">12-month trend · USD equivalent</div>
+      <div style="display:flex; align-items:flex-end; gap:8px; height:80px;">
+        <sc-for list="{{ trend }}" as="t" hint-placeholder-count="12">
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end;">
+            <div title="{{ t.tip }}" style="width:100%; max-width:26px; border-radius:4px 4px 0 0; background:{{ t.c }}; height:{{ t.h }};"></div>
+            <span style="font-size:9.5px; color:#a3a3a3;">{{ t.label }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ===== ADD EMPLOYEE MODAL ===== -->
+  <sc-if value="{{ addEmpOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeAddEmp }}" style="position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:80;"></div>
+    <div style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:480px; background:#ffffff; border-radius:14px; z-index:90; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.08); animation:ob-fade 160ms ease-out; padding:22px 24px;">
+      <div style="font-size:17px; font-weight:600;">Add an employee</div>
+      <div style="font-size:12.5px; color:#737373; margin-top:2px;">Salary stays in their local currency — OpenBooks converts at each run's rate.</div>
+      <div style="display:flex; flex-direction:column; gap:13px; margin-top:18px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Name</div>
+            <input value="{{ neName }}" onChange="{{ onNeName }}" placeholder="Full name" style="width:100%; height:36px; padding:0 11px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; outline:none;" style-focus="border-color:#63b347; box-shadow:0 0 0 3px rgba(99,179,71,0.25);"></input>
+          </div>
+          <div>
+            <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Role</div>
+            <input value="{{ neRole }}" onChange="{{ onNeRole }}" placeholder="e.g. Engineer" style="width:100%; height:36px; padding:0 11px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; outline:none;" style-focus="border-color:#63b347;"></input>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Country</div>
+            <select value="{{ neCountry }}" onChange="{{ onNeCountry }}" style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+              <option>United States</option><option>Pakistan</option><option>India</option><option>Other</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Currency</div>
+            <select value="{{ neCurrency }}" onChange="{{ onNeCurrency }}" style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:'Geist Mono',ui-monospace,monospace; font-size:12.5px; background:#ffffff; outline:none;">
+              <option>USD</option><option>PKR</option><option>INR</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Monthly salary</div>
+            <input value="{{ neSalary }}" onChange="{{ onNeSalary }}" placeholder="0" style="width:100%; height:36px; padding:0 11px; border-radius:10px; border:1px solid #e5e5e5; font-family:'Geist Mono',ui-monospace,monospace; font-size:13px; text-align:right; outline:none;" style-focus="border-color:#63b347;"></input>
+          </div>
+          <div>
+            <div style="font-size:12px; font-weight:500; color:#525252; margin-bottom:5px;">Paid via</div>
+            <select value="{{ neMethod }}" onChange="{{ onNeMethod }}" style="width:100%; height:36px; padding:0 10px; border-radius:10px; border:1px solid #e5e5e5; font-family:inherit; font-size:13px; background:#ffffff; outline:none;">
+              <option>Gusto (direct deposit)</option><option>Wise transfer</option><option>Bank wire</option><option>Other</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:20px;">
+        <button onClick="{{ closeAddEmp }}" style="height:36px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500;" style-hover="background:#f5f5f5;">Cancel</button>
+        <div style="flex:1;"></div>
+        <button onClick="{{ saveEmp }}" style="height:36px; padding:0 18px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Add employee</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.employees = [
+      { name: "Sarah Chen", role: "Product engineer", country: "United States", currency: "USD", salary: 3500, method: "Gusto (direct deposit)", fx: 1 },
+      { name: "Mike Torres", role: "Support & ops", country: "United States", currency: "USD", salary: 2500, method: "Gusto (direct deposit)", fx: 1 },
+      { name: "Ayesha Raza", role: "Senior engineer", country: "Pakistan", currency: "PKR", salary: 1020000, method: "Wise transfer", fx: 277.5 },
+      { name: "Bilal Ahmed", role: "Engineer", country: "Pakistan", currency: "PKR", salary: 940000, method: "Wise transfer", fx: 277.5 },
+      { name: "Hammas Khan", role: "Ops assistant", country: "Pakistan", currency: "PKR", salary: 180000, method: "Wise transfer", fx: 277.5 },
+      { name: "Priya Sharma", role: "Designer", country: "India", currency: "INR", salary: 344000, method: "Wise transfer", fx: 84.5 }
+    ];
+    this.state = {
+      tab: "runs", runView: "list", runStatus: "draft", juneStarted: false,
+      selectedRun: null,
+      adjs: this.employees.map(() => "0"),
+      paid: this.employees.map(() => false),
+      addEmpOpen: false,
+      neName: "", neRole: "", neCountry: "United States", neCurrency: "USD", neSalary: "", neMethod: "Gusto (direct deposit)"
+    };
+  }
+
+  resetScroll() {
+    let el = this._rootRef && this._rootRef.current;
+    el = el ? el.parentElement : null;
+    while (el) {
+      const st = getComputedStyle(el);
+      if ((st.overflowY === "auto" || st.overflowY === "scroll") && el.scrollHeight > el.clientHeight + 4) { el.scrollTop = 0; return; }
+      el = el.parentElement;
+    }
+  }
+
+  sym(c) { return c === "USD" ? "$" : (c === "PKR" ? "₨" : "₹"); }
+  fmtLocal(n, c) { return this.sym(c) + n.toLocaleString("en-US"); }
+  fmtUsd(n) { return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  renderVals() {
+    const s = this.state;
+    if (!this._rootRef) this._rootRef = React.createRef();
+    const sel = s.selectedRun;
+    const isHistorical = !!(sel && !sel.live);
+    const detailStatus = isHistorical ? "paid" : s.runStatus;
+    const detailPeriod = sel ? sel.period : "June 2026";
+
+    const tabs = [
+      { id: "employees", label: "Employees · " + this.employees.length },
+      { id: "runs", label: "Runs" },
+      { id: "statement", label: "Statement" }
+    ].map(t => ({
+      ...t, pick: () => this.setState({ tab: t.id, runView: "list", selectedRun: null }, () => this.resetScroll()),
+      weight: s.tab === t.id ? "600" : "450",
+      color: s.tab === t.id ? "#0a0a0a" : "#737373",
+      line: s.tab === t.id ? "#2ca01c" : "transparent"
+    }));
+
+    const employees = this.employees.map(e => ({
+      ...e,
+      initials: e.name.split(" ").map(w => w[0]).join("").toUpperCase(),
+      salary: this.fmtLocal(e.salary, e.currency)
+    }));
+
+    const runsData = (s.juneStarted ? [
+      { period: "June 2026", people: this.employees.length, currencies: "$6,000 · ₨2,140,000 · ₹344,000", base: "$17,783", status: s.runStatus === "draft" ? "Draft" : (s.runStatus === "approved" ? "Approved" : "Paid"), live: true }
+    ] : []).concat([
+      { period: "May 2026", people: 6, currencies: "$6,000 · ₨2,140,000 · ₹344,000", base: "$17,757", status: "Paid" },
+      { period: "April 2026", people: 6, currencies: "$6,000 · ₨2,140,000 · ₹344,000", base: "$17,802", status: "Paid" },
+      { period: "March 2026", people: 5, currencies: "$6,000 · ₨1,960,000 · ₹344,000", base: "$17,145", status: "Paid" }
+    ]);
+    const chipFor = (st) => st === "Paid" ? { bg: "#f1f8ee", color: "#17540f" } : (st === "Approved" ? { bg: "#eff8ff", color: "#175cd3" } : { bg: "#f5f5f5", color: "#525252" });
+
+    // run detail computation
+    const finals = this.employees.map((e, i) => e.salary + (parseFloat(s.adjs[i]) || 0));
+    const usdEq = this.employees.map((e, i) => finals[i] / e.fx);
+    const totBy = (cur) => this.employees.reduce((a, e, i) => a + (e.currency === cur ? finals[i] : 0), 0);
+    const totBase = usdEq.reduce((a, b) => a + b, 0);
+    const locked = detailStatus !== "draft";
+
+    const stmtGroups = [
+      { label: "United States · USD", lines: [["Sarah Chen", 3500], ["Mike Torres", 2500]], cur: "USD", fx: 1 },
+      { label: "Pakistan · PKR", lines: [["Ayesha Raza", 1020000], ["Bilal Ahmed", 940000], ["Hammas Khan", 180000]], cur: "PKR", fx: 277.9 },
+      { label: "India · INR", lines: [["Priya Sharma", 344000]], cur: "INR", fx: 84.6 }
+    ].map(g => {
+      const subtotal = g.lines.reduce((a, l) => a + l[1], 0);
+      return {
+        label: g.label,
+        lines: g.lines.map(l => ({ name: l[0], local: this.fmtLocal(l[1], g.cur), usd: this.fmtUsd(l[1] / g.fx) })),
+        local: this.fmtLocal(subtotal, g.cur),
+        usd: this.fmtUsd(subtotal / g.fx)
+      };
+    });
+
+    const trendVals = [16.4, 16.4, 16.8, 16.8, 17.1, 17.1, 17.1, 17.1, 17.8, 17.1, 17.8, 17.8];
+    const trendLabels = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May"];
+
+    const stepState = detailStatus === "draft" ? 0 : (detailStatus === "approved" ? 1 : 2);
+    const runSteps = ["Review", "Approve", "Mark paid"].map((label, i) => {
+      const done = i < stepState, active = i === stepState;
+      return {
+        n: done ? "✓" : String(i + 1), label,
+        color: active ? "#0a0a0a" : (done ? "#17540f" : "#a3a3a3"),
+        weight: active ? "600" : "500",
+        dotBg: done ? "#2ca01c" : (active ? "#0a0a0a" : "#f0f0f0"),
+        dotFg: done || active ? "#ffffff" : "#a3a3a3",
+        hasArrow: i < 2
+      };
+    });
+
+    return {
+      tabs,
+      rootRef: this._rootRef,
+      detailTitle: detailPeriod + " run",
+      isHistorical,
+      onEmployees: s.tab === "employees",
+      onRunsList: s.tab === "runs" && s.runView === "list",
+      onRunDetail: s.tab === "runs" && s.runView === "detail",
+      onStatement: s.tab === "statement",
+      employees,
+      empFooter: this.employees.length + " people · monthly cost ≈ $" + Math.round(this.employees.reduce((a, e) => a + e.salary / e.fx, 0)).toLocaleString("en-US") + " at this month's rates",
+
+      juneNotStarted: !s.juneStarted,
+      showRunPayroll: s.tab === "runs" && s.runView === "list" && !s.juneStarted,
+      runPayroll: () => this.setState({ juneStarted: true, runView: "detail", runStatus: "draft", selectedRun: { period: "June 2026", live: true } }, () => this.resetScroll()),
+      runSteps,
+
+      addEmpOpen: s.addEmpOpen,
+      openAddEmp: () => this.setState({ addEmpOpen: true, neName: "", neRole: "", neSalary: "" }),
+      closeAddEmp: () => this.setState({ addEmpOpen: false }),
+      neName: s.neName, onNeName: (e) => this.setState({ neName: e.target.value }),
+      neRole: s.neRole, onNeRole: (e) => this.setState({ neRole: e.target.value }),
+      neCountry: s.neCountry, onNeCountry: (e) => this.setState({ neCountry: e.target.value }),
+      neCurrency: s.neCurrency, onNeCurrency: (e) => this.setState({ neCurrency: e.target.value }),
+      neSalary: s.neSalary, onNeSalary: (e) => this.setState({ neSalary: e.target.value }),
+      neMethod: s.neMethod, onNeMethod: (e) => this.setState({ neMethod: e.target.value }),
+      saveEmp: () => {
+        const st = this.state;
+        const name = (st.neName || "").trim();
+        if (!name) { this.setState({ addEmpOpen: false }); return; }
+        const fx = st.neCurrency === "USD" ? 1 : (st.neCurrency === "PKR" ? 277.5 : 84.5);
+        this.employees.push({ name, role: st.neRole || "—", country: st.neCountry, currency: st.neCurrency, salary: parseFloat((st.neSalary || "0").replace(/[,$₨₹]/g, "")) || 0, method: st.neMethod, fx });
+        this.setState(prev => ({ addEmpOpen: false, adjs: [...prev.adjs, "0"], paid: [...prev.paid, false] }));
+      },
+
+      runs: runsData.map(r => ({
+        ...r,
+        base: r.base,
+        chipBg: chipFor(r.status).bg, chipColor: chipFor(r.status).color,
+        open: () => this.setState({ runView: "detail", selectedRun: { period: r.period, live: !!r.live } }, () => this.resetScroll())
+      })),
+
+      backToRuns: () => this.setState({ runView: "list", selectedRun: null }, () => this.resetScroll()),
+      runStatus: detailStatus === "draft" ? "Draft" : (detailStatus === "approved" ? "Approved" : "Paid"),
+      runChipBg: chipFor(detailStatus === "draft" ? "Draft" : (detailStatus === "approved" ? "Approved" : "Paid")).bg,
+      runChipColor: chipFor(detailStatus === "draft" ? "Draft" : (detailStatus === "approved" ? "Approved" : "Paid")).color,
+      isDraft: !isHistorical && s.runStatus === "draft",
+      isApproved: !isHistorical && s.runStatus === "approved",
+      isPaid: !isHistorical && s.runStatus === "paid",
+      approveRun: () => this.setState({ runStatus: "approved" }),
+      markAllPaid: () => this.setState({ runStatus: "paid", paid: this.employees.map(() => true) }),
+
+      runLines: this.employees.map((e, i) => {
+        const linePaid = isHistorical ? true : s.paid[i];
+        return {
+          name: e.name, country: e.country, currency: e.currency,
+          base: this.fmtLocal(e.salary, e.currency),
+          adj: s.adjs[i],
+          onAdj: (ev) => { const v = ev.target.value; this.setState(st => ({ adjs: st.adjs.map((x, j) => j === i ? v : x) })); },
+          locked,
+          adjBg: locked ? "#fafafa" : "#ffffff",
+          final: this.fmtLocal(finals[i], e.currency),
+          fx: e.fx === 1 ? "—" : e.fx.toFixed(1),
+          usd: this.fmtUsd(usdEq[i]),
+          paid: linePaid,
+          paidDisabled: locked,
+          paidCursor: locked ? "default" : "pointer",
+          togglePaid: () => { if (!locked) this.setState(st => ({ paid: st.paid.map((x, j) => j === i ? !x : x) })); }
+        };
+      }),
+      totUSD: "$" + totBy("USD").toLocaleString("en-US"),
+      totPKR: "₨" + totBy("PKR").toLocaleString("en-US"),
+      totINR: "₹" + totBy("INR").toLocaleString("en-US"),
+      totBase: this.fmtUsd(totBase),
+
+      stmtGroups,
+      trend: trendVals.map((v, i) => ({
+        label: trendLabels[i],
+        h: ((v / 18) * 64).toFixed(0) + "px",
+        c: i === 11 ? "#2ca01c" : "#bbe0a9",
+        tip: trendLabels[i] + ": $" + v.toFixed(1) + "k"
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+    @keyframes ob-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div style="font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:14px; color:#0a0a0a; line-height:1.5; padding:24px 28px 48px; max-width:1000px; margin:0 auto; display:flex; flex-direction:column; gap:16px;">
+
+  <!-- ===== LIST VIEW ===== -->
+  <sc-if value="{{ listMode }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div>
+        <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em; line-height:1.2;">Contacts</div>
+        <div style="font-size:13px; color:#737373;">Customers and vendors, one directory · most were created automatically</div>
+      </div>
+      <div style="flex:1;"></div>
+      <button style="height:34px; padding:0 14px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; white-space:nowrap; flex-shrink:0;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Add contact</button>
+    </div>
+
+    <sc-if value="{{ mergeVisible }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex; align-items:center; gap:10px; padding:12px 16px; border-radius:12px; background:#f1f8ee;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+        <span style="flex:1; font-size:13px; color:#17540f;">"AMZN MKTP US" and "Amazon" look like the same vendor — merge them?</span>
+        <button onClick="{{ doMerge }}" style="height:28px; padding:0 12px; border-radius:8px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#248716;">Merge</button>
+        <button onClick="{{ dismissMerge }}" style="height:28px; padding:0 12px; border-radius:8px; border:1px solid #bbe0a9; background:#ffffff; color:#17540f; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#f5f5f5;">Keep separate</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{ mergedNote }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; align-items:center; gap:8px; padding:10px 16px; border-radius:12px; background:#f1f8ee; font-size:13px; color:#17540f; animation:ob-fade 160ms ease-out;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        Merged — 9 transactions moved under "Amazon", alias kept for future matching.
+      </div>
+    </sc-if>
+
+    <div style="display:flex; align-items:center; gap:8px;">
+      <sc-for list="{{ roleFilters }}" as="rf" hint-placeholder-count="3">
+        <button onClick="{{ rf.pick }}" style="height:30px; padding:0 13px; border-radius:9999px; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500; white-space:nowrap; flex-shrink:0; border:1px solid {{ rf.border }}; background:{{ rf.bg }}; color:{{ rf.color }};" style-hover="border-color:#d4d4d4;">{{ rf.label }}</button>
+      </sc-for>
+      <div style="flex:1;"></div>
+      <div style="display:flex; align-items:center; gap:7px; height:32px; padding:0 11px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; width:230px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z M21 21l-4.35-4.35"></path></svg>
+        <input value="{{ search }}" onChange="{{ onSearch }}" placeholder="Search contacts" style="flex:1; border:none; outline:none; font-family:inherit; font-size:12.5px; background:transparent; min-width:0;"></input>
+      </div>
+    </div>
+
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:1.5fr 105px 105px 105px 130px 90px; gap:8px; padding:9px 18px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>Name</span><span>Role</span><span style="text-align:right;">Received · YTD</span><span style="text-align:right;">Paid · YTD</span><span style="text-align:right;">Open balance</span><span style="text-align:right;">Last activity</span>
+      </div>
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="9">
+        <div onClick="{{ r.open }}" style="display:grid; grid-template-columns:1.5fr 105px 105px 105px 130px 90px; gap:8px; padding:11px 18px; border-top:1px solid #f3f3f3; align-items:center; cursor:pointer; transition:background 120ms ease-out;" style-hover="background:#fafafa;">
+          <span style="display:flex; align-items:center; gap:10px; min-width:0;">
+            <span style="width:28px; height:28px; border-radius:9999px; background:{{ r.avatarBg }}; color:{{ r.avatarFg }}; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">{{ r.initials }}</span>
+            <span style="min-width:0;">
+              <span title="{{ r.aliasTip }}" style="display:block; font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ r.name }}</span>
+              <span style="display:block; font-size:11px; color:#a3a3a3;">{{ r.sub }}</span>
+            </span>
+          </span>
+          <span style="display:flex; gap:4px;">
+            <sc-for list="{{ r.roles }}" as="role" hint-placeholder-count="1">
+              <span style="height:20px; padding:0 8px; border-radius:9999px; font-size:10.5px; font-weight:500; display:inline-flex; align-items:center; background:{{ role.bg }}; color:{{ role.color }};">{{ role.label }}</span>
+            </sc-for>
+          </span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px; color:{{ r.inColor }};">{{ r.moneyIn }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px; color:{{ r.outColor }};">{{ r.moneyOut }}</span>
+          <span title="{{ r.balTip }}" style="text-align:right;">
+            <span style="display:inline-flex; align-items:center; gap:5px; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px; font-weight:600; color:{{ r.balColor }};">
+              <sc-if value="{{ r.isOverdue }}" hint-placeholder-val="{{ false }}">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#d92d20" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4 M12 16h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+              </sc-if>
+              {{ r.balance }}
+            </span>
+          </span>
+          <span style="text-align:right; font-size:11.5px; color:#a3a3a3;">{{ r.last }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size:12px; color:#a3a3a3; padding:0 4px;">Created automatically from Stripe customers and bank merchants. <span style="color:#d92d20;">Red</span> = they're late paying you · <span style="color:#248716;">green</span> = healthy open balance · plain = a normal vendor balance.</div>
+  </sc-if>
+
+  <!-- ===== PROFILE VIEW ===== -->
+  <sc-if value="{{ profileMode }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button onClick="{{ backToList }}" style="display:flex; align-items:center; gap:6px; height:30px; padding:0 10px; border-radius:8px; border:none; background:transparent; color:#737373; cursor:pointer; font-family:inherit; font-size:12.5px;" style-hover="background:#f0f0f0;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7 M19 12H5"></path></svg>
+        Contacts
+      </button>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span style="width:52px; height:52px; border-radius:9999px; background:{{ pAvatarBg }}; color:{{ pAvatarFg }}; display:inline-flex; align-items:center; justify-content:center; font-size:18px; font-weight:600;">{{ pInitials }}</span>
+      <div style="flex:1;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:22px; font-weight:600; letter-spacing:-0.01em;">{{ pName }}</span>
+          <sc-for list="{{ pRoles }}" as="role" hint-placeholder-count="1">
+            <span style="height:22px; padding:0 9px; border-radius:9999px; font-size:11px; font-weight:500; display:inline-flex; align-items:center; background:{{ role.bg }}; color:{{ role.color }};">{{ role.label }}</span>
+          </sc-for>
+          <sc-if value="{{ pStripe }}" hint-placeholder-val="{{ false }}">
+            <span style="display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:9999px; background:#f5f3ff; color:#5b50c7; font-size:11px; font-weight:500;"><span style="width:12px; height:12px; border-radius:3px; background:#635bff; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:8px; font-weight:700;">S</span> Stripe customer</span>
+          </sc-if>
+        </div>
+        <div style="font-size:13px; color:#737373;">{{ pEmail }}</div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px;">
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:14px 18px;">
+        <div style="font-size:12px; color:#737373; font-weight:500;">Lifetime total</div>
+        <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600;">{{ pLifetime }}</div>
+      </div>
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:14px 18px;">
+        <div style="font-size:12px; color:#737373; font-weight:500;">{{ pBalLabel }}</div>
+        <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600; color:{{ pBalColor }};">{{ pBalance }}</div>
+      </div>
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:14px 18px;">
+        <div style="font-size:12px; color:#737373; font-weight:500;">{{ pAvgLabel }}</div>
+        <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:22px; font-weight:600;">{{ pAvg }}</div>
+      </div>
+    </div>
+
+    <sc-if value="{{ pIsVendor }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; align-items:center; gap:10px; padding:12px 16px; border-radius:12px; background:#fafafa; border:1px solid #ececec;">
+        <span style="font-size:13px; color:#525252;">Always file {{ pName }} as</span>
+        <span style="display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 11px; border-radius:9999px; background:#f5f5f5; border:1px solid #e5e5e5; font-size:12px; font-weight:500;"><span style="width:6px; height:6px; border-radius:9999px; background:#737373;"></span>{{ pDefaultCat }}</span>
+        <span style="font-size:11.5px; color:#a3a3a3;">acts as a rule — every new transaction from them posts automatically</span>
+      </div>
+    </sc-if>
+
+    <div style="display:flex; align-items:center; gap:2px; border-bottom:1px solid #e5e5e5;">
+      <sc-for list="{{ pTabs }}" as="pt" hint-placeholder-count="2">
+        <button onClick="{{ pt.pick }}" style="height:36px; padding:0 14px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; font-weight:{{ pt.weight }}; color:{{ pt.color }}; border-bottom:2px solid {{ pt.line }}; margin-bottom:-1px; white-space:nowrap; flex-shrink:0;" style-hover="color:#0a0a0a;">{{ pt.label }}</button>
+      </sc-for>
+    </div>
+
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <sc-for list="{{ pRows }}" as="pr" hint-placeholder-count="5">
+        <div style="display:flex; align-items:center; gap:12px; padding:11px 18px; border-top:1px solid #f3f3f3;">
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#a3a3a3; min-width:52px;">{{ pr.date }}</span>
+          <span style="flex:1; font-size:13px;">{{ pr.desc }}</span>
+          <sc-if value="{{ pr.hasChip }}" hint-placeholder-val="{{ false }}">
+            <span style="height:20px; padding:0 8px; border-radius:9999px; font-size:10.5px; font-weight:500; display:inline-flex; align-items:center; background:{{ pr.chipBg }}; color:{{ pr.chipColor }};">{{ pr.chip }}</span>
+          </sc-if>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:500; color:{{ pr.amtColor }};">{{ pr.amount }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.contacts = [
+      { id: "halpern", name: "Halpern Co", roles: ["customer"], email: "ap@halpern.co", stripe: true, balance: 8400, balKind: "ar", overdueDays: 14, ytd: 62400, last: "May 26", lifetime: 148200, avg: 7400,
+        rows: [
+          { date: "May 26", desc: "Invoice #1039 paid", chip: "Paid", chipKind: "paid", amount: "+$9,990" },
+          { date: "Apr 28", desc: "Invoice #1038 sent — Net 30", chip: "Overdue", chipKind: "overdue", amount: "$8,400" },
+          { date: "Apr 2", desc: "Invoice #1034 paid", chip: "Paid", chipKind: "paid", amount: "+$11,200" },
+          { date: "Mar 6", desc: "Invoice #1029 paid", chip: "Paid", chipKind: "paid", amount: "+$9,400" }
+        ] },
+      { id: "meridian", name: "Meridian Health", roles: ["customer"], email: "billing@meridianhealth.com", stripe: true, balance: 4200, balKind: "ar", overdueDays: 6, ytd: 31600, last: "Jun 9", lifetime: 54100, avg: 4500,
+        rows: [
+          { date: "Jun 9", desc: "Stripe payment — subscription", chip: "", amount: "+$2,100" },
+          { date: "May 6", desc: "Invoice #1041 sent — Net 30", chip: "Overdue", chipKind: "overdue", amount: "$4,200" },
+          { date: "May 12", desc: "Invoice #1036 paid", chip: "Paid", chipKind: "paid", amount: "+$2,100" }
+        ] },
+      { id: "beacon", name: "Beacon Press", roles: ["customer"], email: "accounts@beaconpress.io", stripe: true, balance: 2400, balKind: "ar", overdueDays: 2, ytd: 19800, last: "May 14", lifetime: 26300, avg: 2900 },
+      { id: "arclight", name: "Arclight Media", roles: ["customer"], email: "fin@arclight.media", stripe: true, balance: 5400, balKind: "ar", ytd: 24700, last: "Jun 4", lifetime: 31200, avg: 3100 },
+      { id: "tonal", name: "Tonal Labs", roles: ["customer"], email: "ops@tonallabs.dev", stripe: true, balance: 3400, balKind: "ar", ytd: 12900, last: "May 29", lifetime: 12900, avg: 3225 },
+      { id: "aws", name: "Amazon Web Services", roles: ["vendor"], email: "—", balance: 1838.40, balKind: "ap", ytd: 15300, last: "Jun 3", lifetime: 38400, avg: 1700, defaultCat: "Cloud / Infrastructure",
+        rows: [
+          { date: "Jun 3", desc: "AMZN WEB SERVICES — auto-posted by rule #4", chip: "Rule", chipKind: "auto", amount: "−$1,612.40" },
+          { date: "May 18", desc: "Bill — May usage invoice", chip: "Open", chipKind: "open", amount: "$1,838.40" },
+          { date: "May 3", desc: "AMZN WEB SERVICES — auto-posted by rule #4", chip: "Rule", chipKind: "auto", amount: "−$1,545.10" }
+        ] },
+      { id: "amazon", name: "Amazon", aliases: ["AMZN MKTP US", "AMAZON.COM*2X4"], roles: ["vendor"], email: "—", balance: 0, ytd: 2840, last: "Jun 2", lifetime: 6100, avg: 95, defaultCat: "Office & Supplies" },
+      { id: "wework", name: "WeWork", roles: ["vendor"], email: "—", balance: 2400, balKind: "ap", ytd: 14400, last: "Jun 1", lifetime: 43200, avg: 2400, defaultCat: "Rent" },
+      { id: "figma", name: "Figma", roles: ["vendor"], email: "—", balance: 2652, balKind: "ap", ytd: 2772, last: "Jun 10", lifetime: 5500, avg: 230, defaultCat: "Software & SaaS" },
+      { id: "uber", name: "Uber", roles: ["vendor"], email: "—", balance: 0, ytd: 412, last: "Jun 9", lifetime: 1860, avg: 31, defaultCat: "Travel" },
+      { id: "counsel", name: "Counsel & Co", roles: ["vendor"], email: "hello@counsel.co", balance: 0, ytd: 8200, last: "May 28", lifetime: 19400, avg: 2050, defaultCat: "Professional Services" },
+      { id: "hammas", name: "Hammas Khan", roles: ["vendor", "team"], email: "via Wise · PKR", balance: 0, ytd: 3236, last: "Jun 1", lifetime: 11650, avg: 647 }
+    ];
+    this.state = { mode: "list", filter: "all", search: "", profileId: null, pTab: "activity", merge: "visible" };
+  }
+
+  fmt(n) { return "$" + n.toLocaleString("en-US", { minimumFractionDigits: n % 1 ? 2 : 0 }); }
+
+  renderVals() {
+    const s = this.state;
+    const roleChip = {
+      customer: { label: "Customer", bg: "#f1f8ee", color: "#17540f" },
+      vendor: { label: "Vendor", bg: "#f5f5f5", color: "#525252" },
+      team: { label: "Team", bg: "#eff8ff", color: "#175cd3" }
+    };
+    const avatarColors = { customer: ["#dcefd2", "#17540f"], vendor: ["#f0f0f0", "#525252"], team: ["#eff8ff", "#175cd3"] };
+
+    let list = this.contacts;
+    if (s.merge === "merged") list = list.filter(c => c.id !== "amazon" || true); // alias absorbed, row stays as "Amazon"
+    if (s.filter !== "all") list = list.filter(c => c.roles.includes(s.filter));
+    if (s.search.trim()) {
+      const q = s.search.toLowerCase();
+      list = list.filter(c => (c.name + " " + (c.aliases || []).join(" ")).toLowerCase().includes(q));
+    }
+
+    const prof = this.contacts.find(c => c.id === s.profileId);
+    const isCust = prof && prof.roles.includes("customer");
+
+    const chipKinds = {
+      paid: { bg: "#f1f8ee", color: "#17540f" },
+      overdue: { bg: "#fef3f2", color: "#b42318" },
+      open: { bg: "#eff8ff", color: "#175cd3" },
+      auto: { bg: "#f5f5f5", color: "#525252" }
+    };
+    const defaultRows = prof ? [
+      { date: prof.last, desc: "Most recent activity", chip: "", amount: "—" },
+      { date: "May 2026", desc: "Monthly total", chip: "", amount: this.fmt(prof.avg) }
+    ] : [];
+    const pRows = (prof && prof.rows ? prof.rows : defaultRows).map(r => ({
+      ...r,
+      hasChip: !!r.chip,
+      chipBg: r.chipKind ? chipKinds[r.chipKind].bg : "#f5f5f5",
+      chipColor: r.chipKind ? chipKinds[r.chipKind].color : "#525252",
+      amtColor: (r.amount || "").startsWith("+") ? "#248716" : "#0a0a0a"
+    }));
+
+    return {
+      listMode: s.mode === "list",
+      profileMode: s.mode === "profile" && !!prof,
+
+      mergeVisible: s.merge === "visible" && s.mode === "list",
+      mergedNote: s.merge === "merged" && s.mode === "list",
+      doMerge: () => this.setState({ merge: "merged" }),
+      dismissMerge: () => this.setState({ merge: "dismissed" }),
+
+      roleFilters: [
+        { id: "all", label: "All · " + this.contacts.length },
+        { id: "customer", label: "Customers" },
+        { id: "vendor", label: "Vendors" }
+      ].map(f => ({
+        ...f, pick: () => this.setState({ filter: f.id }),
+        bg: s.filter === f.id ? "#0a0a0a" : "#ffffff",
+        color: s.filter === f.id ? "#ffffff" : "#525252",
+        border: s.filter === f.id ? "#0a0a0a" : "#e5e5e5"
+      })),
+      search: s.search,
+      onSearch: (e) => this.setState({ search: e.target.value }),
+
+      rows: list.map(c => {
+        const ac = avatarColors[c.roles[0]];
+        const isCustomer = c.roles.includes("customer");
+        const overdue = !!c.overdueDays;
+        return {
+          name: c.name,
+          sub: c.aliases ? ("also: " + c.aliases.join(", ")) : c.email,
+          aliasTip: c.aliases ? c.aliases.join(" · ") : "",
+          initials: c.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase(),
+          avatarBg: ac[0], avatarFg: ac[1],
+          roles: c.roles.map(r => roleChip[r]),
+          moneyIn: isCustomer ? this.fmt(c.ytd) : "—",
+          inColor: isCustomer ? "#248716" : "#c9c9c9",
+          moneyOut: isCustomer ? "—" : this.fmt(c.ytd),
+          outColor: isCustomer ? "#c9c9c9" : "#0a0a0a",
+          balance: c.balance ? this.fmt(c.balance) : "—",
+          balColor: !c.balance ? "#c9c9c9" : (isCustomer ? (overdue ? "#d92d20" : "#248716") : "#0a0a0a"),
+          isOverdue: overdue && isCustomer,
+          balTip: !c.balance ? "Nothing open" : (isCustomer ? (overdue ? c.overdueDays + " days overdue — worth a reminder" : "Open invoices, not yet due") : "You owe this on open bills"),
+          last: c.last,
+          open: () => this.setState({ mode: "profile", profileId: c.id, pTab: "activity" })
+        };
+      }),
+
+      backToList: () => this.setState({ mode: "list" }),
+      pName: prof ? prof.name : "",
+      pInitials: prof ? prof.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() : "",
+      pAvatarBg: prof ? avatarColors[prof.roles[0]][0] : "#f0f0f0",
+      pAvatarFg: prof ? avatarColors[prof.roles[0]][1] : "#525252",
+      pRoles: prof ? prof.roles.map(r => roleChip[r]) : [],
+      pStripe: !!(prof && prof.stripe),
+      pEmail: prof ? prof.email : "",
+      pLifetime: prof ? this.fmt(prof.lifetime) : "",
+      pBalLabel: isCust ? "They owe you" : "You owe them",
+      pBalance: prof ? (prof.balance ? this.fmt(prof.balance) : "$0") : "",
+      pBalColor: prof && prof.balance ? (isCust ? "#248716" : "#b54708") : "#0a0a0a",
+      pAvgLabel: isCust ? "Avg invoice" : "Avg transaction",
+      pAvg: prof ? this.fmt(prof.avg) : "",
+      pIsVendor: !!(prof && prof.defaultCat),
+      pDefaultCat: prof ? (prof.defaultCat || "") : "",
+      pTabs: [
+        { id: "activity", label: isCust ? "Invoices & payments" : "Transactions & bills" },
+        { id: "notes", label: "Notes" }
+      ].map(t => ({
+        ...t, pick: () => this.setState({ pTab: t.id }),
+        weight: s.pTab === t.id ? "600" : "450",
+        color: s.pTab === t.id ? "#0a0a0a" : "#737373",
+        line: s.pTab === t.id ? "#2ca01c" : "transparent"
+      })),
+      pRows: s.pTab === "notes" ? [{ date: "May 2", desc: "Net 30 negotiated — they pay from a Frankfurt entity, expect 2-3 day delays.", chip: "", amount: "", hasChip: false, chipBg: "", chipColor: "", amtColor: "#0a0a0a" }] : pRows
+    };
+  }
+}
+</script>
+</body>
+</html>

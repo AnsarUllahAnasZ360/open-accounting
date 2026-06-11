@@ -1,0 +1,30 @@
+/* OpenBooks base element styles — minimal resets matching the codebase's @layer base. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, p {
+  margin: 0;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Money figures helper */
+.ob-figures {
+  font-family: var(--font-figures);
+  font-feature-settings: var(--figures-feature);
+}

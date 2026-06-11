@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+    @keyframes ob-slide { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes ob-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div ref="{{ rootRef }}" style="font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:14px; color:#0a0a0a; line-height:1.5; padding:24px 28px 48px; max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:16px;">
+
+  <!-- ============ HOME ============ -->
+  <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em; line-height:1.2;">Reports</div>
+      <div style="font-size:13px; color:#737373;">Z360 Labs LLC · all numbers come straight from the ledger</div>
+    </div>
+
+    <!-- Close the books -->
+    <div style="display:flex; align-items:center; gap:12px; padding:14px 18px; border-radius:14px; background:{{ closeBannerBg }}; box-shadow:0 0 0 1px rgba(10,10,10,0.06);">
+      <span style="width:34px; height:34px; border-radius:10px; background:{{ closeIconBg }}; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{ closeIconColor }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M12 7v5l3 3"></path></svg>
+      </span>
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:13.5px; font-weight:600;">{{ closeBannerTitle }}</div>
+        <div style="font-size:12.5px; color:#737373;">{{ closeBannerSub }}</div>
+      </div>
+      <sc-if value="{{ mayNotClosed }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ openClose }}" style="height:32px; padding:0 14px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Close the books</button>
+      </sc-if>
+      <sc-if value="{{ mayClosed }}" hint-placeholder-val="{{ false }}">
+        <span style="display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 11px; border-radius:9999px; background:#ffffff; color:#17540f; font-size:12px; font-weight:500; box-shadow:0 0 0 1px rgba(23,84,15,0.18);">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+          Locked
+        </span>
+      </sc-if>
+    </div>
+
+    <sc-for list="{{ reportGroups }}" as="rg" hint-placeholder-count="4">
+      <div style="margin-top:6px;">
+        <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:10px;">{{ rg.label }}</div>
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px;">
+          <sc-for list="{{ rg.cards }}" as="rc" hint-placeholder-count="3">
+            <button onClick="{{ rc.open }}" style="display:flex; flex-direction:column; gap:8px; padding:16px 18px; border-radius:14px; border:none; background:#ffffff; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); cursor:pointer; font-family:inherit; text-align:left; transition:box-shadow 120ms ease-out;" style-hover="box-shadow:0 0 0 1px rgba(10,10,10,0.18), 0 1px 3px rgba(0,0,0,0.07);">
+              <div style="display:flex; align-items:flex-end; gap:3px; height:26px;">
+                <sc-for list="{{ rc.viz }}" as="v" hint-placeholder-count="5">
+                  <div style="width:7px; border-radius:2px 2px 0 0; background:{{ v.c }}; height:{{ v.h }};"></div>
+                </sc-for>
+              </div>
+              <div style="font-size:14px; font-weight:600; color:#0a0a0a;">{{ rc.name }}</div>
+              <div style="font-size:12px; color:#737373; line-height:1.45;">{{ rc.desc }}</div>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </sc-if>
+
+  <!-- ============ SHARED VIEWER CHROME ============ -->
+  <sc-if value="{{ inViewer }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button onClick="{{ goHome }}" style="display:flex; align-items:center; gap:6px; height:30px; padding:0 10px; border-radius:8px; border:none; background:transparent; color:#737373; cursor:pointer; font-family:inherit; font-size:12.5px;" style-hover="background:#f0f0f0;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7 M19 12H5"></path></svg>
+        Reports
+      </button>
+      <div style="flex:1;"></div>
+      <sc-if value="{{ showViewerTools }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; align-items:center; gap:2px; height:32px; padding:2px; border-radius:10px; background:#f5f5f5;">
+          <button onClick="{{ setAccrual }}" style="height:28px; padding:0 12px; border-radius:8px; border:none; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500; background:{{ accrualBg }}; color:{{ accrualColor }}; box-shadow:{{ accrualShadow }};">Accrual</button>
+          <button onClick="{{ setCash }}" style="height:28px; padding:0 12px; border-radius:8px; border:none; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500; background:{{ cashBg }}; color:{{ cashColor }}; box-shadow:{{ cashShadow }};">Cash</button>
+        </div>
+        <button onClick="{{ toggleExplain }}" style="display:flex; align-items:center; gap:6px; height:32px; padding:0 13px; border-radius:10px; border:1px solid #bbe0a9; background:#f1f8ee; color:#1d6b12; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#dcefd2;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+          Explain
+        </button>
+      </sc-if>
+      <button style="height:32px; padding:0 13px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">Export</button>
+    </div>
+
+    <sc-if value="{{ explainOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; gap:10px; padding:14px 16px; border-radius:12px; background:#f1f8ee; animation:ob-fade 160ms ease-out;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top:2px;"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+        <div style="font-size:13px; color:#17540f; line-height:1.55;">{{ explainText }}</div>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <!-- ============ MONTHLY REVIEW ============ -->
+  <sc-if value="{{ isMonthly }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div>
+        <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">Monthly Review</div>
+        <div style="font-size:13px; color:#737373;">One page that tells you how the month went</div>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <button onClick="{{ prevMonth }}" style="width:30px; height:30px; border-radius:8px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; color:#525252; display:flex; align-items:center; justify-content:center;" style-hover="background:#f5f5f5;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+        <span style="min-width:104px; text-align:center; font-size:13.5px; font-weight:600;">{{ mrMonth }}</span>
+        <button onClick="{{ nextMonth }}" style="width:30px; height:30px; border-radius:8px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; color:#525252; display:flex; align-items:center; justify-content:center;" style-hover="background:#f5f5f5;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></button>
+      </div>
+    </div>
+
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="padding:18px 24px; background:#f1f8ee; display:flex; align-items:center; gap:8px; font-size:15px;">
+        You made <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600; color:#17540f;">{{ mrIncome }}</span>, spent <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600;">{{ mrSpent }}</span> →
+        <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600; font-size:17px; color:#17540f;">{{ mrNet }}</span>
+        <span style="font-size:12px; color:#5a7a52;">{{ mrNetNote }}</span>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0;">
+        <div style="padding:20px 24px; border-right:1px solid #f0f0f0; border-bottom:1px solid #f0f0f0;">
+          <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:10px;">Money in · {{ mrIncome }}</div>
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            <sc-for list="{{ mrCustomers }}" as="c" hint-placeholder-count="4">
+              <div style="display:flex; align-items:center; gap:10px; font-size:13px;">
+                <span style="flex:1;">{{ c.name }}</span>
+                <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:500;">{{ c.amount }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <button onClick="{{ openPL }}" style="margin-top:12px; border:none; background:transparent; padding:0; color:#1d6b12; font-family:inherit; font-size:12px; font-weight:500; cursor:pointer;" style-hover="text-decoration:underline;">Income by Customer →</button>
+        </div>
+        <div style="padding:20px 24px; border-bottom:1px solid #f0f0f0;">
+          <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:10px;">Money out · {{ mrSpent }}</div>
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            <sc-for list="{{ mrExpenses }}" as="x" hint-placeholder-count="5">
+              <div style="display:flex; align-items:center; gap:10px; font-size:13px;">
+                <span style="flex:1;">{{ x.name }}</span>
+                <span style="font-size:11px; color:{{ x.deltaColor }};">{{ x.delta }}</span>
+                <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:500;">{{ x.amount }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <button onClick="{{ openPL }}" style="margin-top:12px; border:none; background:transparent; padding:0; color:#1d6b12; font-family:inherit; font-size:12px; font-weight:500; cursor:pointer;" style-hover="text-decoration:underline;">Full Profit &amp; Loss →</button>
+        </div>
+        <div style="padding:20px 24px; border-right:1px solid #f0f0f0;">
+          <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:10px;">Owed to you · $23,800</div>
+          <div style="display:flex; height:8px; border-radius:9999px; overflow:hidden; gap:2px; margin-bottom:10px;">
+            <div style="background:#92cc7a; width:47%;" title="0–30 days: $11,200"></div>
+            <div style="background:#f7c54c; width:35%;" title="31–60 days: $8,400"></div>
+            <div style="background:#f79009; width:18%;" title="61–90 days: $4,200"></div>
+          </div>
+          <div style="font-size:13px; color:#525252;">4 open invoices. Halpern Co ($8,400) is 14 days overdue — the one to chase.</div>
+          <button onClick="{{ openAR }}" style="margin-top:12px; border:none; background:transparent; padding:0; color:#1d6b12; font-family:inherit; font-size:12px; font-weight:500; cursor:pointer;" style-hover="text-decoration:underline;">A/R Aging →</button>
+        </div>
+        <div style="padding:20px 24px;">
+          <div style="font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:10px;">You owe · $6,890.40</div>
+          <div style="font-size:13px; color:#525252;">3 open bills, nothing overdue. Next due: WeWork $2,400 on Jun 15.</div>
+          <div style="margin-top:10px; font-size:12px; font-weight:600; color:#a3a3a3; letter-spacing:0.04em; text-transform:uppercase;">Payroll · {{ mrPayroll }}</div>
+          <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px; color:#525252; margin-top:4px;">$6,000 · ₨2,140,000 · ₹344,000</div>
+          <button onClick="{{ openAP }}" style="margin-top:12px; border:none; background:transparent; padding:0; color:#1d6b12; font-family:inherit; font-size:12px; font-weight:500; cursor:pointer;" style-hover="text-decoration:underline;">A/P Aging →</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ P&L ============ -->
+  <sc-if value="{{ isPL }}" hint-placeholder-val="{{ false }}">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">Profit &amp; Loss</div>
+      <div style="font-size:13px; color:#737373;">Jan – May 2026 · by month · {{ basisLabel }} basis · click any number to see its transactions</div>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:minmax(190px,1.4fr) repeat(6, 1fr); padding:10px 20px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span></span><span style="text-align:right;">Jan</span><span style="text-align:right;">Feb</span><span style="text-align:right;">Mar</span><span style="text-align:right;">Apr</span><span style="text-align:right;">May</span><span style="text-align:right;">Total</span>
+      </div>
+      <sc-for list="{{ plRows }}" as="pr" hint-placeholder-count="14">
+        <div style="display:grid; grid-template-columns:minmax(190px,1.4fr) repeat(6, 1fr); padding:{{ pr.pad }} 20px; border-top:1px solid {{ pr.line }}; font-size:{{ pr.size }}; font-weight:{{ pr.weight }}; background:{{ pr.bg }}; color:{{ pr.color }}; align-items:center;">
+          <span style="padding-left:{{ pr.indent }};">{{ pr.name }}</span>
+          <sc-for list="{{ pr.cells }}" as="cell" hint-placeholder-count="6">
+            <span onClick="{{ cell.drill }}" style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; cursor:{{ cell.cursor }}; border-radius:5px; padding:2px 4px;" style-hover="background:{{ cell.hoverBg }};">{{ cell.v }}</span>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ============ BALANCE SHEET ============ -->
+  <sc-if value="{{ isBS }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div>
+        <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">Balance Sheet</div>
+        <div style="font-size:13px; color:#737373;">As of Jun 11, 2026 · what you own and what you owe</div>
+      </div>
+      <span style="display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 11px; border-radius:9999px; background:#f1f8ee; color:#17540f; font-size:12px; font-weight:500;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        Balanced
+      </span>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <sc-for list="{{ bsRows }}" as="br" hint-placeholder-count="14">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:{{ br.pad }} 22px; border-top:1px solid {{ br.line }}; font-size:{{ br.size }}; font-weight:{{ br.weight }}; background:{{ br.bg }};">
+          <span style="padding-left:{{ br.indent }}; color:{{ br.color }};">{{ br.name }}</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; color:{{ br.color }};">{{ br.v }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ============ CASH FLOW ============ -->
+  <sc-if value="{{ isCF }}" hint-placeholder-val="{{ false }}">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">Cash Flow Statement</div>
+      <div style="font-size:13px; color:#737373;">May 2026 · where cash actually came from and went</div>
+    </div>
+    <div style="display:grid; grid-template-columns:1.4fr 1fr; gap:16px; align-items:start;">
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+        <sc-for list="{{ cfRows }}" as="cr" hint-placeholder-count="10">
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:{{ cr.pad }} 22px; border-top:1px solid {{ cr.line }}; font-size:{{ cr.size }}; font-weight:{{ cr.weight }}; background:{{ cr.bg }};">
+            <span style="padding-left:{{ cr.indent }}; color:{{ cr.color }};">{{ cr.name }}</span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; color:{{ cr.color }};">{{ cr.v }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:18px 20px;">
+        <div style="font-size:13px; font-weight:600; margin-bottom:14px;">Opening → closing cash</div>
+        <div style="display:flex; align-items:flex-end; gap:10px; height:130px;">
+          <sc-for list="{{ bridge }}" as="bb" hint-placeholder-count="5">
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; height:100%; justify-content:flex-end;">
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:9.5px; color:#525252;">{{ bb.v }}</span>
+              <div style="width:100%; border-radius:4px 4px 0 0; background:{{ bb.c }}; height:{{ bb.h }};"></div>
+              <span style="font-size:9.5px; color:#a3a3a3; text-align:center; line-height:1.2;">{{ bb.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ AGING (AR / AP) ============ -->
+  <sc-if value="{{ isAging }}" hint-placeholder-val="{{ false }}">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">{{ agingTitle }}</div>
+      <div style="font-size:13px; color:#737373;">{{ agingSub }}</div>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:1.5fr repeat(5, 1fr); padding:10px 20px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>{{ agingWho }}</span><span style="text-align:right;">Current</span><span style="text-align:right;">1–30</span><span style="text-align:right;">31–60</span><span style="text-align:right;">61–90</span><span style="text-align:right;">Total</span>
+      </div>
+      <sc-for list="{{ agingRows }}" as="ar" hint-placeholder-count="4">
+        <div style="display:grid; grid-template-columns:1.5fr repeat(5, 1fr); padding:11px 20px; border-top:1px solid #f3f3f3; font-size:13px; font-weight:{{ ar.weight }}; background:{{ ar.bg }}; align-items:center;">
+          <span>{{ ar.name }}</span>
+          <sc-for list="{{ ar.cells }}" as="ac" hint-placeholder-count="5">
+            <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; border-radius:5px; padding:2px 6px; background:{{ ac.bg }}; color:{{ ac.color }};">{{ ac.v }}</span>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ============ EXPENSES ============ -->
+  <sc-if value="{{ isExp }}" hint-placeholder-val="{{ false }}">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">Expenses</div>
+      <div style="font-size:13px; color:#737373;">Spending by category and vendor · Apr vs. May 2026</div>
+    </div>
+    <div style="display:grid; grid-template-columns:1.4fr 1fr; gap:16px; align-items:start;">
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+        <div style="display:grid; grid-template-columns:1.4fr 90px 90px 80px 70px; gap:8px; padding:10px 18px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+          <span>Category</span><span style="text-align:right;">Apr</span><span style="text-align:right;">May</span><span style="text-align:right;">Change</span><span style="text-align:right;">% of May</span>
+        </div>
+        <sc-for list="{{ expRows }}" as="er" hint-placeholder-count="10">
+          <div style="display:grid; grid-template-columns:1.4fr 90px 90px 80px 70px; gap:8px; padding:9px 18px; border-top:1px solid #f3f3f3; font-size:13px; font-weight:{{ er.weight }}; background:{{ er.bg }}; align-items:center;">
+            <span>{{ er.name }}</span>
+            <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ er.apr }}</span>
+            <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ er.may }}</span>
+            <span style="text-align:right; font-size:11.5px; color:{{ er.deltaColor }};">{{ er.delta }}</span>
+            <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#737373;">{{ er.share }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:16px 18px;">
+        <div style="font-size:13px; font-weight:600; margin-bottom:12px;">Top vendors · May</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <sc-for list="{{ expVendors }}" as="ev" hint-placeholder-count="8">
+            <div style="display:flex; align-items:center; gap:10px; font-size:12.5px;">
+              <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ ev.name }}</span>
+              <span style="font-size:11px; color:#a3a3a3;">{{ ev.cat }}</span>
+              <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:500; min-width:70px; text-align:right;">{{ ev.amount }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ INCOME BY CUSTOMER ============ -->
+  <sc-if value="{{ isIncCust }}" hint-placeholder-val="{{ false }}">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">Income by Customer</div>
+      <div style="font-size:13px; color:#737373;">Who your revenue really comes from · Jan – Jun 2026</div>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:1fr 110px 1.2fr 80px; gap:12px; padding:10px 20px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>Customer</span><span style="text-align:right;">YTD</span><span></span><span style="text-align:right;">Share</span>
+      </div>
+      <sc-for list="{{ incRows }}" as="ic" hint-placeholder-count="7">
+        <div style="display:grid; grid-template-columns:1fr 110px 1.2fr 80px; gap:12px; padding:11px 20px; border-top:1px solid #f3f3f3; align-items:center; font-size:13px;">
+          <span style="font-weight:500;">{{ ic.name }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:500;">{{ ic.amount }}</span>
+          <span style="display:block; height:12px; border-radius:4px; background:#f5f5f5; overflow:hidden;"><span style="display:block; height:100%; border-radius:4px; background:#2ca01c; opacity:{{ ic.opacity }}; width:{{ ic.w }};"></span></span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#737373;">{{ ic.share }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; background:#fffaeb; font-size:12.5px; color:#b54708;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 8v4 M12 16h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+      Halpern Co is 42% of revenue this year. Below the danger line, but worth diversifying.
+    </div>
+  </sc-if>
+
+  <!-- ============ PAYROLL SUMMARY ============ -->
+  <sc-if value="{{ isPaySum }}" hint-placeholder-val="{{ false }}">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">Payroll Summary</div>
+      <div style="font-size:13px; color:#737373;">By month and currency, converted at each run's rate · 2026</div>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:1fr 110px 130px 120px 60px 110px; gap:8px; padding:10px 20px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>Month</span><span style="text-align:right;">USD</span><span style="text-align:right;">PKR</span><span style="text-align:right;">INR</span><span style="text-align:right;">People</span><span style="text-align:right;">Total · USD</span>
+      </div>
+      <sc-for list="{{ paySumRows }}" as="ps" hint-placeholder-count="6">
+        <div style="display:grid; grid-template-columns:1fr 110px 130px 120px 60px 110px; gap:8px; padding:10px 20px; border-top:1px solid #f3f3f3; font-size:13px; font-weight:{{ ps.weight }}; background:{{ ps.bg }}; align-items:center;">
+          <span>{{ ps.month }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ ps.usd }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ ps.pkr }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ ps.inr }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#737373;">{{ ps.people }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-weight:600;">{{ ps.total }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size:12px; color:#a3a3a3;">FX differences between approval and settlement post automatically as a small gain/loss line — May's was −$38.40.</div>
+  </sc-if>
+
+  <!-- ============ TRIAL BALANCE ============ -->
+  <sc-if value="{{ isTB }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div>
+        <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">Trial Balance</div>
+        <div style="font-size:13px; color:#737373;">Every account's debit and credit balance · as of Jun 11, 2026</div>
+      </div>
+      <span style="display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 11px; border-radius:9999px; background:#f1f8ee; color:#17540f; font-size:12px; font-weight:500;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        Balanced
+      </span>
+    </div>
+    <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:70px 1fr 130px 130px; gap:8px; padding:10px 20px; background:#f7f7f7; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+        <span>#</span><span>Account</span><span style="text-align:right;">Debit</span><span style="text-align:right;">Credit</span>
+      </div>
+      <sc-for list="{{ tbRows }}" as="tb" hint-placeholder-count="14">
+        <div style="display:grid; grid-template-columns:70px 1fr 130px 130px; gap:8px; padding:8px 20px; border-top:1px solid {{ tb.line }}; font-size:13px; font-weight:{{ tb.weight }}; background:{{ tb.bg }}; align-items:center;">
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#a3a3a3;">{{ tb.num }}</span>
+          <span style="color:{{ tb.color }};">{{ tb.name }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ tb.debit }}</span>
+          <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ tb.credit }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <!-- ============ GENERAL LEDGER ============ -->
+  <sc-if value="{{ isGL }}" hint-placeholder-val="{{ false }}">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">General Ledger</div>
+      <div style="font-size:13px; color:#737373;">Every posting, account by account · June 2026 so far</div>
+    </div>
+    <sc-for list="{{ glAccounts }}" as="ga" hint-placeholder-count="3">
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+        <div style="display:flex; align-items:baseline; gap:9px; padding:12px 20px; background:#fbfbfb; border-bottom:1px solid #f0f0f0;">
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#a3a3a3;">{{ ga.num }}</span>
+          <span style="font-size:13.5px; font-weight:600;">{{ ga.name }}</span>
+          <span style="flex:1;"></span>
+          <span style="font-size:11.5px; color:#737373;">opening {{ ga.opening }}</span>
+        </div>
+        <div style="display:grid; grid-template-columns:64px 1fr 110px 110px 120px; gap:8px; padding:7px 20px; font-size:10.5px; font-weight:600; color:#a3a3a3; letter-spacing:0.03em; text-transform:uppercase;">
+          <span>Date</span><span>Memo</span><span style="text-align:right;">Debit</span><span style="text-align:right;">Credit</span><span style="text-align:right;">Balance</span>
+        </div>
+        <sc-for list="{{ ga.lines }}" as="gl" hint-placeholder-count="4">
+          <div style="display:grid; grid-template-columns:64px 1fr 110px 110px 120px; gap:8px; padding:8px 20px; border-top:1px solid #f5f5f5; font-size:12.5px; align-items:center;">
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#737373;">{{ gl.date }}</span>
+            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ gl.memo }}</span>
+            <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ gl.debit }}</span>
+            <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ gl.credit }}</span>
+            <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; color:#525252;">{{ gl.balance }}</span>
+          </div>
+        </sc-for>
+        <div style="display:flex; justify-content:flex-end; padding:9px 20px; border-top:1px solid #ececec; background:#fbfbfb; font-size:12.5px; font-weight:600;">
+          <span>closing&nbsp;</span><span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ ga.closing }}</span>
+        </div>
+      </div>
+    </sc-for>
+  </sc-if>
+
+  <!-- ============ JOURNAL ENTRIES ============ -->
+  <sc-if value="{{ isJournal }}" hint-placeholder-val="{{ false }}">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">Journal Entries</div>
+      <div style="font-size:13px; color:#737373;">The raw double-entry record — what actually got posted, and by whom</div>
+    </div>
+    <sc-for list="{{ jeRows }}" as="je" hint-placeholder-count="4">
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+        <div style="display:flex; align-items:center; gap:10px; padding:11px 18px; border-bottom:1px solid #f0f0f0;">
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#a3a3a3;">{{ je.num }}</span>
+          <span style="font-size:13px; font-weight:600; flex:1;">{{ je.memo }}</span>
+          <span style="height:20px; padding:0 8px; border-radius:9999px; font-size:10.5px; font-weight:500; display:inline-flex; align-items:center; background:{{ je.srcBg }}; color:{{ je.srcColor }};">{{ je.source }}</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#737373;">{{ je.date }}</span>
+        </div>
+        <sc-for list="{{ je.lines }}" as="jl" hint-placeholder-count="2">
+          <div style="display:grid; grid-template-columns:1fr 130px 130px; gap:8px; padding:7px 18px; border-top:1px solid #f7f7f7; font-size:12.5px; align-items:center;">
+            <span style="color:#525252;">{{ jl.account }}</span>
+            <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ jl.debit }}</span>
+            <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ jl.credit }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+    <div style="font-size:12px; color:#a3a3a3;">Posted entries are never edited — corrections post a reversing entry plus a new one, linked for audit.</div>
+  </sc-if>
+
+  <!-- ============ CLOSE THE BOOKS ============ -->
+  <sc-if value="{{ isClose }}" hint-placeholder-val="{{ false }}">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em;">Close May 2026</div>
+      <div style="font-size:13px; color:#737373;">A soft lock — entries dated May or earlier can't change without a warning. Your CPA will thank you.</div>
+    </div>
+
+    <sc-if value="{{ notClosedYet }}" hint-placeholder-val="{{ true }}">
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:hidden;">
+        <sc-for list="{{ closeChecks }}" as="cc" hint-placeholder-count="5">
+          <div style="display:flex; align-items:center; gap:13px; padding:14px 20px; border-top:1px solid #f3f3f3;">
+            <sc-if value="{{ cc.ok }}" hint-placeholder-val="{{ true }}">
+              <span style="width:26px; height:26px; border-radius:9999px; background:#f1f8ee; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>
+            </sc-if>
+            <sc-if value="{{ cc.warn }}" hint-placeholder-val="{{ false }}">
+              <span style="width:26px; height:26px; border-radius:9999px; background:#fffaeb; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#b54708" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4 M12 16h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg></span>
+            </sc-if>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500;">{{ cc.title }}</div>
+              <div style="font-size:12px; color:#737373;">{{ cc.sub }}</div>
+            </div>
+            <sc-if value="{{ cc.hasAction }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ cc.act }}" style="height:28px; padding:0 12px; border-radius:8px; border:1px solid #e5e5e5; background:#ffffff; color:#0a0a0a; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500; flex-shrink:0;" style-hover="background:#f5f5f5;">{{ cc.action }}</button>
+            </sc-if>
+          </div>
+        </sc-for>
+        <div style="display:flex; align-items:center; gap:10px; padding:14px 20px; border-top:1px solid #ececec; background:#fbfbfb;">
+          <span style="flex:1; font-size:12.5px; color:#737373;">{{ closeFooterNote }}</span>
+          <button onClick="{{ doClose }}" disabled="{{ closeDisabled }}" style="height:36px; padding:0 18px; border-radius:10px; border:none; cursor:pointer; font-family:inherit; font-size:13.5px; font-weight:500; background:{{ closeBtnBg }}; color:#ffffff;" style-hover="background:{{ closeBtnHover }};" style-active="transform:translateY(1px);">Close May 2026</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ justClosed }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); padding:40px; display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center; animation:ob-fade 200ms ease-out;">
+        <span style="width:48px; height:48px; border-radius:9999px; background:#f1f8ee; display:flex; align-items:center; justify-content:center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>
+        <div style="font-size:17px; font-weight:600;">May 2026 is closed</div>
+        <div style="font-size:13px; color:#737373; max-width:420px;">Entries dated May 31 or earlier are locked. Anything backdated from here on warns first and posts as a flagged correction — so the statements you just exported stay true.</div>
+        <div style="display:flex; gap:8px; margin-top:6px;">
+          <button onClick="{{ openMonthly }}" style="height:34px; padding:0 14px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#248716;">View May's Monthly Review</button>
+          <button onClick="{{ goHome }}" style="height:34px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">Back to reports</button>
+        </div>
+      </div>
+    </sc-if>
+  </sc-if>
+
+  <!-- ===== Drill-down slide-over ===== -->
+  <sc-if value="{{ drillOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDrill }}" style="position:fixed; inset:0; background:rgba(0,0,0,0.18); z-index:80;"></div>
+    <div style="position:fixed; top:0; right:0; bottom:0; width:400px; background:#ffffff; z-index:90; box-shadow:-8px 0 24px rgba(0,0,0,0.08); display:flex; flex-direction:column; animation:ob-slide 180ms ease-out;">
+      <div style="display:flex; align-items:center; gap:10px; padding:16px 20px; border-bottom:1px solid #ececec;">
+        <div style="flex:1;">
+          <div style="font-size:15px; font-weight:600;">{{ drillTitle }}</div>
+          <div style="font-size:12px; color:#737373;">{{ drillSub }}</div>
+        </div>
+        <button onClick="{{ closeDrill }}" style="width:28px; height:28px; border-radius:8px; border:none; background:transparent; cursor:pointer; color:#737373; display:flex; align-items:center; justify-content:center;" style-hover="background:#f5f5f5;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18 M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div style="flex:1; overflow-y:auto; padding:14px 20px; display:flex; flex-direction:column; gap:4px;">
+        <sc-for list="{{ drillRows }}" as="dr" hint-placeholder-count="3">
+          <div style="display:flex; align-items:center; gap:10px; padding:9px 8px; border-radius:8px;" style-hover="background:#fafafa;">
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:11.5px; color:#a3a3a3; min-width:46px;">{{ dr.date }}</span>
+            <span style="flex:1; font-size:13px;">{{ dr.name }}</span>
+            <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:12.5px; font-weight:500;">{{ dr.amount }}</span>
+          </div>
+        </sc-for>
+        <div style="display:flex; justify-content:space-between; padding:11px 8px; border-top:1px solid #ececec; margin-top:6px; font-size:13px; font-weight:600;">
+          <span>Total</span>
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ drillTotal }}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { view: "home", basis: "accrual", explainOpen: false, mrMonth: "May", drill: null, closed: false, chaseFixed: false };
+
+  // ---- P&L data (thousands omitted; values in USD) ----
+  plData() {
+    const income = [
+      { name: "Services income", v: [38200, 33400, 40000, 41400, 44400] },
+      { name: "Product sales (Stripe)", v: [6000, 6000, 7000, 7000, 8000] }
+    ];
+    const expenses = [
+      { name: "Payroll & Contractors", v: [17600, 18100, 18000, 17900, 18240] },
+      { name: "Cloud / Infrastructure", v: [2900, 3400, 3100, 2600, 3210] },
+      { name: "Software & SaaS", v: [1900, 2100, 2000, 1700, 4836] },
+      { name: "Marketing & Ads", v: [2400, 3100, 4600, 2500, 2930] },
+      { name: "Rent", v: [2400, 2400, 2400, 2400, 2400] },
+      { name: "Professional Services", v: [1200, 1600, 1400, 1100, 3800] },
+      { name: "Payment Processing Fees", v: [600, 550, 620, 660, 612] },
+      { name: "Travel", v: [800, 1200, 1500, 900, 1700] },
+      { name: "Meals", v: [300, 350, 400, 300, 400] },
+      { name: "Office & Supplies", v: [400, 300, 500, 400, 200] }
+    ];
+    if (this.state.basis === "cash") {
+      const arDelta = [1200, 800, 2200, 1600, 8400];
+      income[0] = { name: "Services income", v: income[0].v.map((x, i) => x - arDelta[i]) };
+    }
+    return { income, expenses };
+  }
+
+  fmt(n) { return "$" + Math.round(n).toLocaleString("en-US"); }
+
+  resetScroll() {
+    let el = this._rootRef && this._rootRef.current;
+    el = el ? el.parentElement : null;
+    while (el) {
+      const s = getComputedStyle(el);
+      if ((s.overflowY === "auto" || s.overflowY === "scroll") && el.scrollHeight > el.clientHeight + 4) { el.scrollTop = 0; return; }
+      el = el.parentElement;
+    }
+  }
+
+  drillFor(cat, month, amount) {
+    const vendors = {
+      "Software & SaaS": ["Figma", "GitHub", "Linear", "Notion", "1Password"],
+      "Cloud / Infrastructure": ["AWS", "Vercel", "Anthropic", "Cloudflare"],
+      "Marketing & Ads": ["Google Ads", "LinkedIn Ads", "Webflow"],
+      "Payroll & Contractors": ["Gusto Payroll", "Wise — Hammas Khan", "Wise — Priya Sharma", "Wise — Omar Siddiqui"],
+      "Travel": ["Delta Air Lines", "Uber", "Marriott"],
+      "Rent": ["WeWork"],
+      "Professional Services": ["Counsel & Co", "Bench CPA Review"],
+      "Payment Processing Fees": ["Stripe fees"],
+      "Meals": ["DoorDash", "The Coffee Counter"],
+      "Office & Supplies": ["H.M. Supplies Co", "Amazon"],
+      "Services income": ["Halpern Co", "Meridian Health", "Beacon Press", "Arclight Media"],
+      "Product sales (Stripe)": ["Stripe charges (14 customers)"]
+    };
+    const names = vendors[cat] || ["Various"];
+    const k = Math.min(names.length, 4);
+    const parts = [];
+    let remaining = amount;
+    for (let i = 0; i < k; i++) {
+      const part = i === k - 1 ? remaining : Math.round(remaining * (0.55 - i * 0.1));
+      parts.push({ date: month + " " + (3 + i * 7), name: names[i], amount: this.fmt(Math.abs(part)) });
+      remaining -= part;
+    }
+    return { title: cat, sub: month + " 2026 · " + k + " transactions", rows: parts, total: this.fmt(amount) };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const onNavigate = this.props.onNavigate || (() => {});
+    if (!this._rootRef) this._rootRef = React.createRef();
+    const goView = (v) => this.setState({ view: v, explainOpen: false, drill: null }, () => this.resetScroll());
+    const months = ["Jan", "Feb", "Mar", "Apr", "May"];
+    const { income, expenses } = this.plData();
+    const sum = (arr) => arr.reduce((a, b) => a + b, 0);
+    const colSum = (rows, i) => rows.reduce((a, r) => a + r.v[i], 0);
+
+    // ---- home cards ----
+    const mkViz = (hs, color) => hs.map(h => ({ h: h + "px", c: color || "#bbe0a9" }));
+    const card = (name, desc, view, viz) => ({
+      name, desc, open: () => goView(view),
+      viz: viz || mkViz([10, 16, 12, 20, 24])
+    });
+    const reportGroups = [
+      { label: "Overview", cards: [card("Monthly Review", "Your whole month on one page — in, out, owed, payroll.", "monthly", mkViz([14, 20, 17, 24, 26], "#2ca01c"))] },
+      { label: "Statements", cards: [
+        card("Profit & Loss", "How much you made and spent, by category.", "pl", mkViz([12, 18, 14, 22, 26], "#2ca01c")),
+        card("Balance Sheet", "What you own and what you owe, right now.", "bs", mkViz([20, 20, 22, 22, 24], "#0e9384")),
+        card("Cash Flow Statement", "Where cash actually came from and went.", "cf", mkViz([10, 22, 14, 18, 26], "#475467"))
+      ]},
+      { label: "Money owed", cards: [
+        card("A/R Aging", "Who owes you, and how late they are.", "ar", mkViz([24, 16, 10, 6, 3], "#f79009")),
+        card("A/P Aging", "What you owe vendors, by due date.", "ap", mkViz([18, 10, 5, 3, 2], "#f79009"))
+      ]},
+      { label: "Insights", cards: [
+        card("Expenses", "Spending by category and vendor, with trends.", "exp", mkViz([22, 18, 14, 10, 6], "#475467")),
+        card("Income by Customer", "Who your revenue really comes from.", "incCust", mkViz([26, 16, 12, 8, 4], "#2ca01c")),
+        card("Payroll Summary", "Payroll by month, person, and currency.", "paySum", mkViz([18, 18, 19, 20, 20], "#9da8b6"))
+      ]},
+      { label: "Accountant", cards: [
+        card("General Ledger", "Every posting, account by account.", "gl", mkViz([14, 14, 14, 14, 14], "#cbd2d9")),
+        card("Trial Balance", "All accounts with debit & credit totals.", "tb", mkViz([20, 20, 20, 20, 20], "#cbd2d9")),
+        card("Journal Entries", "The raw double-entry record.", "journal", mkViz([10, 18, 10, 18, 10], "#cbd2d9"))
+      ]}
+    ];
+
+    // ---- P&L rows ----
+    const cellStyleFor = (drillable) => drillable ? { cursor: "pointer", hoverBg: "#f1f8ee" } : { cursor: "default", hoverBg: "transparent" };
+    const dataRow = (r, kind) => ({
+      name: r.name, indent: "14px", pad: "8px", size: "13px", weight: "400", bg: "#ffffff", color: "#0a0a0a", line: "#f5f5f5",
+      cells: r.v.concat([sum(r.v)]).map((v, i) => ({
+        v: this.fmt(v),
+        ...cellStyleFor(i < 5),
+        drill: i < 5 ? (() => this.setState({ drill: this.drillFor(r.name, months[i], v) })) : (() => {})
+      }))
+    });
+    const headerRow = (name) => ({ name, indent: "0", pad: "9px", size: "12px", weight: "600", bg: "#fbfbfb", color: "#737373", line: "#f0f0f0", cells: [] });
+    const totalRow = (name, rows, opts) => ({
+      name, indent: "0", pad: "9px", size: "13px", weight: "600",
+      bg: (opts && opts.bg) || "#ffffff", color: (opts && opts.color) || "#0a0a0a", line: "#ececec",
+      cells: months.map((m, i) => ({ v: this.fmt(colSum(rows, i)), cursor: "default", hoverBg: "transparent", drill: () => {} }))
+        .concat([{ v: this.fmt(rows.reduce((a, r) => a + sum(r.v), 0)), cursor: "default", hoverBg: "transparent", drill: () => {} }])
+    });
+    const netCells = months.map((m, i) => colSum(income, i) - colSum(expenses, i));
+    const plRows = [
+      headerRow("Income"), ...income.map(r => dataRow(r)), totalRow("Total income", income),
+      headerRow("Expenses"), ...expenses.map(r => dataRow(r)), totalRow("Total expenses", expenses),
+      {
+        name: "Net profit", indent: "0", pad: "11px", size: "13.5px", weight: "600", bg: "#f1f8ee", color: "#17540f", line: "#dcefd2",
+        cells: netCells.concat([sum(netCells)]).map(v => ({ v: (v >= 0 ? "+" : "−") + this.fmt(Math.abs(v)).slice(0), cursor: "default", hoverBg: "transparent", drill: () => {} }))
+      }
+    ];
+
+    // ---- Balance sheet ----
+    const bsHeader = (n) => ({ name: n, v: "", indent: "0", pad: "9px", size: "12px", weight: "600", bg: "#fbfbfb", color: "#737373", line: "#f0f0f0" });
+    const bsItem = (n, v) => ({ name: n, v, indent: "14px", pad: "8px", size: "13px", weight: "400", bg: "#ffffff", color: "#0a0a0a", line: "#f5f5f5" });
+    const bsTotal = (n, v, hl) => ({ name: n, v, indent: "0", pad: "10px", size: "13px", weight: "600", bg: hl ? "#f1f8ee" : "#ffffff", color: hl ? "#17540f" : "#0a0a0a", line: "#ececec" });
+    const bsRows = [
+      bsHeader("Assets"),
+      bsItem("Mercury Checking ····4421", "$86,420.18"),
+      bsItem("Chase Business ····1187", "$21,344.92"),
+      bsItem("Stripe Clearing", "$0.00"),
+      bsItem("Money owed to you (A/R)", "$23,800.00"),
+      bsItem("Equipment", "$6,200.00"),
+      bsTotal("Total assets", "$137,765.10"),
+      bsHeader("Liabilities"),
+      bsItem("Amex Business ····9901", "$4,212.55"),
+      bsItem("Bills you owe (A/P)", "$6,890.40"),
+      bsItem("Payroll payable", "$0.00"),
+      bsTotal("Total liabilities", "$11,102.95"),
+      bsHeader("Equity"),
+      bsItem("Owner's equity", "$48,000.00"),
+      bsItem("Retained earnings", "$70,712.15"),
+      bsItem("Net income (2026 so far)", "$7,950.00"),
+      bsTotal("Total equity", "$126,662.15"),
+      bsTotal("Liabilities + equity", "$137,765.10", true)
+    ];
+
+    // ---- Cash flow ----
+    const cfHeader = bsHeader, cfItem = bsItem, cfTotal = bsTotal;
+    const cfRows = [
+      cfHeader("Operating"),
+      cfItem("Collected from customers", "+$49,800.00"),
+      cfItem("Paid to vendors & suppliers", "−$12,400.00"),
+      cfItem("Payroll paid", "−$18,240.00"),
+      cfTotal("Net from operating", "+$19,160.00"),
+      cfHeader("Investing"),
+      cfItem("Equipment purchase", "−$1,200.00"),
+      cfTotal("Net from investing", "−$1,200.00"),
+      cfHeader("Financing"),
+      cfItem("Owner's draw", "−$2,000.00"),
+      cfTotal("Net from financing", "−$2,000.00"),
+      cfTotal("Net change in cash · May", "+$15,960.00", true)
+    ];
+    const bridge = [
+      { label: "Opening", v: "$91.8k", h: "62px", c: "#cbd2d9" },
+      { label: "Operating", v: "+$19.2k", h: "13px", c: "#2ca01c" },
+      { label: "Investing", v: "−$1.2k", h: "4px", c: "#d92d20" },
+      { label: "Financing", v: "−$2.0k", h: "5px", c: "#d92d20" },
+      { label: "Closing", v: "$107.8k", h: "73px", c: "#475467" }
+    ];
+
+    // ---- Aging ----
+    const isAR = s.view === "ar";
+    const agingHeat = (v, max) => v === 0 ? { bg: "transparent", color: "#c9c9c9" } : { bg: "rgba(247,144,9," + Math.min(0.28, v / max * 0.3).toFixed(2) + ")", color: "#0a0a0a" };
+    const arData = [
+      { name: "Halpern Co", cells: [0, 0, 8400, 0] },
+      { name: "Meridian Health", cells: [0, 0, 0, 4200] },
+      { name: "Beacon Press", cells: [0, 2400, 0, 0] },
+      { name: "Arclight Media", cells: [5400, 0, 0, 0] },
+      { name: "Tonal Labs", cells: [3400, 0, 0, 0] }
+    ];
+    const apData = [
+      { name: "WeWork", cells: [2400, 0, 0, 0] },
+      { name: "Amazon Web Services", cells: [1838.40, 0, 0, 0] },
+      { name: "Figma (annual)", cells: [2652, 0, 0, 0] }
+    ];
+    const aging = isAR ? arData : apData;
+    const maxCell = Math.max(...aging.flatMap(r => r.cells));
+    const agingRows = aging.map(r => ({
+      name: r.name, weight: "400", bg: "#ffffff",
+      cells: r.cells.concat([sum(r.cells)]).map((v, i) => ({
+        v: v === 0 ? "—" : "$" + v.toLocaleString("en-US", { minimumFractionDigits: v % 1 ? 2 : 0 }),
+        ...(i < 4 ? agingHeat(v, maxCell) : { bg: "transparent", color: "#0a0a0a" })
+      }))
+    })).concat([{
+      name: "Total", weight: "600", bg: "#fbfbfb",
+      cells: [0, 1, 2, 3].map(i => sum(aging.map(r => r.cells[i]))).concat([sum(aging.flatMap(r => r.cells))])
+        .map(v => ({ v: v === 0 ? "—" : "$" + v.toLocaleString("en-US", { minimumFractionDigits: v % 1 ? 2 : 0 }), bg: "transparent", color: "#0a0a0a" }))
+    }]);
+
+    // ---- Monthly review ----
+    const mrIsMay = s.mrMonth === "May";
+    const mr = mrIsMay ? {
+      income: "$52,410", spent: "$38,170", net: "+$14,240", note: "27% margin · your 2nd best month this year",
+      customers: [["Halpern Co", "$19,980"], ["Meridian Health", "$9,400"], ["Beacon Press", "$7,100"], ["Arclight Media", "$5,900"], ["Tonal Labs", "$4,830"], ["+ 6 others", "$5,200"]],
+      expenses: [["Payroll & Contractors", "$18,240", "+2%", false], ["Software & SaaS", "$4,836", "+184%", true], ["Professional Services", "$3,800", "+245%", true], ["Cloud / Infrastructure", "$3,210", "+23%", false], ["Marketing & Ads", "$2,930", "+17%", false], ["Rent", "$2,400", "0%", false]],
+      payroll: "$17,757"
+    } : {
+      income: "$48,400", spent: "$31,400", net: "+$17,000", note: "35% margin · best month this year",
+      customers: [["Halpern Co", "$16,200"], ["Meridian Health", "$8,800"], ["Beacon Press", "$8,400"], ["Arclight Media", "$6,200"], ["+ 7 others", "$8,800"]],
+      expenses: [["Payroll & Contractors", "$17,900", "−1%", false], ["Cloud / Infrastructure", "$2,600", "−16%", false], ["Marketing & Ads", "$2,500", "−46%", false], ["Rent", "$2,400", "0%", false], ["Software & SaaS", "$1,700", "−15%", false]],
+      payroll: "$17,802"
+    };
+
+    // ---- new report datasets ----
+    const money = (n) => n === 0 ? "—" : "$" + n.toLocaleString("en-US", { minimumFractionDigits: n % 1 ? 2 : 0 });
+
+    const expData = [
+      ["Payroll & Contractors", 17900, 18240], ["Software & SaaS", 1700, 4836], ["Professional Services", 1100, 3800],
+      ["Cloud / Infrastructure", 2600, 3210], ["Marketing & Ads", 2500, 2930], ["Rent", 2400, 2400],
+      ["Travel", 900, 1700], ["Payment Processing Fees", 660, 612], ["Meals", 300, 400], ["Office & Supplies", 400, 200]
+    ];
+    const expMayTotal = expData.reduce((a, r) => a + r[2], 0);
+    const expAprTotal = expData.reduce((a, r) => a + r[1], 0);
+    const expRows = expData.map(([name, apr, may]) => {
+      const pct = Math.round((may - apr) / apr * 100);
+      return {
+        name, apr: money(apr), may: money(may),
+        delta: (pct >= 0 ? "▲ " : "▼ ") + Math.abs(pct) + "%",
+        deltaColor: pct > 40 ? "#b54708" : (pct < 0 ? "#248716" : "#a3a3a3"),
+        share: Math.round(may / expMayTotal * 100) + "%",
+        weight: "400", bg: "#ffffff"
+      };
+    }).concat([{
+      name: "Total", apr: money(expAprTotal), may: money(expMayTotal),
+      delta: "▲ " + Math.round((expMayTotal - expAprTotal) / expAprTotal * 100) + "%", deltaColor: "#525252",
+      share: "100%", weight: "600", bg: "#fbfbfb"
+    }]);
+    const expVendors = [
+      { name: "Wise transfers (4)", cat: "Payroll", amount: money(11600) },
+      { name: "Gusto", cat: "Payroll", amount: money(6000) },
+      { name: "Counsel & Co", cat: "Prof. services", amount: money(2700) },
+      { name: "Figma — annual", cat: "Software", amount: money(2652) },
+      { name: "WeWork", cat: "Rent", amount: money(2400) },
+      { name: "Google Ads", cat: "Marketing", amount: money(1980) },
+      { name: "Amazon Web Services", cat: "Cloud", amount: money(1545.10) },
+      { name: "Bench CPA Review", cat: "Prof. services", amount: money(1100) }
+    ];
+
+    const incData = [["Halpern Co", 62400], ["Meridian Health", 31600], ["Arclight Media", 24700], ["Beacon Press", 19800], ["Tonal Labs", 12900], ["+ 9 others", 4100]];
+    const incTotal = incData.reduce((a, r) => a + r[1], 0);
+    const incMax = incData[0][1];
+    const incRows = incData.map(([name, v], i) => ({
+      name, amount: money(v),
+      w: Math.max(2, v / incMax * 100).toFixed(1) + "%",
+      opacity: String(1 - i * 0.13),
+      share: Math.round(v / incTotal * 100) + "%"
+    }));
+
+    const paySumRows = [
+      { month: "January", usd: "$6,000", pkr: "₨1,960,000", inr: "₹344,000", people: "5", total: "$16,980", weight: "400", bg: "#ffffff" },
+      { month: "February", usd: "$6,000", pkr: "₨1,960,000", inr: "₹344,000", people: "5", total: "$17,105", weight: "400", bg: "#ffffff" },
+      { month: "March", usd: "$6,000", pkr: "₨1,960,000", inr: "₹344,000", people: "5", total: "$17,145", weight: "400", bg: "#ffffff" },
+      { month: "April", usd: "$6,000", pkr: "₨2,140,000", inr: "₹344,000", people: "6", total: "$17,802", weight: "400", bg: "#ffffff" },
+      { month: "May", usd: "$6,000", pkr: "₨2,140,000", inr: "₹344,000", people: "6", total: "$17,757", weight: "400", bg: "#ffffff" },
+      { month: "2026 so far", usd: "$30,000", pkr: "₨10,160,000", inr: "₹1,720,000", people: "", total: "$86,789", weight: "600", bg: "#fbfbfb" }
+    ];
+
+    const tbItem = (num, name, debit, credit, opts) => ({
+      num, name, debit: debit == null ? "" : money(debit), credit: credit == null ? "" : money(credit),
+      weight: (opts && opts.weight) || "400", bg: (opts && opts.bg) || "#ffffff", color: (opts && opts.color) || "#0a0a0a", line: "#f5f5f5"
+    });
+    const tbRows = [
+      tbItem("1010", "Mercury Checking", 86420.18, null),
+      tbItem("1020", "Chase Business", 21344.92, null),
+      tbItem("1050", "Stripe Clearing", 0, null),
+      tbItem("1200", "Accounts Receivable", 23800, null),
+      tbItem("1500", "Equipment", 6200, null),
+      tbItem("2010", "Amex Business (credit card)", null, 4212.55),
+      tbItem("2100", "Accounts Payable", null, 6890.40),
+      tbItem("2200", "Payroll Payable", null, 0),
+      tbItem("3000", "Owner's Equity", null, 48000),
+      tbItem("3900", "Retained Earnings", null, 70712.15),
+      tbItem("4xxx", "Income accounts · YTD", null, 188260),
+      tbItem("5–6xxx", "Expense accounts · YTD", 180310, null),
+      tbItem("", "Total", 318075.10, 318075.10, { weight: "600", bg: "#f1f8ee", color: "#17540f" })
+    ];
+
+    const glAccounts = [
+      { num: "1010", name: "Mercury Checking", opening: "$100,202.03", closing: "$86,420.18", lines: [
+        { date: "Jun 1", memo: "Gusto payroll — May settlement", debit: "", credit: "$6,000.00", balance: "$94,202.03" },
+        { date: "Jun 3", memo: "AWS — rule #4 auto-post", debit: "", credit: "$1,612.40", balance: "$92,589.63" },
+        { date: "Jun 5", memo: "Transfer to Chase ····1187", debit: "", credit: "$10,000.00", balance: "$82,589.63" },
+        { date: "Jun 6", memo: "Stripe payout po_1QbT4x", debit: "$4,180.55", credit: "", balance: "$86,770.18" },
+        { date: "Jun 7", memo: "Vercel — monthly", debit: "", credit: "$350.00", balance: "$86,420.18" }
+      ]},
+      { num: "1200", name: "Accounts Receivable", opening: "$26,200.00", closing: "$23,800.00", lines: [
+        { date: "Jun 4", memo: "Invoice #1042 settled — Arclight Media", debit: "", credit: "$2,400.00", balance: "$23,800.00" }
+      ]},
+      { num: "5300", name: "Expense · Cloud / Infrastructure", opening: "$0.00", closing: "$1,962.40", lines: [
+        { date: "Jun 3", memo: "Amazon Web Services", debit: "$1,612.40", credit: "", balance: "$1,612.40" },
+        { date: "Jun 7", memo: "Vercel", debit: "$350.00", credit: "", balance: "$1,962.40" }
+      ]}
+    ];
+
+    const srcChip = {
+      system: { bg: "#eff8ff", color: "#175cd3" },
+      rule: { bg: "#f5f5f5", color: "#525252" },
+      payroll: { bg: "#f5f5f5", color: "#525252" },
+      ai: { bg: "#f1f8ee", color: "#17540f" }
+    };
+    const jeRows = [
+      { num: "JE-1042", date: "Jun 6", memo: "Stripe payout po_1QbT4x reconciled", source: "payout engine", kind: "system", lines: [
+        { account: "Assets : Mercury Checking", debit: "$4,180.55", credit: "" },
+        { account: "Expense : Payment Processing Fees", debit: "$63.30", credit: "" },
+        { account: "Assets : Stripe Clearing", debit: "", credit: "$4,243.85" }
+      ]},
+      { num: "JE-1041", date: "Jun 5", memo: "Transfer Mercury → Chase", source: "transfer detection", kind: "system", lines: [
+        { account: "Assets : Chase Business", debit: "$10,000.00", credit: "" },
+        { account: "Assets : Mercury Checking", debit: "", credit: "$10,000.00" }
+      ]},
+      { num: "JE-1038", date: "Jun 3", memo: "Amazon Web Services — June usage", source: "rule #4 \u201CAWS → Cloud\u201D", kind: "rule", lines: [
+        { account: "Expense : Cloud / Infrastructure", debit: "$1,612.40", credit: "" },
+        { account: "Assets : Mercury Checking", debit: "", credit: "$1,612.40" }
+      ]},
+      { num: "JE-1035", date: "Jun 1", memo: "May payroll settled — Gusto direct deposit", source: "payroll match", kind: "payroll", lines: [
+        { account: "Liabilities : Payroll Payable", debit: "$6,000.00", credit: "" },
+        { account: "Assets : Mercury Checking", debit: "", credit: "$6,000.00" }
+      ]},
+      { num: "JE-1031", date: "May 31", memo: "May 2026 payroll run approved", source: "payroll", kind: "payroll", lines: [
+        { account: "Expense : Payroll & Contractors", debit: "$17,757.40", credit: "" },
+        { account: "Liabilities : Payroll Payable", debit: "", credit: "$17,757.40" }
+      ]}
+    ].map(j => ({ ...j, srcBg: srcChip[j.kind].bg, srcColor: srcChip[j.kind].color }));
+
+    // ---- close the books ----
+    const closeChecks = [
+      { ok: true, title: "Every May transaction is categorized and approved", sub: "412 transactions posted · 0 awaiting review dated May 31 or earlier" },
+      s.chaseFixed
+        ? { ok: true, title: "Bank balances reconciled", sub: "Mercury matched to the penny · Chase verified manually just now" }
+        : { ok: false, warn: true, title: "Chase balance not verified", sub: "Chase last reported 2 days ago — reconnect, or confirm the ledger balance of $21,344.92 yourself", hasAction: true, action: "I checked — it matches", act: () => this.setState({ chaseFixed: true }) },
+      { ok: true, title: "Stripe clearing back to $0", sub: "Both May payouts reconciled — gross, fees and deposits all tie out" },
+      { ok: true, title: "Money owed reviewed", sub: "A/R $23,800 and A/P $6,890.40 — aging matches the open invoices and bills" },
+      { ok: true, title: "May payroll posted and settled", sub: "6 lines matched to bank transfers · FX difference −$38.40 posted automatically" }
+    ].map(c => ({ hasAction: false, action: "", act: () => {}, warn: false, ...c }));
+    const closeReady = closeChecks.every(c => c.ok);
+
+    return {
+      rootRef: this._rootRef,
+      isHome: s.view === "home",
+      inViewer: s.view !== "home",
+      showViewerTools: s.view === "pl",
+      reportGroups,
+      goHome: () => goView("home"),
+      openPL: () => goView("pl"),
+      openAR: () => goView("ar"),
+      openAP: () => goView("ap"),
+
+      // basis toggle
+      basisLabel: s.basis,
+      setAccrual: () => this.setState({ basis: "accrual" }),
+      setCash: () => this.setState({ basis: "cash" }),
+      accrualBg: s.basis === "accrual" ? "#ffffff" : "transparent",
+      accrualColor: s.basis === "accrual" ? "#0a0a0a" : "#737373",
+      accrualShadow: s.basis === "accrual" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+      cashBg: s.basis === "cash" ? "#ffffff" : "transparent",
+      cashColor: s.basis === "cash" ? "#0a0a0a" : "#737373",
+      cashShadow: s.basis === "cash" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+
+      explainOpen: s.explainOpen,
+      toggleExplain: () => this.setState(st => ({ explainOpen: !st.explainOpen })),
+      explainText: "Profit fell 17% in May versus April even though income rose 8% — three expense lines did it: the annual Figma renewal ($2,652) landed in Software & SaaS, legal work on the Halpern contract added $2,700 to Professional Services, and the PKR rate added about $640 to payroll in USD terms. Nothing here looks recurring except payroll.",
+
+      isMonthly: s.view === "monthly",
+      mrMonth: s.mrMonth + " 2026",
+      prevMonth: () => this.setState({ mrMonth: "April" }),
+      nextMonth: () => this.setState({ mrMonth: "May" }),
+      mrIncome: mr.income, mrSpent: mr.spent, mrNet: mr.net, mrNetNote: mr.note,
+      mrCustomers: mr.customers.map(c => ({ name: c[0], amount: c[1] })),
+      mrExpenses: mr.expenses.map(x => ({ name: x[0], amount: x[1], delta: x[2], deltaColor: x[3] ? "#b54708" : "#a3a3a3" })),
+      mrPayroll: mr.payroll,
+
+      isPL: s.view === "pl", plRows,
+      isBS: s.view === "bs", bsRows,
+      isCF: s.view === "cf", cfRows, bridge,
+
+      isAging: s.view === "ar" || s.view === "ap",
+      agingTitle: isAR ? "A/R Aging" : "A/P Aging",
+      agingSub: isAR ? "Who owes you, by how late it is · total $23,800" : "What you owe, by due date · total $6,890.40",
+      agingWho: isAR ? "Customer" : "Vendor",
+      agingRows,
+
+      isExp: s.view === "exp", expRows, expVendors,
+      isIncCust: s.view === "incCust", incRows,
+      isPaySum: s.view === "paySum", paySumRows,
+      isTB: s.view === "tb", tbRows,
+      isGL: s.view === "gl", glAccounts,
+      isJournal: s.view === "journal", jeRows,
+
+      // close the books
+      isClose: s.view === "close",
+      openClose: () => goView("close"),
+      notClosedYet: !s.closed,
+      justClosed: s.closed,
+      closeChecks,
+      closeDisabled: !closeReady,
+      closeBtnBg: closeReady ? "#2ca01c" : "#d4d4d4",
+      closeBtnHover: closeReady ? "#248716" : "#d4d4d4",
+      closeFooterNote: closeReady ? "Everything ties out. Closing takes a second — an owner can reopen the period if needed." : "1 check needs a look before May can lock.",
+      doClose: () => { if (closeReady) this.setState({ closed: true }); },
+      openMonthly: () => goView("monthly"),
+
+      // home banner
+      mayNotClosed: !s.closed,
+      mayClosed: s.closed,
+      closeBannerBg: s.closed ? "#f1f8ee" : "#ffffff",
+      closeIconBg: s.closed ? "#dcefd2" : "#f1f8ee",
+      closeIconColor: "#1d6b12",
+      closeBannerTitle: s.closed ? "Books closed through May 2026" : "May 2026 is ready to close",
+      closeBannerSub: s.closed ? "Entries dated May 31 or earlier are locked. June closes after the month ends." : "Books are closed through April. Five checks, about a minute — lock May so the statements stay true.",
+
+      drillOpen: !!s.drill,
+      closeDrill: () => this.setState({ drill: null }),
+      drillTitle: s.drill ? s.drill.title : "",
+      drillSub: s.drill ? s.drill.sub : "",
+      drillRows: s.drill ? s.drill.rows : [],
+      drillTotal: s.drill ? s.drill.total : ""
+    };
+  }
+}
+</script>
+</body>
+</html>

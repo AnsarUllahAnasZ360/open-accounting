@@ -1,0 +1,14 @@
+
+> openbooks@0.0.0 preflight /Users/ansarullahanas/Documents/OpenBooks
+> node scripts/preflight.mjs
+
+| Check | Status | Detail |
+|---|---:|---|
+| .env.local | PASS | present |
+| Required env names | PASS | all required names present |
+| Optional env names | PASS | none configured |
+| Plaid sandbox institutions/get | PASS | sandbox endpoint reached |
+| Stripe test balance | PASS | test balance endpoint reached |
+| Bedrock tiny invoke | PASS | runtime accepted AI_EMBEDDINGS_MODEL tiny invoke |
+| Convex deployment | PASS | deployment metadata reachable |
+| Vercel whoami | PASS | CLI authenticated |

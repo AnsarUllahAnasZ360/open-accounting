@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ottex AI Accounting",
+  title: "OpenBooks",
   description: "Open-source AI-assisted bookkeeping for small service businesses.",
 };
 

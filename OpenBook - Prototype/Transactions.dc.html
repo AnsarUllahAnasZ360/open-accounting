@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+    @keyframes ob-slide { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes ob-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div style="font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:14px; color:#0a0a0a; line-height:1.5; padding:24px 28px 48px; max-width:1200px; margin:0 auto; display:flex; flex-direction:column; gap:14px; position:relative;">
+
+  <!-- Header -->
+  <div style="display:flex; align-items:center; gap:12px;">
+    <div>
+      <div style="font-size:24px; font-weight:600; letter-spacing:-0.01em; line-height:1.2;">Transactions</div>
+      <div style="font-size:13px; color:#737373;">Every account, one register · Z360 Labs LLC</div>
+    </div>
+    <div style="flex:1; min-width:8px;"></div>
+    <button style="height:34px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; flex-shrink:0; white-space:nowrap;" style-hover="background:#f5f5f5;">Import</button>
+    <button style="height:34px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; flex-shrink:0; white-space:nowrap;" style-hover="background:#f5f5f5;">Export</button>
+    <button style="height:34px; padding:0 14px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; flex-shrink:0; white-space:nowrap;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Add transaction</button>
+  </div>
+
+  <!-- Account pills + search -->
+  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+    <sc-for list="{{ accountPills }}" as="ap" hint-placeholder-count="5">
+      <button onClick="{{ ap.pick }}" style="height:30px; padding:0 13px; border-radius:9999px; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500; white-space:nowrap; flex-shrink:0; border:1px solid {{ ap.border }}; background:{{ ap.bg }}; color:{{ ap.color }};" style-hover="border-color:#d4d4d4;">{{ ap.label }}</button>
+    </sc-for>
+    <div style="flex:1;"></div>
+    <div style="display:flex; align-items:center; gap:7px; height:32px; padding:0 11px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; width:250px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z M21 21l-4.35-4.35"></path></svg>
+      <input value="{{ search }}" onChange="{{ onSearch }}" placeholder="Search, or ✨ ask AI to filter" style="flex:1; border:none; outline:none; font-family:inherit; font-size:12.5px; background:transparent; color:#0a0a0a; min-width:0;"></input>
+    </div>
+  </div>
+
+  <!-- Reconciliation tile -->
+  <sc-if value="{{ showRecon }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:center; gap:10px; padding:11px 16px; border-radius:11px; background:{{ reconBg }};">
+      <sc-if value="{{ reconOk }}" hint-placeholder-val="{{ true }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+      </sc-if>
+      <sc-if value="{{ reconWarn }}" hint-placeholder-val="{{ false }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b54708" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4 M12 16h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+      </sc-if>
+      <span style="font-size:13px; color:{{ reconColor }};">{{ reconText }}</span>
+      <div style="flex:1;"></div>
+      <sc-if value="{{ reconWarn }}" hint-placeholder-val="{{ false }}">
+        <button style="height:26px; padding:0 11px; border-radius:8px; border:1px solid #f3d9b8; background:#ffffff; color:#b54708; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#fff7ed;">Reconnect</button>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- Status tabs -->
+  <div style="display:flex; align-items:center; gap:2px; border-bottom:1px solid #e5e5e5;">
+    <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="3">
+      <button onClick="{{ tb.pick }}" style="height:36px; padding:0 14px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; font-weight:{{ tb.weight }}; color:{{ tb.color }}; border-bottom:2px solid {{ tb.line }}; margin-bottom:-1px; white-space:nowrap; flex-shrink:0; transition:color 120ms ease-out;" style-hover="color:#0a0a0a;">{{ tb.label }}</button>
+    </sc-for>
+  </div>
+
+  <!-- Bulk bar -->
+  <sc-if value="{{ showBulk }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:center; gap:10px; padding:9px 14px; border-radius:10px; background:#f1f8ee; animation:ob-fade 140ms ease-out;">
+      <span style="font-size:12.5px; color:#17540f; font-weight:500;">{{ bulkLabel }}</span>
+      <div style="flex:1;"></div>
+      <button onClick="{{ bulkConfirm }}" style="height:28px; padding:0 12px; border-radius:8px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#248716;">Approve selected</button>
+      <button onClick="{{ bulkClear }}" style="height:28px; padding:0 12px; border-radius:8px; border:1px solid #bbe0a9; background:#ffffff; color:#17540f; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#f5f5f5;">Clear selection</button>
+    </div>
+  </sc-if>
+
+  <!-- How approval works -->
+  <sc-if value="{{ showApprovalNote }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:center; gap:9px; padding:10px 14px; border-radius:10px; background:#fafafa; border:1px solid #ececec; font-size:12.5px; color:#525252;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 16v-4 M12 8h.01 M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+      Rules, matches and high-confidence AI post automatically — no approval needed. These fell below your 90% threshold, so they wait for your OK. Approving teaches the AI for next time.
+    </div>
+  </sc-if>
+
+  <!-- Table -->
+  <div style="background:#ffffff; border-radius:14px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 1px 2px rgba(0,0,0,0.05); overflow:visible;">
+    <div style="display:grid; grid-template-columns:36px 64px 1fr 190px 110px 96px 110px 76px 14px; gap:8px; align-items:center; padding:9px 16px; background:#f7f7f7; border-radius:14px 14px 0 0; font-size:11px; font-weight:600; color:#737373; letter-spacing:0.03em; text-transform:uppercase;">
+      <span></span><span>Date</span><span>Merchant</span><span>Category</span><span>Contact</span><span>Account</span><span style="text-align:right;">Amount</span><span></span><span></span>
+    </div>
+    <sc-for list="{{ rows }}" as="r" hint-placeholder-count="10">
+      <div onClick="{{ r.open }}" style="display:grid; grid-template-columns:36px 64px 1fr 190px 110px 96px 110px 76px 14px; gap:8px; align-items:center; padding:9px 16px; border-top:1px solid #f3f3f3; cursor:pointer; background:{{ r.bg }}; opacity:{{ r.opacity }};" style-hover="background:#fafafa;">
+        <span onClick="{{ r.check }}" style="display:flex; align-items:center;"><input type="checkbox" checked="{{ r.checked }}" readOnly="{{ true }}" style="accent-color:#2ca01c; width:13px; height:13px; cursor:pointer; pointer-events:none;"></input></span>
+        <span style="font-family:'Geist Mono',ui-monospace,monospace; font-size:12px; color:#737373;">{{ r.date }}</span>
+        <span style="min-width:0;">
+          <span style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ r.merchant }}</span>
+            <sc-if value="{{ r.hasReceipt }}" hint-placeholder-val="{{ false }}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+            </sc-if>
+            <sc-if value="{{ r.isAi }}" hint-placeholder-val="{{ false }}">
+              <span onClick="{{ r.togglePop }}" style="position:relative; display:inline-flex;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; cursor:pointer;"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+                <sc-if value="{{ r.popOpen }}" hint-placeholder-val="{{ false }}">
+                  <span style="position:absolute; top:18px; left:-10px; z-index:60; width:260px; background:#ffffff; border-radius:10px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 4px 6px -1px rgba(0,0,0,0.1); padding:11px 13px; cursor:default; display:block; animation:ob-fade 120ms ease-out;">
+                    <span style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:600; color:#1d6b12;">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+                      {{ r.popTitle }}
+                    </span>
+                    <span style="display:block; font-size:12px; color:#525252; margin-top:6px; line-height:1.45;">{{ r.popReason }}</span>
+                    <span style="display:block; font-size:11px; color:#a3a3a3; margin-top:6px;">Decided by {{ r.popBy }} · confidence {{ r.popConf }}%</span>
+                  </span>
+                </sc-if>
+              </span>
+            </sc-if>
+          </span>
+          <span style="display:block; font-family:'Geist Mono',ui-monospace,monospace; font-size:10.5px; color:#b9b9b9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ r.raw }}</span>
+        </span>
+        <span onClick="{{ r.catClick }}" style="position:relative; min-width:0;">
+          <span style="display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px; border-radius:9999px; max-width:100%; font-size:11.5px; font-weight:500; cursor:pointer; background:{{ r.catBg }}; color:{{ r.catColor }}; border:1px solid {{ r.catBorder }};" style-hover="border-color:#c9c9c9;">
+            <span style="width:6px; height:6px; border-radius:9999px; background:{{ r.catDot }}; flex-shrink:0;"></span>
+            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ r.category }}</span>
+          </span>
+          <sc-if value="{{ r.catMenuOpen }}" hint-placeholder-val="{{ false }}">
+            <span onClick="{{ r.closeCatMenu }}" style="position:fixed; inset:0; z-index:55; display:block;"></span>
+            <span style="position:absolute; top:28px; left:0; z-index:60; width:210px; background:#ffffff; border-radius:10px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 4px 6px -1px rgba(0,0,0,0.1); padding:4px; display:block; max-height:240px; overflow-y:auto;">
+              <sc-for list="{{ r.catOptions }}" as="co" hint-placeholder-count="5">
+                <button onClick="{{ co.pick }}" style="width:100%; display:flex; align-items:center; gap:7px; padding:6px 9px; border-radius:6px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:12px; text-align:left; color:#0a0a0a;" style-hover="background:#f5f5f5;">
+                  <span style="width:5px; height:5px; border-radius:9999px; background:#a3a3a3;"></span>{{ co.name }}
+                </button>
+              </sc-for>
+            </span>
+          </sc-if>
+        </span>
+        <span style="font-size:12.5px; color:#525252; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ r.contact }}</span>
+        <span style="display:flex; align-items:center; gap:5px; font-size:11.5px; color:#737373;">
+          <span style="width:16px; height:16px; border-radius:4px; background:{{ r.accBg }}; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-size:7.5px; font-weight:700; flex-shrink:0;">{{ r.accLogo }}</span>
+          {{ r.accMask }}
+        </span>
+        <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13px; font-weight:600; color:{{ r.amtColor }};">{{ r.amount }}</span>
+        <span style="display:flex; justify-content:flex-end;">
+          <sc-if value="{{ r.needsApproval }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ r.approve }}" style="height:26px; padding:0 11px; border-radius:8px; border:1px solid #bbe0a9; background:#f1f8ee; color:#17540f; cursor:pointer; font-family:inherit; font-size:11.5px; font-weight:600;" style-hover="background:#dcefd2;" style-active="transform:translateY(1px);">Approve</button>
+          </sc-if>
+          <sc-if value="{{ r.hasComments }}" hint-placeholder-val="{{ false }}">
+            <span title="{{ r.commentTip }}" style="display:inline-flex; align-items:center; gap:4px; height:22px; padding:0 7px; border-radius:9999px; background:#f5f5f5; font-size:11px; color:#737373;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+              {{ r.commentCount }}
+            </span>
+          </sc-if>
+        </span>
+        <span title="{{ r.stateTip }}" style="width:8px; height:8px; border-radius:9999px; background:{{ r.dot }};"></span>
+      </div>
+    </sc-for>
+    <sc-if value="{{ emptyResults }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:40px; text-align:center; font-size:13px; color:#a3a3a3;">No transactions match — try a different search or filter.</div>
+    </sc-if>
+    <div style="padding:10px 16px; border-top:1px solid #f3f3f3; font-size:12px; color:#a3a3a3;">{{ footerLabel }}</div>
+  </div>
+
+  <!-- ===== Drawer ===== -->
+  <sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDrawer }}" style="position:fixed; inset:0; background:rgba(0,0,0,0.18); z-index:80;"></div>
+    <div style="position:fixed; top:0; right:0; bottom:0; width:420px; background:#ffffff; z-index:90; box-shadow:-8px 0 24px rgba(0,0,0,0.08); display:flex; flex-direction:column; animation:ob-slide 180ms ease-out;">
+      <div style="display:flex; align-items:center; gap:10px; padding:16px 20px; border-bottom:1px solid #ececec;">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:16px; font-weight:600;">{{ dMerchant }}</div>
+          <div style="font-family:'Geist Mono',ui-monospace,monospace; font-size:10.5px; color:#a3a3a3;">{{ dRaw }}</div>
+        </div>
+        <button onClick="{{ closeDrawer }}" style="width:28px; height:28px; border-radius:8px; border:none; background:transparent; cursor:pointer; color:#737373; display:flex; align-items:center; justify-content:center;" style-hover="background:#f5f5f5;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18 M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div style="flex:1; overflow-y:auto; padding:18px 20px; display:flex; flex-direction:column; gap:16px;">
+        <div style="display:flex; align-items:baseline; gap:10px;">
+          <span style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:28px; font-weight:600; letter-spacing:-0.01em; color:{{ dAmtColor }};">{{ dAmount }}</span>
+          <span style="font-size:13px; color:#737373;">{{ dDate }}, 2026</span>
+        </div>
+        <div style="display:grid; grid-template-columns:110px 1fr; row-gap:9px; font-size:13px;">
+          <span style="color:#737373;">Category</span>
+          <span><span style="display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px; border-radius:9999px; background:#f5f5f5; font-size:11.5px; font-weight:500;"><span style="width:6px; height:6px; border-radius:9999px; background:#737373;"></span>{{ dCategory }}</span></span>
+          <span style="color:#737373;">Account</span><span>{{ dAccount }}</span>
+          <span style="color:#737373;">Contact</span><span>{{ dContact }}</span>
+          <span style="color:#737373;">Status</span><span>{{ dStatus }}</span>
+          <span style="color:#737373;">Source</span><span>{{ dSource }}</span>
+        </div>
+
+        <sc-if value="{{ dHasReceipt }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid #ececec; border-radius:10px; padding:11px 13px; display:flex; align-items:center; gap:10px;">
+            <span style="width:34px; height:42px; border-radius:5px; background:#fafafa; border:1px dashed #d4d4d4; display:inline-flex; align-items:center; justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" stroke-width="1.8"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"></path></svg>
+            </span>
+            <div style="flex:1;"><div style="font-size:12.5px; font-weight:500;">Receipt attached</div><div style="font-size:11.5px; color:#a3a3a3;">matched automatically · 94% similarity</div></div>
+            <button style="height:26px; padding:0 10px; border-radius:7px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:11.5px;" style-hover="background:#f5f5f5;">View</button>
+          </div>
+        </sc-if>
+
+        <div>
+          <div style="font-size:12px; font-weight:600; color:#737373; margin-bottom:8px;">History</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <sc-for list="{{ dHistory }}" as="h" hint-placeholder-count="2">
+              <div style="display:flex; gap:9px; font-size:12.5px;">
+                <span style="width:6px; height:6px; border-radius:9999px; background:#d4d4d4; margin-top:6px; flex-shrink:0;"></span>
+                <span style="flex:1; color:#525252;">{{ h.text }}</span>
+                <span style="color:#a3a3a3; font-size:11.5px; flex-shrink:0;">{{ h.when }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size:12px; font-weight:600; color:#737373; margin-bottom:8px;">Comments</div>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <sc-for list="{{ dComments }}" as="cm" hint-placeholder-count="1">
+              <div style="display:flex; gap:9px;">
+                <span style="width:22px; height:22px; border-radius:9999px; background:{{ cm.avatarBg }}; color:{{ cm.avatarFg }}; display:inline-flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:600; flex-shrink:0; margin-top:1px;">{{ cm.initials }}</span>
+                <span style="flex:1; min-width:0;">
+                  <span style="display:flex; align-items:baseline; gap:7px;">
+                    <span style="font-size:12px; font-weight:600;">{{ cm.who }}</span>
+                    <span style="font-size:10.5px; color:#a3a3a3;">{{ cm.when }}</span>
+                  </span>
+                  <span style="display:block; font-size:12.5px; color:#3d3d3d; line-height:1.5;">{{ cm.text }}</span>
+                </span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ dNoComments }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:12px; color:#a3a3a3;">No comments yet — leave context for your accountant or future you.</div>
+            </sc-if>
+            <div style="display:flex; gap:8px;">
+              <input value="{{ dCommentInput }}" onChange="{{ onDComment }}" onKeyDown="{{ onDCommentKey }}" placeholder="Add a comment…" style="flex:1; height:32px; padding:0 11px; border-radius:9px; border:1px solid #e5e5e5; font-family:inherit; font-size:12.5px; outline:none;" style-focus="border-color:#63b347; box-shadow:0 0 0 3px rgba(99,179,71,0.25);"></input>
+              <button onClick="{{ addDComment }}" style="height:32px; padding:0 12px; border-radius:9px; border:1px solid #e5e5e5; background:#ffffff; color:#525252; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500;" style-hover="background:#f5f5f5;">Post</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="border:1px solid #ececec; border-radius:10px; overflow:hidden;">
+          <button onClick="{{ toggleAcctView }}" style="width:100%; display:flex; align-items:center; gap:8px; padding:11px 14px; border:none; background:#fafafa; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500; color:#525252;" style-hover="background:#f5f5f5;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 120ms ease-out; transform:rotate({{ acctRotate }});"><path d="m9 18 6-6-6-6"></path></svg>
+            Accounting view
+            <span style="font-size:10.5px; color:#a3a3a3; font-weight:400;">the posted journal entry</span>
+          </button>
+          <sc-if value="{{ acctViewOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="border-top:1px solid #ececec;">
+              <div style="display:grid; grid-template-columns:1fr 80px 80px; padding:7px 14px; font-size:10.5px; font-weight:600; color:#a3a3a3; letter-spacing:0.03em;"><span>ACCOUNT</span><span style="text-align:right;">DEBIT</span><span style="text-align:right;">CREDIT</span></div>
+              <sc-for list="{{ dLines }}" as="jl" hint-placeholder-count="2">
+                <div style="display:grid; grid-template-columns:1fr 80px 80px; padding:7px 14px; font-size:12px; border-top:1px solid #f5f5f5;">
+                  <span>{{ jl.account }}</span>
+                  <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ jl.debit }}</span>
+                  <span style="text-align:right; font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1;">{{ jl.credit }}</span>
+                </div>
+              </sc-for>
+              <div style="padding:7px 14px; font-size:10.5px; color:#a3a3a3; border-top:1px solid #f5f5f5;">Entries always balance — posted {{ dDate }} by {{ dPostedBy }}.</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+      <div style="padding:14px 20px; border-top:1px solid #ececec; display:flex; gap:8px;">
+        <button style="height:34px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">Create rule from this</button>
+        <button style="height:34px; padding:0 14px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; color:#525252; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">Exclude</button>
+        <div style="flex:1;"></div>
+        <sc-if value="{{ dNeedsApproval }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ dApprove }}" style="height:34px; padding:0 16px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Approve &amp; post</button>
+        </sc-if>
+        <sc-if value="{{ dNotApproval }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ closeDrawer }}" style="height:34px; padding:0 16px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#248716;">Done</button>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const T = (date, merchant, raw, category, contact, acc, amount, state, extra) => Object.assign(
+      { date, merchant, raw, category, contact, acc, amount, state }, extra || {});
+    this.allRows = [
+      T("Jun 10", "Figma", "FIGMA MONTHLY RENEWAL SF CA", "Software & SaaS", "Figma", "amex", -24.00, "review", { ai: { conf: 72, by: "AI", reason: "Similar to 4 past Figma charges filed as Software & SaaS." } }),
+      T("Jun 9", "Uber", "UBER *TRIP HELP.UBER.COM", "Travel", "Uber", "amex", -38.40, "review", { ai: { conf: 81, by: "memory", reason: "Matches 7 past Uber charges you filed as Travel." } }),
+      T("Jun 9", "Anthropic", "ANTHROPIC, PBC SAN FRANCISCO", "Cloud / Infrastructure", "Anthropic", "mercury", -487.20, "review", { ai: { conf: 64, by: "AI", reason: "API usage has gone to Cloud / Infrastructure since March; amount is 3× usual." } }),
+      T("Jun 8", "GitHub", "GITHUB INC 4136 CA", "Software & SaaS", "GitHub", "amex", -40.00, "review", { ai: { conf: 94, by: "memory", reason: "Identical to 11 past GitHub charges." } }),
+      T("Jun 8", "The Coffee Counter", "THE COFFEE COUNTER AUSTIN TX", "Meals", "—", "amex", -18.75, "confirmed", { receipt: true }),
+      T("Jun 8", "H.M. Supplies Co", "HM SUPPLIES CO 8842 AUSTIN TX", "Office & Supplies", "H.M. Supplies", "chase", -214.90, "review", { ai: { conf: 58, by: "AI + Plaid prior", reason: "New vendor — no history. Plaid suggests Shops › Office Supply." } }),
+      T("Jun 7", "Vercel", "VERCEL INC SAN FRANCISCO CA", "Cloud / Infrastructure", "Vercel", "mercury", -350.00, "review", { ai: { conf: 96, by: "memory", reason: "Matches 8 past Vercel charges filed as Cloud / Infrastructure." } }),
+      T("Jun 6", "Stripe payout", "STRIPE TRANSFER ST-X9F2", "Payout reconciliation", "14 customers", "mercury", 4180.55, "auto", { ai: { conf: 100, by: "payout reconciliation", reason: "Deposit matched to payout po_1QbT4x: $4,243.85 gross − $63.30 fees. Clearing account back to $0." }, source: "stripe" }),
+      T("Jun 5", "Transfer to Chase", "ONLINE TRANSFER TO CHK 1187", "Transfer", "—", "mercury", -10000.00, "auto", { ai: { conf: 99, by: "transfer detection", reason: "Same amount, opposite direction, same day across two of your accounts." } }),
+      T("Jun 5", "Transfer from Mercury", "ONLINE TRANSFER FROM MERCURY", "Transfer", "—", "chase", 10000.00, "auto", { ai: { conf: 99, by: "transfer detection", reason: "Pair of the Mercury withdrawal on the same day." } }),
+      T("Jun 4", "Arclight Media", "STRIPE CHARGE ch_8804 ARCLIGHT", "Services income", "Arclight Media", "stripe", 2400.00, "auto", { ai: { conf: 100, by: "record match", reason: "Settles invoice #1042 — amount and customer match exactly." }, source: "stripe" }),
+      T("Jun 3", "Amazon Web Services", "AMZN WEB SERVICES AWS.AMAZON.CO", "Cloud / Infrastructure", "AWS", "mercury", -1612.40, "auto", { ai: { conf: 100, by: "rule #4 \u201CAWS → Cloud\u201D", reason: "Description contains \u201CAWS\u201D — rule auto-posts to Cloud / Infrastructure." } }),
+      T("Jun 3", "Google Ads", "GOOGLE ADS 884412 CC", "Marketing & Ads", "Google", "amex", -640.00, "auto", { ai: { conf: 100, by: "rule #7 \u201CGoogle Ads → Marketing\u201D", reason: "Description contains \u201CGOOGLE ADS\u201D." } }),
+      T("Jun 1", "Gusto Payroll", "GUSTO PAY 882211", "Payroll & Contractors", "US team", "mercury", -6000.00, "auto", { ai: { conf: 100, by: "payroll match", reason: "Settles the May payroll run — 2 US employees." } }),
+      T("Jun 1", "Wise — Hammas Khan", "WISE TRANSFER H KHAN", "Payroll & Contractors", "Hammas Khan", "chase", -647.20, "auto", { ai: { conf: 98, by: "payroll match", reason: "₨180,000 at 278.1 PKR/USD — matches the May run line for Hammas Khan." } }),
+      T("Jun 1", "WeWork", "WEWORK COMMONS AUSTIN", "Rent", "WeWork", "chase", -2400.00, "auto", { ai: { conf: 100, by: "rule #2 \u201CWeWork → Rent\u201D", reason: "Monthly, same amount, same vendor." } }),
+      T("May 31", "Stripe payout", "STRIPE TRANSFER ST-X8D1", "Payout reconciliation", "11 customers", "mercury", 6212.10, "auto", { source: "stripe", ai: { conf: 100, by: "payout reconciliation", reason: "Deposit matched to payout po_1QaR2v. Clearing at $0." } }),
+      T("May 29", "Delta Air Lines", "DELTA AIR 0062341998877", "Travel", "Delta", "amex", -842.60, "confirmed", { receipt: true }),
+      T("May 28", "Uber", "UBER *TRIP HELP.UBER.COM", "Travel", "Uber", "amex", -24.10, "confirmed", {}),
+      T("May 28", "Netflix", "NETFLIX.COM 866-579-7172", "Excluded — personal", "—", "amex", -15.49, "excluded", {}),
+      T("May 27", "DoorDash", "DD DOORDASH AUSTIN TX", "Meals", "—", "amex", -42.80, "confirmed", {}),
+      T("May 26", "Halpern Co", "STRIPE CHARGE ch_8761 HALPERN", "Services income", "Halpern Co", "stripe", 9990.00, "auto", { source: "stripe", ai: { conf: 100, by: "record match", reason: "Settles invoice #1039 for Halpern Co." } })
+    ].map((r, i) => ({ ...r, id: "t" + i }));
+
+    this.comments = {
+      t2: [{ who: "Ansar Ullah", initials: "A", avatarBg: "#17540f", avatarFg: "#ffffff", when: "Jun 9", text: "Usage spike is the new eval pipeline — expected through July. Keep under Cloud." }],
+      t17: [{ who: "Bench CPA", initials: "BC", avatarBg: "#eff8ff", avatarFg: "#175cd3", when: "May 30", text: "Client trip — keep the boarding pass with the receipt for the file." }]
+    };
+    this.state = { account: "all", tab: "review", search: "", checked: {}, popId: null, catMenuId: null, drawerId: null, acctViewOpen: true, commentInput: "" };
+  }
+
+  postComment() {
+    const t = (this.state.commentInput || "").trim();
+    const id = this.state.drawerId;
+    if (!t || !id) return;
+    if (!this.comments[id]) this.comments[id] = [];
+    this.comments[id].push({ who: "Ansar Ullah", initials: "A", avatarBg: "#17540f", avatarFg: "#ffffff", when: "Just now", text: t });
+    this.setState({ commentInput: "" });
+  }
+
+  fmtAmt(n) {
+    const abs = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2 });
+    return (n > 0 ? "+$" : "−$") + abs;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const accMeta = {
+      mercury: { logo: "M", bg: "#3b2fa3", mask: "····4421", name: "Mercury Checking ····4421" },
+      chase: { logo: "CH", bg: "#0a4386", mask: "····1187", name: "Chase Business ····1187" },
+      amex: { logo: "AX", bg: "#1d6bb5", mask: "····9901", name: "Amex Business ····9901" },
+      stripe: { logo: "S", bg: "#635bff", mask: "Stripe", name: "Stripe (Z360 Labs)" }
+    };
+    const cats = ["Software & SaaS", "Cloud / Infrastructure", "Travel", "Meals", "Office & Supplies", "Marketing & Ads", "Professional Services", "Payroll & Contractors", "Rent", "Services income", "Other Expenses"];
+
+    let rows = this.allRows;
+    if (s.account !== "all") rows = rows.filter(r => r.acc === s.account);
+    if (s.tab === "review") rows = rows.filter(r => r.state === "review");
+    if (s.tab === "excluded") rows = rows.filter(r => r.state === "excluded");
+    if (s.search.trim()) {
+      const q = s.search.toLowerCase();
+      rows = rows.filter(r => (r.merchant + " " + r.raw + " " + r.category + " " + r.contact).toLowerCase().includes(q));
+    }
+
+    const reviewCount = this.allRows.filter(r => r.state === "review" && (s.account === "all" || r.acc === s.account)).length;
+    const checkedIds = Object.keys(s.checked).filter(k => s.checked[k]);
+    const dotColors = { review: "#f79009", auto: "#2ca01c", confirmed: "#2ca01c", excluded: "#c9c9c9" };
+    const stateTips = { review: "Needs review", auto: "Posted automatically", confirmed: "Confirmed by you", excluded: "Excluded from books" };
+
+    const mkRows = rows.map(r => {
+      const m = accMeta[r.acc];
+      const isIncome = r.amount > 0;
+      return {
+        ...r,
+        open: (e) => { this.setState({ drawerId: r.id, popId: null, catMenuId: null }); },
+        check: (e) => { e.stopPropagation(); this.setState(st => ({ checked: { ...st.checked, [r.id]: !st.checked[r.id] } })); },
+        checked: !!s.checked[r.id],
+        bg: s.checked[r.id] ? "#f7fbf5" : "transparent",
+        opacity: r.state === "excluded" ? "0.55" : "1",
+        hasReceipt: !!r.receipt,
+        isAi: !!r.ai,
+        togglePop: (e) => { e.stopPropagation(); this.setState(st => ({ popId: st.popId === r.id ? null : r.id, catMenuId: null })); },
+        popOpen: s.popId === r.id,
+        popTitle: r.state === "auto" ? "Posted automatically — no approval needed" : "Needs your approval",
+        needsApproval: r.state === "review",
+        approve: (e) => { e.stopPropagation(); r.state = "confirmed"; this.forceUpdate(); },
+        hasComments: r.state !== "review" && !!(this.comments[r.id] && this.comments[r.id].length),
+        commentCount: this.comments[r.id] ? String(this.comments[r.id].length) : "",
+        commentTip: this.comments[r.id] ? this.comments[r.id].map(c => c.who + ": " + c.text).join("\n") : "",
+        popReason: r.ai ? r.ai.reason : "",
+        popBy: r.ai ? r.ai.by : "",
+        popConf: r.ai ? String(r.ai.conf) : "",
+        catClick: (e) => { e.stopPropagation(); this.setState(st => ({ catMenuId: st.catMenuId === r.id ? null : r.id, popId: null })); },
+        catMenuOpen: s.catMenuId === r.id,
+        closeCatMenu: (e) => { e.stopPropagation(); this.setState({ catMenuId: null }); },
+        catOptions: cats.map(c => ({
+          name: c,
+          pick: (e) => {
+            e.stopPropagation();
+            r.category = c; if (r.state === "review") r.state = "confirmed";
+            this.setState({ catMenuId: null });
+          }
+        })),
+        catBg: r.state === "review" ? "#fffaeb" : "#f7f7f7",
+        catColor: r.state === "review" ? "#b54708" : "#3d3d3d",
+        catBorder: r.state === "review" ? "#f3d9b8" : "#ededed",
+        catDot: isIncome ? "#2ca01c" : "#a3a3a3",
+        accBg: m.bg, accLogo: m.logo, accMask: m.mask,
+        amount: this.fmtAmt(r.amount),
+        amtColor: isIncome ? "#248716" : "#0a0a0a",
+        dot: dotColors[r.state],
+        stateTip: stateTips[r.state]
+      };
+    });
+
+    const drawer = this.allRows.find(r => r.id === s.drawerId);
+    const dM = drawer ? accMeta[drawer.acc] : null;
+    const lines = drawer ? (drawer.amount > 0
+      ? [{ account: "Assets : " + dM.name.split(" ····")[0], debit: "$" + Math.abs(drawer.amount).toLocaleString("en-US", { minimumFractionDigits: 2 }), credit: "" },
+         { account: drawer.category === "Payout reconciliation" ? "Assets : Stripe Clearing" : "Income : " + drawer.category, debit: "", credit: "$" + Math.abs(drawer.amount).toLocaleString("en-US", { minimumFractionDigits: 2 }) }]
+      : [{ account: (drawer.category === "Transfer" ? "Assets : Chase Business" : "Expense : " + drawer.category), debit: "$" + Math.abs(drawer.amount).toLocaleString("en-US", { minimumFractionDigits: 2 }), credit: "" },
+         { account: "Assets : " + dM.name.split(" ····")[0], debit: "", credit: "$" + Math.abs(drawer.amount).toLocaleString("en-US", { minimumFractionDigits: 2 }) }]) : [];
+
+    return {
+      accountPills: [
+        { id: "all", label: "All accounts" },
+        { id: "mercury", label: "Mercury ····4421" },
+        { id: "chase", label: "Chase ····1187" },
+        { id: "amex", label: "Amex ····9901" },
+        { id: "stripe", label: "Stripe" }
+      ].map(p => ({
+        ...p,
+        pick: () => this.setState({ account: p.id }),
+        bg: s.account === p.id ? "#0a0a0a" : "#ffffff",
+        color: s.account === p.id ? "#ffffff" : "#525252",
+        border: s.account === p.id ? "#0a0a0a" : "#e5e5e5"
+      })),
+      search: s.search,
+      onSearch: (e) => this.setState({ search: e.target.value }),
+
+      showRecon: s.account === "mercury" || s.account === "chase",
+      reconOk: s.account === "mercury",
+      reconWarn: s.account === "chase",
+      reconBg: s.account === "mercury" ? "#f1f8ee" : "#fffaeb",
+      reconColor: s.account === "mercury" ? "#17540f" : "#b54708",
+      reconText: s.account === "mercury"
+        ? "Ledger balance $86,420.18 · Mercury says $86,420.18 — matched"
+        : "Ledger balance $21,344.92 · Chase last reported 2 days ago — reconnect to verify",
+
+      tabs: [
+        { id: "review", label: "To review · " + reviewCount },
+        { id: "all", label: "All" },
+        { id: "excluded", label: "Excluded" }
+      ].map(t => ({
+        ...t,
+        pick: () => this.setState({ tab: t.id }),
+        weight: s.tab === t.id ? "600" : "450",
+        color: s.tab === t.id ? "#0a0a0a" : "#737373",
+        line: s.tab === t.id ? "#2ca01c" : "transparent"
+      })),
+
+      showApprovalNote: s.tab === "review" && reviewCount > 0,
+
+      showBulk: checkedIds.length > 0,
+      bulkLabel: checkedIds.length + " selected",
+      bulkConfirm: () => {
+        checkedIds.forEach(id => { const r = this.allRows.find(x => x.id === id); if (r && r.state === "review") r.state = "confirmed"; });
+        this.setState({ checked: {} });
+      },
+      bulkClear: () => this.setState({ checked: {} }),
+
+      rows: mkRows,
+      emptyResults: mkRows.length === 0,
+      footerLabel: mkRows.length + " transactions · synced from Plaid & Stripe · amounts in USD",
+
+      drawerOpen: !!drawer,
+      closeDrawer: () => this.setState({ drawerId: null }),
+      dMerchant: drawer ? drawer.merchant : "",
+      dRaw: drawer ? drawer.raw : "",
+      dAmount: drawer ? this.fmtAmt(drawer.amount) : "",
+      dAmtColor: drawer && drawer.amount > 0 ? "#248716" : "#0a0a0a",
+      dDate: drawer ? drawer.date : "",
+      dCategory: drawer ? drawer.category : "",
+      dAccount: drawer && dM ? dM.name : "",
+      dContact: drawer ? drawer.contact : "",
+      dStatus: drawer ? ({ review: "Needs review", auto: "Posted automatically", confirmed: "Confirmed", excluded: "Excluded" })[drawer.state] : "",
+      dSource: drawer ? (drawer.source === "stripe" ? "Stripe sync" : "Bank feed (Plaid)") : "",
+      dHasReceipt: !!(drawer && drawer.receipt),
+      dHistory: drawer ? (drawer.ai ? [
+        { text: "Synced from " + (drawer.source === "stripe" ? "Stripe" : "bank feed"), when: drawer.date },
+        { text: (drawer.state === "auto" ? "Posted by " + drawer.ai.by : "Suggested " + drawer.category + " (" + drawer.ai.conf + "%) — awaiting review"), when: drawer.date }
+      ] : [
+        { text: "Synced from bank feed", when: drawer.date },
+        { text: "Confirmed by Ansar", when: drawer.date }
+      ]) : [],
+      dNeedsApproval: !!(drawer && drawer.state === "review"),
+      dNotApproval: !(drawer && drawer.state === "review"),
+      dApprove: () => { if (drawer) { drawer.state = "confirmed"; } this.setState({ drawerId: null }); },
+      dComments: drawer ? (this.comments[drawer.id] || []) : [],
+      dNoComments: !!(drawer && !(this.comments[drawer.id] && this.comments[drawer.id].length)),
+      dCommentInput: s.commentInput,
+      onDComment: (e) => this.setState({ commentInput: e.target.value }),
+      onDCommentKey: (e) => { if (e.key === "Enter") this.postComment(); },
+      addDComment: () => this.postComment(),
+      dLines: lines,
+      dPostedBy: drawer ? (drawer.state === "auto" ? "system" : "Ansar") : "",
+      acctViewOpen: s.acctViewOpen,
+      acctRotate: s.acctViewOpen ? "90deg" : "0deg",
+      toggleAcctView: () => this.setState(st => ({ acctViewOpen: !st.acctViewOpen }))
+    };
+  }
+}
+</script>
+</body>
+</html>

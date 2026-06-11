@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    * { box-sizing: border-box; }
+    ::selection { background: #dcefd2; }
+    @keyframes ob-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes ob-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #e5e5e5; border-radius: 8px; border: 2px solid #ffffff; }
+    ::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</helmet>
+
+<div style="display:flex; width:100%; min-width:1320px; height:100vh; overflow:hidden; background:#ffffff; color:#0a0a0a; font-family:'Geist',ui-sans-serif,system-ui,sans-serif; font-size:14px; line-height:1.5;">
+
+  <!-- ============ LEFT SIDEBAR ============ -->
+  <sc-if value="{{ sidebarExpanded }}" hint-placeholder-val="{{ true }}">
+  <div style="width:232px; min-width:232px; height:100%; background:#fafafa; border-right:1px solid #e5e5e5; display:flex; flex-direction:column;">
+
+    <!-- Logo + workspace -->
+    <div style="padding:16px 12px 10px 16px; display:flex; align-items:center; gap:10px;">
+      <div style="width:30px; height:30px; border-radius:9999px; background:#2ca01c; color:#ffffff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; letter-spacing:-0.02em; flex-shrink:0;">ob</div>
+      <div style="display:flex; flex-direction:column; min-width:0; flex:1;">
+        <div style="font-weight:600; font-size:14px; letter-spacing:-0.01em; line-height:1.2;">open books</div>
+        <div style="font-size:11px; color:#737373; line-height:1.3;">Ansar's workspace</div>
+      </div>
+      <button onClick="{{ toggleSidebar }}" title="Collapse sidebar" style="width:28px; height:28px; border-radius:8px; border:none; background:transparent; cursor:pointer; color:#737373; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 120ms ease-out;" style-hover="background:#f0f0f0; color:#0a0a0a;" style-active="transform:translateY(1px);">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path><path d="m16 15-3-3 3-3"></path></svg>
+      </button>
+    </div>
+
+    <!-- Entity switcher -->
+    <div style="padding:4px 12px 10px; position:relative;">
+      <button onClick="{{ toggleEntityMenu }}" style="width:100%; display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; color:#0a0a0a; text-align:left; transition:background 120ms ease-out;" style-hover="background:#f5f5f5;" style-active="transform:translateY(1px);">
+        <span style="width:20px; height:20px; border-radius:6px; background:{{ entityChipBg }}; color:{{ entityChipFg }}; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">{{ entityInitial }}</span>
+        <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ entityName }}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="m6 9 6 6 6-6"></path></svg>
+      </button>
+      <sc-if value="{{ entityMenuOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeEntityMenu }}" style="position:fixed; inset:0; z-index:40;"></div>
+        <div style="position:absolute; top:calc(100% - 4px); left:12px; right:12px; z-index:50; background:#ffffff; border-radius:10px; box-shadow:0 0 0 1px rgba(10,10,10,0.08), 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.08); padding:4px; animation:ob-fade 120ms ease-out;">
+          <sc-for list="{{ entityOptions }}" as="ent" hint-placeholder-count="2">
+            <button onClick="{{ ent.pick }}" style="width:100%; display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:6px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; color:#0a0a0a; text-align:left;" style-hover="background:#f5f5f5;">
+              <span style="width:20px; height:20px; border-radius:6px; background:{{ ent.bg }}; color:{{ ent.fg }}; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:600;">{{ ent.initial }}</span>
+              <span style="flex:1;">{{ ent.name }}</span>
+              <span style="font-size:11px; color:#737373;">{{ ent.meta }}</span>
+              <sc-if value="{{ ent.active }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2ca01c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+            </button>
+          </sc-for>
+          <div style="height:1px; background:#f0f0f0; margin:4px 6px;"></div>
+          <button style="width:100%; display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:6px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; color:#525252; text-align:left;" style-hover="background:#f5f5f5;">
+            <span style="width:20px; height:20px; border-radius:6px; border:1px dashed #d4d4d4; display:inline-flex; align-items:center; justify-content:center; color:#737373; font-size:13px;">+</span>
+            <span>Add a business</span>
+          </button>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- Nav -->
+    <div style="flex:1; overflow-y:auto; padding:2px 12px; display:flex; flex-direction:column; gap:1px;">
+      <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="9">
+        <button onClick="{{ item.go }}" style="display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:8px; border:none; cursor:pointer; font-family:inherit; font-size:13.5px; text-align:left; width:100%; transition:color 120ms ease-out; background:{{ item.bg }}; color:{{ item.color }}; font-weight:{{ item.weight }};" style-hover="background:{{ item.hoverBg }};">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; opacity:0.85;"><path d="{{ item.d }}"></path></svg>
+          <span style="flex:1;">{{ item.label }}</span>
+          <sc-if value="{{ item.showCount }}" hint-placeholder-val="{{ false }}">
+            <span style="min-width:20px; height:18px; padding:0 6px; border-radius:9999px; background:#2ca01c; color:#ffffff; font-size:11px; font-weight:600; display:inline-flex; align-items:center; justify-content:center;">{{ item.count }}</span>
+          </sc-if>
+          <sc-if value="{{ item.showZeroDot }}" hint-placeholder-val="{{ false }}">
+            <span style="width:7px; height:7px; border-radius:9999px; background:#2ca01c;"></span>
+          </sc-if>
+        </button>
+      </sc-for>
+      <div style="height:1px; background:#ececec; margin:8px 10px;"></div>
+      <button onClick="{{ goSettings }}" style="display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:8px; border:none; cursor:pointer; font-family:inherit; font-size:13.5px; text-align:left; width:100%; background:{{ settingsBg }}; color:{{ settingsColor }}; font-weight:{{ settingsWeight }};" style-hover="background:{{ settingsHoverBg }};">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; opacity:0.85;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0"></path></svg>
+        <span style="flex:1;">Settings</span>
+      </button>
+    </div>
+
+    <!-- Bottom: sync + user -->
+    <div style="padding:12px; border-top:1px solid #ececec; display:flex; flex-direction:column; gap:8px;">
+      <button onClick="{{ syncNow }}" title="Sync now" style="display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:12px; color:#737373; text-align:left;" style-hover="background:#f0f0f0;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:{{ syncAnim }};"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M3 21v-5h5"></path></svg>
+        <span>{{ syncLabel }}</span>
+      </button>
+      <div style="display:flex; align-items:center; gap:9px; padding:4px 10px;">
+        <div style="width:26px; height:26px; border-radius:9999px; background:#17540f; color:#ffffff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600;">A</div>
+        <div style="min-width:0;">
+          <div style="font-size:12.5px; font-weight:500; line-height:1.3;">Ansar Ullah</div>
+          <div style="font-size:11px; color:#737373; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Owner</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ============ COLLAPSED RAIL ============ -->
+  <sc-if value="{{ sidebarCollapsed }}" hint-placeholder-val="{{ false }}">
+  <div style="width:56px; min-width:56px; height:100%; background:#fafafa; border-right:1px solid #e5e5e5; display:flex; flex-direction:column; align-items:center; padding:14px 0 12px; gap:3px;">
+    <div style="width:30px; height:30px; border-radius:9999px; background:#2ca01c; color:#ffffff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; letter-spacing:-0.02em;">ob</div>
+    <button onClick="{{ toggleSidebar }}" title="Expand sidebar" style="width:32px; height:32px; border-radius:8px; border:none; background:transparent; cursor:pointer; color:#737373; display:flex; align-items:center; justify-content:center; margin-top:6px; transition:background 120ms ease-out;" style-hover="background:#f0f0f0; color:#0a0a0a;" style-active="transform:translateY(1px);">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path><path d="m14 9 3 3-3 3"></path></svg>
+    </button>
+    <div style="height:1px; width:28px; background:#ececec; margin:5px 0;"></div>
+    <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="9">
+      <button onClick="{{ item.go }}" title="{{ item.label }}" style="position:relative; width:36px; height:36px; border-radius:9px; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:color 120ms ease-out; background:{{ item.bg }}; color:{{ item.color }};" style-hover="background:{{ item.hoverBg }};">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.85;"><path d="{{ item.d }}"></path></svg>
+        <sc-if value="{{ item.showCount }}" hint-placeholder-val="{{ false }}">
+          <span style="position:absolute; top:1px; right:1px; min-width:15px; height:15px; padding:0 3px; border-radius:9999px; background:#2ca01c; color:#ffffff; font-size:9px; font-weight:600; display:inline-flex; align-items:center; justify-content:center;">{{ item.count }}</span>
+        </sc-if>
+        <sc-if value="{{ item.showZeroDot }}" hint-placeholder-val="{{ false }}">
+          <span style="position:absolute; top:4px; right:4px; width:7px; height:7px; border-radius:9999px; background:#2ca01c;"></span>
+        </sc-if>
+      </button>
+    </sc-for>
+    <div style="height:1px; width:28px; background:#ececec; margin:5px 0;"></div>
+    <button onClick="{{ goSettings }}" title="Settings" style="width:36px; height:36px; border-radius:9px; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; background:{{ settingsBg }}; color:{{ settingsColor }};" style-hover="background:{{ settingsHoverBg }};">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.85;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0"></path></svg>
+    </button>
+    <div style="flex:1;"></div>
+    <button onClick="{{ syncNow }}" title="{{ syncLabel }}" style="width:32px; height:32px; border-radius:8px; border:none; background:transparent; cursor:pointer; color:#737373; display:flex; align-items:center; justify-content:center;" style-hover="background:#f0f0f0;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:{{ syncAnim }};"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M3 21v-5h5"></path></svg>
+    </button>
+    <div title="Ansar Ullah · Owner" style="width:26px; height:26px; border-radius:9999px; background:#17540f; color:#ffffff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; margin-top:4px;">A</div>
+  </div>
+  </sc-if>
+
+  <!-- ============ MAIN COLUMN ============ -->
+  <div style="flex:1; min-width:0; display:flex; flex-direction:column; height:100%;">
+
+    <!-- Top bar -->
+    <div style="height:56px; min-height:56px; border-bottom:1px solid #e5e5e5; display:flex; align-items:center; gap:12px; padding:0 20px;">
+      <div style="flex:1; min-width:0; max-width:460px; display:flex; align-items:center; gap:8px; height:34px; padding:0 12px; border-radius:10px; border:1px solid #e5e5e5; background:#fafafa; color:#737373; cursor:text;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z M21 21l-4.35-4.35"></path></svg>
+        <span style="flex:1; min-width:0; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Search transactions, contacts, reports…</span>
+        <span style="font-size:11px; font-family:'Geist Mono',ui-monospace,monospace; background:#ffffff; border:1px solid #e5e5e5; border-radius:5px; padding:1px 5px; color:#a3a3a3; flex-shrink:0;">⌘K</span>
+      </div>
+      <div style="flex:1; min-width:8px;"></div>
+      <div style="display:flex; align-items:center; gap:6px; height:30px; padding:0 12px; border-radius:9999px; background:#f5f5f5; font-size:12.5px; color:#525252; font-weight:500; flex-shrink:0; white-space:nowrap;">Jun 2026</div>
+      <button onClick="{{ toggleAi }}" style="display:flex; align-items:center; gap:7px; height:34px; padding:0 14px; border-radius:10px; border:1px solid {{ aiBtnBorder }}; background:{{ aiBtnBg }}; color:#1d6b12; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; flex-shrink:0; white-space:nowrap; transition:background 120ms ease-out;" style-hover="background:#dcefd2;" style-active="transform:translateY(1px);">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z M20 3v4 M22 5h-4"></path></svg>
+        <span>Ask AI</span>
+        <span style="font-size:11px; font-family:'Geist Mono',ui-monospace,monospace; color:#63b347;">⌘J</span>
+      </button>
+    </div>
+
+    <!-- Screen content -->
+    <div style="flex:1; overflow-y:auto; background:#ffffff;">
+      <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+        <div data-screen-label="Dashboard"><dc-import name="Dashboard" entity-id="{{ entityId }}" inbox-count="{{ inboxCount }}" on-navigate="{{ navTo }}" hint-size="100%,1400px"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{ isInbox }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Inbox" style="height:100%;"><dc-import name="Inbox" on-count-change="{{ setInboxCount }}" on-navigate="{{ navTo }}" hint-size="100%,100%"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{ isTransactions }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Transactions"><dc-import name="Transactions" on-navigate="{{ navTo }}" hint-size="100%,1200px"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{ isIncome }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Income"><dc-import name="Income" on-navigate="{{ navTo }}" hint-size="100%,1200px"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{ isExpenses }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Expenses"><dc-import name="Expenses" on-navigate="{{ navTo }}" hint-size="100%,1200px"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{ isBills }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Bills"><dc-import name="Bills" on-navigate="{{ navTo }}" hint-size="100%,1200px"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{ isContacts }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Contacts"><dc-import name="Contacts" on-navigate="{{ navTo }}" hint-size="100%,1200px"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{ isPayroll }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Payroll"><dc-import name="Payroll" on-navigate="{{ navTo }}" hint-size="100%,1200px"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{ isReports }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Reports"><dc-import name="Reports" on-navigate="{{ navTo }}" hint-size="100%,1200px"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Settings"><dc-import name="Settings" on-navigate="{{ navTo }}" hint-size="100%,1200px"></dc-import></div>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- ============ RIGHT AI PANEL ============ -->
+  <sc-if value="{{ aiOpen }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="AI panel" style="width:380px; min-width:380px; height:100%; border-left:1px solid #e5e5e5; background:#ffffff; display:flex; flex-direction:column;">
+
+      <!-- Panel header -->
+      <div style="height:56px; min-height:56px; border-bottom:1px solid #ececec; display:flex; align-items:center; gap:10px; padding:0 16px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z M20 3v4 M22 5h-4"></path></svg>
+        <div style="font-weight:600; font-size:14px;">Ask AI</div>
+        <div style="display:flex; align-items:center; gap:5px; height:24px; padding:0 9px; border-radius:9999px; background:#f5f5f5; font-size:11.5px; color:#737373;">Viewing: {{ screenTitle }}</div>
+        <div style="flex:1;"></div>
+        <button onClick="{{ toggleAi }}" title="Close (⌘J)" style="width:28px; height:28px; border-radius:8px; border:none; background:transparent; cursor:pointer; color:#737373; display:flex; align-items:center; justify-content:center;" style-hover="background:#f5f5f5;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18 M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <!-- Messages -->
+      <div style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:14px;">
+
+        <!-- Seeded conversation -->
+        <div style="align-self:flex-end; max-width:85%; background:#f5f5f5; border-radius:12px 12px 4px 12px; padding:8px 12px; font-size:13.5px;">How did we do in May vs. April?</div>
+
+        <div style="display:flex; gap:9px;">
+          <div style="width:22px; height:22px; border-radius:9999px; background:#f1f8ee; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+          </div>
+          <div style="min-width:0; flex:1; display:flex; flex-direction:column; gap:10px;">
+            <div style="font-size:13.5px; color:#0a0a0a;">May was a strong month for revenue, softer on profit:</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
+              <div style="border-radius:10px; box-shadow:0 0 0 1px rgba(10,10,10,0.08); padding:8px 10px;">
+                <div style="font-size:10.5px; color:#737373; font-weight:500;">Income</div>
+                <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13.5px; font-weight:600;">$52,410</div>
+                <div style="font-size:10.5px; color:#248716;">▲ 8.2%</div>
+              </div>
+              <div style="border-radius:10px; box-shadow:0 0 0 1px rgba(10,10,10,0.08); padding:8px 10px;">
+                <div style="font-size:10.5px; color:#737373; font-weight:500;">Expenses</div>
+                <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13.5px; font-weight:600;">$38,170</div>
+                <div style="font-size:10.5px; color:#525252;">▲ 21.4%</div>
+              </div>
+              <div style="border-radius:10px; box-shadow:0 0 0 1px rgba(10,10,10,0.08); padding:8px 10px;">
+                <div style="font-size:10.5px; color:#737373; font-weight:500;">Net profit</div>
+                <div style="font-family:'Geist Mono',ui-monospace,monospace; font-feature-settings:'tnum' 1; font-size:13.5px; font-weight:600;">$14,240</div>
+                <div style="font-size:10.5px; color:#d92d20;">▼ 17.1%</div>
+              </div>
+            </div>
+            <div style="font-size:13.5px; color:#0a0a0a;">Profit fell mostly because of the annual Figma renewal ($2,652) and a heavier payroll month — the PKR rate moved against you, adding about $640 in base terms.</div>
+            <button onClick="{{ openPL }}" style="align-self:flex-start; display:flex; align-items:center; gap:5px; border:none; background:transparent; padding:0; color:#1d6b12; font-family:inherit; font-size:12.5px; font-weight:500; cursor:pointer;" style-hover="text-decoration:underline;">Open Profit &amp; Loss →</button>
+          </div>
+        </div>
+
+        <div style="align-self:flex-end; max-width:85%; background:#f5f5f5; border-radius:12px 12px 4px 12px; padding:8px 12px; font-size:13.5px;">I keep filing Uber rides under Travel — can you just handle that?</div>
+
+        <div style="display:flex; gap:9px;">
+          <div style="width:22px; height:22px; border-radius:9999px; background:#f1f8ee; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+          </div>
+          <div style="min-width:0; flex:1; display:flex; flex-direction:column; gap:10px;">
+            <div style="font-size:13.5px;">You've corrected that 3 times, so yes — here's a rule:</div>
+            <sc-if value="{{ rulePending }}" hint-placeholder-val="{{ true }}">
+              <div style="border-radius:10px; box-shadow:0 0 0 1px rgba(10,10,10,0.1); padding:12px; display:flex; flex-direction:column; gap:9px;">
+                <div style="font-size:12px; font-weight:600; color:#737373; letter-spacing:0.02em;">PROPOSED RULE</div>
+                <div style="font-size:13px;">If description contains <span style="font-family:'Geist Mono',ui-monospace,monospace; background:#f5f5f5; border-radius:5px; padding:1px 5px; font-size:12px;">UBER</span> → category <span style="font-weight:600;">Travel</span>, post automatically.</div>
+                <div style="display:flex; gap:8px;">
+                  <button onClick="{{ createRule }}" style="height:30px; padding:0 13px; border-radius:8px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500; transition:background 120ms ease-out;" style-hover="background:#248716;" style-active="transform:translateY(1px);">Create rule</button>
+                  <button style="height:30px; padding:0 13px; border-radius:8px; border:1px solid #e5e5e5; background:#ffffff; color:#525252; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:500;" style-hover="background:#f5f5f5;">Not now</button>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ ruleCreated }}" hint-placeholder-val="{{ false }}">
+              <div style="border-radius:10px; background:#f1f8ee; padding:10px 12px; display:flex; align-items:center; gap:8px; font-size:13px; color:#17540f;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#248716" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                Rule created — "UBER → Travel" will auto-post. Applied to 3 past transactions.
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <!-- Dynamic messages -->
+        <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="0">
+          <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}">
+            <div style="align-self:flex-end; max-width:85%; background:#f5f5f5; border-radius:12px 12px 4px 12px; padding:8px 12px; font-size:13.5px; animation:ob-fade 160ms ease-out;">{{ m.text }}</div>
+          </sc-if>
+          <sc-if value="{{ m.isAi }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; gap:9px; animation:ob-fade 160ms ease-out;">
+              <div style="width:22px; height:22px; border-radius:9999px; background:#f1f8ee; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1d6b12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+              </div>
+              <div style="min-width:0; flex:1; font-size:13.5px; white-space:pre-line;">{{ m.text }}</div>
+            </div>
+          </sc-if>
+        </sc-for>
+        <div ref="{{ msgsEndRef }}"></div>
+      </div>
+
+      <!-- Suggested prompts + input -->
+      <div style="border-top:1px solid #ececec; padding:12px 16px 14px; display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <sc-for list="{{ prompts }}" as="p" hint-placeholder-count="3">
+            <button onClick="{{ p.send }}" style="height:26px; padding:0 11px; border-radius:9999px; border:1px solid #e5e5e5; background:#ffffff; color:#525252; cursor:pointer; font-family:inherit; font-size:12px; transition:background 120ms ease-out;" style-hover="background:#f5f5f5; border-color:#d4d4d4;">{{ p.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <input value="{{ aiInput }}" onChange="{{ onAiInput }}" onKeyDown="{{ onAiKey }}" placeholder="Ask about your books…" style="flex:1; height:36px; padding:0 12px; border-radius:10px; border:1px solid #e5e5e5; background:#ffffff; font-family:inherit; font-size:13.5px; color:#0a0a0a; outline:none;" style-focus="border-color:#63b347; box-shadow:0 0 0 3px rgba(99,179,71,0.25);"></input>
+          <button onClick="{{ sendAi }}" style="width:36px; height:36px; border-radius:10px; border:none; background:#2ca01c; color:#ffffff; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 120ms ease-out;" style-hover="background:#248716;" style-active="transform:translateY(1px);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7 M12 19V5"></path></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    screen: "dashboard",
+    entityId: "z360",
+    entityMenuOpen: false,
+    sidebarCollapsed: false,
+    aiOpen: true,
+    inboxCount: 11,
+    ruleState: "pending",
+    aiInput: "",
+    msgs: [],
+    syncing: false,
+    synced: false
+  };
+
+  componentDidMount() {
+    this._onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
+        e.preventDefault();
+        this.setState(s => ({ aiOpen: !s.aiOpen }));
+      }
+    };
+    window.addEventListener("keydown", this._onKey);
+    this._endRef = React.createRef();
+  }
+  componentWillUnmount() { window.removeEventListener("keydown", this._onKey); }
+
+  navTo = (screen) => this.setState({ screen, entityMenuOpen: false });
+
+  answerFor(text) {
+    const t = (text || "").toLowerCase();
+    if (t.includes("owe") || t.includes("owed")) {
+      return "You're owed $23,800 across 4 open invoices. Halpern Co is the one to chase — $8,400, now 14 days overdue. Meridian Health owes $4,200 (6 days late). The rest is current. Want me to draft a reminder for Halpern?";
+    }
+    if (t.includes("expense")) {
+      return "Top 5 expenses this quarter:\n1. Payroll & Contractors — $44,460\n2. Cloud / Infrastructure — $9,840\n3. Software & SaaS — $6,420\n4. Marketing & Ads — $5,210\n5. Professional Services — $3,800\nPayroll is 62% of total spend, in line with the last two quarters.";
+    }
+    if (t.includes("stripe") || t.includes("fee")) {
+      return "Stripe has taken $3,184.22 in processing fees so far this year — about 2.9% of the $109,800 you've processed. It's tracked as its own line under Payment Processing Fees on your P&L.";
+    }
+    if (t.includes("payroll")) {
+      return "Your monthly payroll cost is about $17,800 in USD terms: $6,000 paid in USD, ₨2,140,000 PKR (≈$7,710) and ₹344,000 INR (≈$4,070) at this month's rates.";
+    }
+    return "In the live product I'd query your ledger to answer that precisely. Try one of the suggested prompts, or open Reports for the full picture.";
+  }
+
+  sendMessage(text) {
+    if (!text || !text.trim()) return;
+    const clean = text.trim();
+    this.setState(s => ({ msgs: [...s.msgs, { role: "user", text: clean }], aiInput: "" }), () => this.scrollEnd());
+    setTimeout(() => {
+      this.setState(s => ({ msgs: [...s.msgs, { role: "ai", text: this.answerFor(clean) }] }), () => this.scrollEnd());
+    }, 650);
+  }
+
+  scrollEnd() {
+    const el = this._endRef && this._endRef.current;
+    if (el && el.parentElement) el.parentElement.scrollTop = el.parentElement.scrollHeight;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const entities = [
+      { id: "z360", name: "Z360 Labs LLC", initial: "Z", meta: "USD", bg: "#dcefd2", fg: "#17540f" },
+      { id: "crescent", name: "Crescent Studio LLC", initial: "C", meta: "USD", bg: "#eff8ff", fg: "#175cd3" },
+      { id: "all", name: "All entities", initial: "∗", meta: "", bg: "#f5f5f5", fg: "#525252" }
+    ];
+    const current = entities.find(e => e.id === s.entityId) || entities[0];
+
+    const nav = [
+      { id: "dashboard", label: "Dashboard", d: "M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z" },
+      { id: "inbox", label: "Inbox", d: "M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" },
+      { id: "transactions", label: "Transactions", d: "M8 3 4 7l4 4 M4 7h16 M16 21l4-4-4-4 M20 17H4" },
+      { id: "income", label: "Income", d: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8 M12 18V6" },
+      { id: "expenses", label: "Expenses", d: "M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z M21.21 15.89A10 10 0 1 1 8 2.83" },
+      { id: "bills", label: "Bills", d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z M14 2v4a2 2 0 0 0 2 2h4 M16 13H8 M16 17H8 M10 9H8" },
+      { id: "contacts", label: "Contacts", d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75" },
+      { id: "payroll", label: "Payroll", d: "M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0 M6 12h.01 M18 12h.01" },
+      { id: "reports", label: "Reports", d: "M3 3v16a2 2 0 0 0 2 2h16 M18 17V9 M13 17V5 M8 17v-3" }
+    ];
+
+    const navItems = nav.map(n => {
+      const active = s.screen === n.id;
+      return {
+        ...n,
+        go: () => this.navTo(n.id),
+        bg: active ? "#f1f8ee" : "transparent",
+        hoverBg: active ? "#f1f8ee" : "#f0f0f0",
+        color: active ? "#17540f" : "#454545",
+        weight: active ? "600" : "450",
+        showCount: n.id === "inbox" && s.inboxCount > 0,
+        count: s.inboxCount,
+        showZeroDot: n.id === "inbox" && s.inboxCount === 0
+      };
+    });
+
+    const titles = {
+      dashboard: "Dashboard · Jun 2026", inbox: "Inbox", transactions: "Transactions",
+      income: "Income", expenses: "Expenses", bills: "Bills", contacts: "Contacts", payroll: "Payroll",
+      reports: "Reports", settings: "Settings"
+    };
+
+    const settingsActive = s.screen === "settings";
+    if (!this._endRef) this._endRef = React.createRef();
+
+    return {
+      // entity switcher
+      entityName: current.name,
+      entityInitial: current.initial,
+      entityChipBg: current.bg,
+      entityChipFg: current.fg,
+      entityId: s.entityId,
+      entityMenuOpen: s.entityMenuOpen,
+      toggleEntityMenu: () => this.setState(st => ({ entityMenuOpen: !st.entityMenuOpen })),
+      closeEntityMenu: () => this.setState({ entityMenuOpen: false }),
+      entityOptions: entities.map(e => ({
+        ...e, active: e.id === s.entityId,
+        pick: () => this.setState({ entityId: e.id, entityMenuOpen: false })
+      })),
+
+      // sidebar collapse
+      sidebarExpanded: !s.sidebarCollapsed,
+      sidebarCollapsed: s.sidebarCollapsed,
+      toggleSidebar: () => this.setState(st => ({ sidebarCollapsed: !st.sidebarCollapsed, entityMenuOpen: false })),
+
+      // nav
+      navItems,
+      goSettings: () => this.navTo("settings"),
+      settingsBg: settingsActive ? "#f1f8ee" : "transparent",
+      settingsHoverBg: settingsActive ? "#f1f8ee" : "#f0f0f0",
+      settingsColor: settingsActive ? "#17540f" : "#454545",
+      settingsWeight: settingsActive ? "600" : "450",
+
+      // sync
+      syncNow: () => {
+        if (this.state.syncing) return;
+        this.setState({ syncing: true });
+        setTimeout(() => this.setState({ syncing: false, synced: true }), 1400);
+      },
+      syncAnim: s.syncing ? "ob-spin 0.9s linear infinite" : "none",
+      syncLabel: s.syncing ? "Syncing…" : (s.synced ? "Synced just now" : "Synced 12 min ago"),
+
+      // screens
+      isDashboard: s.screen === "dashboard",
+      isInbox: s.screen === "inbox",
+      isTransactions: s.screen === "transactions",
+      isIncome: s.screen === "income",
+      isExpenses: s.screen === "expenses",
+      isBills: s.screen === "bills",
+      isContacts: s.screen === "contacts",
+      isPayroll: s.screen === "payroll",
+      isReports: s.screen === "reports",
+      isSettings: s.screen === "settings",
+      navTo: this.navTo,
+      inboxCount: s.inboxCount,
+      setInboxCount: (n) => this.setState({ inboxCount: n }),
+
+      // AI panel
+      aiOpen: s.aiOpen,
+      toggleAi: () => this.setState(st => ({ aiOpen: !st.aiOpen })),
+      aiBtnBorder: s.aiOpen ? "#92cc7a" : "#bbe0a9",
+      aiBtnBg: s.aiOpen ? "#dcefd2" : "#f1f8ee",
+      screenTitle: titles[s.screen] || "Dashboard",
+      rulePending: s.ruleState === "pending",
+      ruleCreated: s.ruleState === "created",
+      createRule: () => this.setState({ ruleState: "created" }),
+      openPL: () => this.navTo("reports"),
+      msgs: s.msgs.map(m => ({ ...m, isUser: m.role === "user", isAi: m.role === "ai" })),
+      msgsEndRef: this._endRef,
+      prompts: [
+        { label: "Who owes me money right now?", send: () => this.sendMessage("Who owes me money right now?") },
+        { label: "Top 5 expenses this quarter", send: () => this.sendMessage("Top 5 expenses this quarter") },
+        { label: "Stripe fees this year", send: () => this.sendMessage("How much did Stripe take in fees this year?") }
+      ],
+      aiInput: s.aiInput,
+      onAiInput: (e) => this.setState({ aiInput: e.target.value }),
+      onAiKey: (e) => { if (e.key === "Enter") this.sendMessage(this.state.aiInput); },
+      sendAi: () => this.sendMessage(this.state.aiInput)
+    };
+  }
+}
+</script>
+</body>
+</html>

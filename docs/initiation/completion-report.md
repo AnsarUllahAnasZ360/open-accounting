@@ -117,6 +117,52 @@ Next:
 
 - M1 — design-system port, app shell, and landing/request-access surface.
 
+### 2026-06-11 01:32 CDT — M1 Design system port + app shell + landing
+
+What changed:
+
+- Ported the OpenBooks visual foundation into the web app: local Geist/Geist Mono fonts, light ledger-like Tailwind tokens, brand green `#2ca01c`, shadcn bases, lucide icons, and tabular money figures.
+- Added a typed OpenBooks primitive layer for money, stat cards, empty states, page headers, sparklines, category chips, confidence rings, aging bars, reasoning popovers, and review rows.
+- Built the shared app shell: left navigation for Dashboard, Inbox, Transactions, Invoices, Bills, Contacts, Payroll, Reports, Settings; entity switcher; search stub; Ask AI drawer; sync footer; and mobile bottom tabs for Dashboard, Inbox, Transactions, and Ask AI.
+- Added all M1 routes with first-class responsive placeholder surfaces. These are shell/structure only; M3-M7 replace the placeholders with ledger-backed data and real workflows.
+- Added request-access intake with `accessLeads` storage in Convex. The browser calls a Convex action that stores the lead through the mutation and sends Plunk notification only when Plunk server env is configured.
+- Corrected an initial drift: the first landing implementation was an approximation. It has been replaced with content and screenshot assets ported from `OpenBook - Prototype/Landing.dc.html`: "Your books, always done.", the whole-loop section, Inbox, Ask AI, tour, reports, mobile, roadmap, why-free, compare, FAQ, and CTA sections. The repo license text is aligned to AGPL where the prototype copy conflicted with the project contract.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m1-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m1-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m1-request-access-unit.txt`
+- `docs/initiation/evidence/2026-06-11-m1-request-access-convex.txt`
+- `docs/initiation/evidence/2026-06-11-m1-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m1-build-with-public-env.txt`
+- `docs/initiation/evidence/2026-06-11-m1-landing-desktop.png`
+- `docs/initiation/evidence/2026-06-11-m1-landing-mobile.png`
+- `docs/initiation/evidence/2026-06-11-m1-dashboard-shell-desktop.png`
+- `docs/initiation/evidence/2026-06-11-m1-dashboard-shell-mobile.png`
+
+Verification:
+
+- `pnpm verify` green: typecheck, lint, production build, Vitest.
+- `pnpm test:e2e -- tests/e2e/landing.spec.ts` green for the prototype landing surface and app-shell route smoke.
+- `pnpm test:unit -- convex/requestAccess.test.ts` green.
+- Convex dev deployment accepted `requestAccess:submit` after `npx convex dev --once`; proof response stored a harmless `m1-evidence@example.com` lead and returned an id/status only.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Design tokens/fonts/icons/tabular figures | PASS | Implemented in the web app with local fonts and the single OpenBooks green. |
+| Shared primitives | PASS | Implemented production equivalents on shadcn/lucide bases; future screens may expand variants as real workflows land. |
+| App shell desktop/mobile | PASS | All required routes render; mobile bottom tabs present. |
+| Prototype landing content | PASS | Ported from `OpenBook - Prototype/Landing.dc.html` with screenshot assets copied into `apps/web/public/prototype-assets/shots/`. |
+| Request-access storage | PASS | Convex mutation unit-tested and live dev write evidenced. |
+| Plunk request-access notification | PARTIAL | Action sends notification when `PLUNK_SECRET_KEY`, `PLUNK_FROM_EMAIL`, and `OWNER_EMAIL` exist; no Plunk key was configured during M1 evidence, so notification is fixture/skipped mode. |
+
+Next:
+
+- M2 — invite-only auth gate, owner login, invites, and Settings leads view.
+
 ### 2026-06-11 00:44 CDT — Pre-goal access readiness
 
 What changed:

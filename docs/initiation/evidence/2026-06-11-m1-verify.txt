@@ -1,0 +1,67 @@
+
+> openbooks@0.0.0 verify /Users/ansarullahanas/Documents/OpenBooks
+> pnpm typecheck && pnpm lint && pnpm build && pnpm test:unit
+
+
+> openbooks@0.0.0 typecheck /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web typecheck
+
+
+> @openbooks/web@0.1.0 typecheck /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> tsc --noEmit
+
+
+> openbooks@0.0.0 lint /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web lint
+
+
+> @openbooks/web@0.1.0 lint /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> eslint
+
+
+> openbooks@0.0.0 build /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web build
+
+
+> @openbooks/web@0.1.0 build /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> next build
+
+▲ Next.js 16.2.7 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 1313ms
+  Running TypeScript ...
+  Finished TypeScript in 1818ms ...
+  Collecting page data using 6 workers ...
+  Generating static pages using 6 workers (0/13) ...
+  Generating static pages using 6 workers (3/13)
+  Generating static pages using 6 workers (6/13)
+  Generating static pages using 6 workers (9/13)
+✓ Generating static pages using 6 workers (13/13) in 262ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+└ ● /[section]
+  ├ /dashboard
+  ├ /inbox
+  ├ /transactions
+  └ [+6 more paths]
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+> openbooks@0.0.0 test:unit /Users/ansarullahanas/Documents/OpenBooks
+> vitest run --passWithNoTests
+
+
+ RUN  v4.1.8 /Users/ansarullahanas/Documents/OpenBooks
+
+
+ Test Files  2 passed (2)
+      Tests  2 passed (2)
+   Start at  01:41:13
+   Duration  162ms (transform 35ms, setup 0ms, import 79ms, tests 14ms, environment 44ms)

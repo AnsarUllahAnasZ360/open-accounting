@@ -41,11 +41,11 @@ Evidence: preflight output (redacted) in completion report.
 
 ## M1 — Design system port + app shell + landing
 
-- [ ] Port tokens from `OpenBooks Design System/tokens` + `styles.css` into the
+- [x] Port tokens from `OpenBooks Design System/tokens` + `styles.css` into the
       Tailwind 4 theme (CSS-first `@theme`): green ramp, semantic money colors,
       radii, spacing, shadows; Geist + Geist Mono via `next/font` (local woff2
       from the design system); lucide-react icons; tabular figures utility.
-- [ ] Build shared primitives on shadcn bases: port the design-system
+- [x] Build shared primitives on shadcn bases: port the design-system
       component library (Amount, StatCard, EmptyState, Badge, Table,
       Sparkline, BarChart, SideNav, PageHeader, AskAI, ReviewItem — see
       `OpenBooks Design System/components/` + `.prompt.md` notes), and create
@@ -54,12 +54,12 @@ Evidence: preflight output (redacted) in completion report.
       following the same patterns. Use
       `OpenBooks Design System/ui_kits/openbooks/` JSX as reference
       implementation; `.dc.html` prototypes as visual reference.
-- [ ] App shell per design brief §0: collapsible sidebar (Dashboard, Inbox,
+- [x] App shell per design brief §0: collapsible sidebar (Dashboard, Inbox,
       Transactions, Invoices, Bills, Contacts, Payroll, Reports, Settings),
       entity switcher, top bar (⌘K stub + Ask AI toggle), collapsible right AI
       drawer (empty for now), sync-status footer. Mobile: bottom tab bar
       (Dashboard, Inbox, Transactions, Ask AI).
-- [ ] Landing page from `Landing.dc.html` reference with request-access form
+- [x] Landing page from `Landing.dc.html` reference with request-access form
       (stores lead in Convex; Plunk notify if key present) + sign-in entry.
       No public sign-up.
 

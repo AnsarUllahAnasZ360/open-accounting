@@ -1,7 +1,34 @@
 import { defineConfig, devices } from "@playwright/test";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const port = Number(process.env.PORT ?? 3100);
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
+const rootEnvPath = resolve(process.cwd(), ".env.local");
+
+function readPublicEnv(name: string) {
+  if (process.env[name]) {
+    return process.env[name];
+  }
+  if (!existsSync(rootEnvPath)) {
+    return undefined;
+  }
+
+  for (const rawLine of readFileSync(rootEnvPath, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || !line.includes("=")) {
+      continue;
+    }
+    const equalsIndex = line.indexOf("=");
+    const key = line.slice(0, equalsIndex).trim();
+    if (key !== name) {
+      continue;
+    }
+    return line.slice(equalsIndex + 1).trim().replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "");
+  }
+
+  return undefined;
+}
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -16,6 +43,10 @@ export default defineConfig({
     ? undefined
     : {
         command: `pnpm --filter @openbooks/web dev --hostname 127.0.0.1 --port ${port}`,
+        env: {
+          ...process.env,
+          NEXT_PUBLIC_CONVEX_URL: readPublicEnv("NEXT_PUBLIC_CONVEX_URL") ?? "",
+        },
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

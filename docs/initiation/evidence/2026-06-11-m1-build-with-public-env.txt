@@ -1,0 +1,30 @@
+
+> @openbooks/web@0.1.0 build /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> next build
+
+▲ Next.js 16.2.7 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 1247ms
+  Running TypeScript ...
+  Finished TypeScript in 1860ms ...
+  Collecting page data using 6 workers ...
+  Generating static pages using 6 workers (0/13) ...
+  Generating static pages using 6 workers (3/13)
+  Generating static pages using 6 workers (6/13)
+  Generating static pages using 6 workers (9/13)
+✓ Generating static pages using 6 workers (13/13) in 284ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+└ ● /[section]
+  ├ /dashboard
+  ├ /inbox
+  ├ /transactions
+  └ [+6 more paths]
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)

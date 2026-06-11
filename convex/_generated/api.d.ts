@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as bootstrap from "../bootstrap.js";
 import type * as http from "../http.js";
+import type * as requestAccess from "../requestAccess.js";
 
 import type {
   ApiFromModules,
@@ -22,6 +23,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   bootstrap: typeof bootstrap;
   http: typeof http;
+  requestAccess: typeof requestAccess;
 }>;
 
 /**

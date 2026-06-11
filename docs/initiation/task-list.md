@@ -182,16 +182,16 @@ and payroll postings.
 
 ## M7 — Reports + export
 
-- [ ] Reports engine: queries over journal lines by account type/subtype;
+- [x] Reports engine: queries over journal lines by account type/subtype;
       shared viewer (range presets + custom, compare prior period/year,
       monthly columns, cash ⇄ accrual toggle, drill-down slide-over).
-- [ ] Ship: Monthly Review (hero one-pager per spec §6.7#12), P&L, Balance
+- [x] Ship: Monthly Review (hero one-pager per spec §6.7#12), P&L, Balance
       Sheet (with Balanced ✓ chip), Cash Flow (direct grouping), AR Aging,
       AP Aging, Expenses by category/vendor, Income by Customer, Payroll
       Summary, General Ledger, Trial Balance, Journal view.
-- [ ] CSV export on every report; full-data export (CSV bundle + JSON) under
+- [x] CSV export on every report; full-data export (CSV bundle + JSON) under
       Settings → Data.
-- [ ] Golden tests wired into `pnpm verify`.
+- [x] Golden tests wired into `pnpm verify`.
 
 Done when: golden tests green; BS balanced; cash/accrual toggle changes
 AR/AP-dependent figures; exports open with correct totals.

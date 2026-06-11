@@ -423,6 +423,54 @@ Next:
 
 - M7 — Reports and export. Omar's report/export worker slice is parked in stash `m7-worker-slice` and ready for main-thread integration.
 
+### 2026-06-11 05:08 CDT — M7 Reports + export
+
+What changed:
+
+- Added `reportViews.reportPack`, a server-authorized Convex reports engine that queries journal entries, journal lines, accounts, AR/AP records, contacts, payroll runs, and bank accounts.
+- Wired the Reports route with a shared viewer: range presets, custom start/end dates, compare selector, monthly/quarterly/total columns, cash/accrual toggle, CSV export, CSV bundle export, JSON export, and drill-down sheet data.
+- Shipped report surfaces for Monthly Review, Profit & Loss, Balance Sheet with Balanced chip, Cash Flow, AR Aging, AP Aging, Expenses, Income by Customer, Payroll Summary, General Ledger, Trial Balance, and Journal Entries.
+- Added Settings → Data export buttons for CSV bundle and JSON export; export queries skip cleanly before demo data is seeded.
+- Added `reports-export.ts` helpers and browser evidence that saves real CSV/JSON files into `docs/initiation/evidence/`.
+- Added golden report unit coverage proving accrual vs. cash basis changes AR/AP-dependent P&L figures, Balance Sheet difference is zero, Trial Balance difference is zero, and AR/AP aging totals match source records.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m7-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m7-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m7-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m7-reports-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m7-settings-export-e2e.png`
+- `docs/initiation/evidence/2026-06-11-m7-monthly-review.csv`
+- `docs/initiation/evidence/2026-06-11-m7-settings-export-sample.csv`
+- `docs/initiation/evidence/2026-06-11-m7-settings-export.json`
+
+Verification:
+
+- `npx convex dev --once` green.
+- `pnpm verify` green: typecheck, lint, Next.js production build, Vitest. Unit total is 8 files / 19 tests.
+- `pnpm test:e2e` green: 9 passing Playwright tests, including the M7 report/export acceptance spec.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Reports engine | PASS | Report pack derives from journal lines/accounts and related source records, with server-side workspace/entity authorization. |
+| Shared viewer controls | PASS | Presets, custom range, compare selector, monthly/quarterly/total columns, cash/accrual toggle, and drill-down sheet are wired. |
+| Report suite | PASS | Monthly Review, P&L, Balance Sheet, Cash Flow, AR/AP Aging, Expenses, Income by Customer, Payroll Summary, GL, Trial Balance, and Journal views render. |
+| Balanced reports | PASS | Balance Sheet and Trial Balance differences are covered in unit tests and visible in browser acceptance. |
+| Per-report CSV export | PASS | Browser test saves Monthly Review CSV; export helper supports every report id. |
+| Settings data export | PARTIAL | Settings exports a reports CSV bundle plus report-pack JSON. It is not yet a zipped raw-table archive of every operational table. |
+
+Notes:
+
+- Full e2e logs include expected negative-test Convex errors for blocked self-registration and locked-period posting rejection.
+- The Settings export query skips until demo seed status exists; this avoids blocking the reset flow in a brand-new workspace.
+
+Next:
+
+- M8 — Stripe test-mode E2E on a Live Sandbox entity. M6 left Live Sandbox creation as a UI affordance; the next milestone needs either a dedicated entity-creation mutation with chart seeding or a fixture-backed Live Sandbox entity setup.
+
 ### 2026-06-11 00:44 CDT — Pre-goal access readiness
 
 What changed:

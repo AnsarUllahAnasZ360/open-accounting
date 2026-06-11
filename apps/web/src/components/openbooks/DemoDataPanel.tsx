@@ -8,6 +8,11 @@ import { useState } from "react";
 import { api } from "../../../../../convex/_generated/api";
 import { Amount } from "@/components/openbooks/primitives";
 import { Button } from "@/components/ui/button";
+import {
+  downloadReportFile,
+  settingsDataExportFiles,
+  type ReportPack,
+} from "@/lib/openbooks/reports-export";
 
 type ActionState = "idle" | "submitting" | "success" | "error";
 
@@ -52,10 +57,23 @@ function CountBlock({
 
 export function DemoDataPanel() {
   const status = useQuery(api.seedDemo.status, {});
-  const resetDemo = useAction(api.seedDemo.resetAndSeed);
   const [state, setState] = useState<ActionState>("idle");
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<SeedResult | null>(null);
+  const latest = result ?? status;
+  const reportPack = useQuery(
+    api.reportViews.reportPack,
+    latest
+      ? {
+          startDate: "2026-01-01",
+          endDate: "2026-12-31",
+          basis: "accrual",
+          compare: "none",
+          columnMode: "monthly",
+        }
+      : "skip",
+  ) as ReportPack | undefined;
+  const resetDemo = useAction(api.seedDemo.resetAndSeed);
 
   async function resetDemoData() {
     setState("submitting");
@@ -71,7 +89,15 @@ export function DemoDataPanel() {
     }
   }
 
-  const latest = result ?? status;
+  function exportData(kind: "csv" | "json") {
+    if (!reportPack) return;
+    const files = settingsDataExportFiles(reportPack);
+    const selected =
+      kind === "json" ? files.filter((file) => file.mimeType === "application/json") : files.filter((file) => file.mimeType === "text/csv");
+    for (const file of selected) {
+      downloadReportFile(file);
+    }
+  }
 
   return (
     <section className="rounded-lg border bg-card shadow-xs" data-testid="demo-data-panel">
@@ -85,10 +111,18 @@ export function DemoDataPanel() {
             Reset Acme Studio LLC to the deterministic ledger-backed demo books.
           </p>
         </div>
-        <Button onClick={resetDemoData} disabled={state === "submitting"}>
-          <RefreshCw className={`size-4 ${state === "submitting" ? "animate-spin" : ""}`} />
-          Reset demo data
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => exportData("csv")} disabled={!reportPack}>
+            Export CSV bundle
+          </Button>
+          <Button variant="outline" onClick={() => exportData("json")} disabled={!reportPack}>
+            Export JSON
+          </Button>
+          <Button onClick={resetDemoData} disabled={state === "submitting"}>
+            <RefreshCw className={`size-4 ${state === "submitting" ? "animate-spin" : ""}`} />
+            Reset demo data
+          </Button>
+        </div>
       </div>
 
       {message ? (

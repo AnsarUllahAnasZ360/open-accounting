@@ -4,6 +4,7 @@ import { DemoDataPanel } from "@/components/openbooks/DemoDataPanel";
 import { LeadsPanel } from "@/components/openbooks/LeadsPanel";
 import { BillsScreen, ContactsScreen, InvoicesScreen, PayrollScreen, RemainingSettingsScreens } from "@/components/openbooks/ModuleScreens";
 import { CategoryChip, EmptyState, PageHeader } from "@/components/openbooks/primitives";
+import { ReportsScreen } from "@/components/openbooks/ReportsScreen";
 import type { AppRoute } from "@/lib/openbooks/content";
 
 export function AppScreen({ route }: { route: AppRoute }) {
@@ -23,6 +24,7 @@ export function AppScreen({ route }: { route: AppRoute }) {
       {route.href === "/bills" ? <BillsScreen /> : null}
       {route.href === "/contacts" ? <ContactsScreen /> : null}
       {route.href === "/payroll" ? <PayrollScreen /> : null}
+      {route.href === "/reports" ? <ReportsScreen /> : null}
       {route.href === "/settings" ? (
         <>
           <DemoDataPanel />
@@ -39,6 +41,7 @@ export function AppScreen({ route }: { route: AppRoute }) {
         "/bills",
         "/contacts",
         "/payroll",
+        "/reports",
         "/settings",
       ].includes(route.href) ? (
         <EmptyState

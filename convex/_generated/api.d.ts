@@ -17,6 +17,7 @@ import type * as http from "../http.js";
 import type * as ledger from "../ledger.js";
 import type * as moduleViews from "../moduleViews.js";
 import type * as pipeline from "../pipeline.js";
+import type * as reportViews from "../reportViews.js";
 import type * as reports from "../reports.js";
 import type * as requestAccess from "../requestAccess.js";
 import type * as seedDemo from "../seedDemo.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   ledger: typeof ledger;
   moduleViews: typeof moduleViews;
   pipeline: typeof pipeline;
+  reportViews: typeof reportViews;
   reports: typeof reports;
   requestAccess: typeof requestAccess;
   seedDemo: typeof seedDemo;

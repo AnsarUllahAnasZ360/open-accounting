@@ -38,6 +38,10 @@ function readableError(error: unknown, fallback: string) {
   return error.message;
 }
 
+function isSeedConnectionInterruption(message: string) {
+  return /connection lost while action was in flight/i.test(message);
+}
+
 function CountBlock({
   label,
   value,
@@ -57,10 +61,32 @@ function CountBlock({
 
 export function DemoDataPanel() {
   const status = useQuery(api.seedDemo.status, {});
+  const seedJob = useQuery(api.seedDemo.jobStatus, {});
   const [state, setState] = useState<ActionState>("idle");
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<SeedResult | null>(null);
-  const latest = result ?? status;
+  const [seedRequestedAt, setSeedRequestedAt] = useState<number | null>(null);
+  const trackedSeedJob =
+    seedRequestedAt && seedJob && seedJob.startedAt >= seedRequestedAt - 1000 ? seedJob : null;
+  const recoveredResult =
+    state === "submitting" && trackedSeedJob?.status === "succeeded" && trackedSeedJob.result
+      ? trackedSeedJob.result
+      : null;
+  const displayState: ActionState =
+    state === "submitting" && trackedSeedJob?.status === "succeeded"
+      ? "success"
+      : state === "submitting" && trackedSeedJob?.status === "failed"
+        ? "error"
+        : state;
+  const displayMessage =
+    state === "submitting" && trackedSeedJob?.status === "succeeded"
+      ? "Demo seed complete."
+      : state === "submitting" && trackedSeedJob?.status === "failed"
+        ? trackedSeedJob.message ?? "Could not reset demo data."
+        : state === "submitting" && trackedSeedJob?.status === "running"
+          ? trackedSeedJob.message ?? "Demo seed is running."
+          : message;
+  const latest = result ?? recoveredResult ?? status;
   const reportPack = useQuery(
     api.reportViews.reportPack,
     latest
@@ -76,6 +102,7 @@ export function DemoDataPanel() {
   const resetDemo = useAction(api.seedDemo.resetAndSeed);
 
   async function resetDemoData() {
+    setSeedRequestedAt(Date.now());
     setState("submitting");
     setMessage("");
     try {
@@ -84,8 +111,14 @@ export function DemoDataPanel() {
       setState("success");
       setMessage("Demo seed complete.");
     } catch (error) {
+      const nextMessage = readableError(error, "Could not reset demo data.");
+      if (isSeedConnectionInterruption(nextMessage)) {
+        setState("submitting");
+        setMessage("Demo seed is still running.");
+        return;
+      }
       setState("error");
-      setMessage(readableError(error, "Could not reset demo data."));
+      setMessage(nextMessage);
     }
   }
 
@@ -118,23 +151,23 @@ export function DemoDataPanel() {
           <Button variant="outline" onClick={() => exportData("json")} disabled={!reportPack}>
             Export JSON
           </Button>
-          <Button onClick={resetDemoData} disabled={state === "submitting"}>
-            <RefreshCw className={`size-4 ${state === "submitting" ? "animate-spin" : ""}`} />
+          <Button onClick={resetDemoData} disabled={displayState === "submitting"}>
+            <RefreshCw className={`size-4 ${displayState === "submitting" ? "animate-spin" : ""}`} />
             Reset demo data
           </Button>
         </div>
       </div>
 
-      {message ? (
+      {displayMessage ? (
         <div
           className={`mx-4 mt-4 rounded-lg border p-3 text-sm ${
-            state === "error"
+            displayState === "error"
               ? "border-destructive/30 bg-destructive/5 text-destructive"
               : "bg-primary/5 text-primary"
           }`}
           data-testid="demo-seed-message"
         >
-          {message}
+          {displayMessage}
         </div>
       ) : null}
 

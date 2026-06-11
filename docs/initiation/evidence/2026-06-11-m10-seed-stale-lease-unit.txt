@@ -1,0 +1,13 @@
+
+> openbooks@0.0.0 test:unit /Users/ansarullahanas/Documents/OpenBooks
+> vitest run --passWithNoTests -- convex/seedDemo.test.ts
+
+
+ RUN  v4.1.8 /Users/ansarullahanas/Documents/OpenBooks
+
+
+ Test Files  13 passed (13)
+      Tests  61 passed (61)
+   Start at  12:38:06
+   Duration  7.23s (transform 2.83s, setup 0ms, import 4.38s, tests 10.54s, environment 1.49s)
+

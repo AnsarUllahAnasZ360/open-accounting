@@ -1,0 +1,75 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test -- tests/e2e/ai-chat.spec.ts
+
+[2m[WebServer] [22m(node:78327) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:78497) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:78503) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:78698) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 2 tests using 1 worker
+
+(node:78721) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:78721) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:79049) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:79210) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first (3.0m)
+  -  2 [chromium] › tests/e2e/ai-chat.spec.ts:127:5 › M10 mobile chat drawer answers a ledger-backed question
+
+
+  1) [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: getByTestId('demo-seed-message')
+    Timeout: 180000ms
+    [32m- Expected substring  - 1[39m
+    [31m+ Received string     + 2[39m
+
+    [32m- Demo seed complete.[39m
+    [31m+ [CONVEX A(seedDemo:resetAndSeed)] Connection lost while action was in flight[39m
+    [31m+   Called by client[39m
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 180000ms[22m
+    [2m  - waiting for getByTestId('demo-seed-message')[22m
+    [2m    351 × locator resolved to <div data-testid="demo-seed-message" class="mx-4 mt-4 rounded-lg border p-3 text-sm border-destructive/30 bg-destructive/5 text-destructive">[CONVEX A(seedDemo:resetAndSeed)] Connection lost…</div>[22m
+    [2m        - unexpected value "[CONVEX A(seedDemo:resetAndSeed)] Connection lost while action was in flight[22m
+    [2m  Called by client"[22m
+
+
+      47 |   await expect(demoExport).toBeVisible();
+      48 |   await page.getByRole("button", { name: "Reset demo data" }).click();
+    > 49 |   await expect(page.getByTestId("demo-seed-message")).toContainText("Demo seed complete.", {
+         |                                                       ^
+      50 |     timeout: 180_000,
+      51 |   });
+      52 |   await expect(demoExport).toBeEnabled({ timeout: 30_000 });
+        at /Users/ansarullahanas/Documents/OpenBooks/tests/e2e/ai-chat.spec.ts:49:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    docs/initiation/evidence/playwright-results/ai-chat-M10-AI-chat-answer-0f780-keeps-actions-confirm-first-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: docs/initiation/evidence/playwright-results/ai-chat-M10-AI-chat-answer-0f780-keeps-actions-confirm-first-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    docs/initiation/evidence/playwright-results/ai-chat-M10-AI-chat-answer-0f780-keeps-actions-confirm-first-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace docs/initiation/evidence/playwright-results/ai-chat-M10-AI-chat-answer-0f780-keeps-actions-confirm-first-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first 
+  1 did not run
+ ELIFECYCLE  Command failed with exit code 1.

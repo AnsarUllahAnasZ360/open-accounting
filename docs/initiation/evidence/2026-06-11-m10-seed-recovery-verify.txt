@@ -1,0 +1,46 @@
+
+> openbooks@0.0.0 verify /Users/ansarullahanas/Documents/OpenBooks
+> pnpm typecheck && pnpm lint && pnpm build && pnpm test:unit
+
+
+> openbooks@0.0.0 typecheck /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web typecheck
+
+
+> @openbooks/web@0.1.0 typecheck /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> tsc --noEmit
+
+
+> openbooks@0.0.0 lint /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web lint
+
+
+> @openbooks/web@0.1.0 lint /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> eslint
+
+
+/Users/ansarullahanas/Documents/OpenBooks/apps/web/src/components/openbooks/DemoDataPanel.tsx
+  86:7  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/Users/ansarullahanas/Documents/OpenBooks/apps/web/src/components/openbooks/DemoDataPanel.tsx:86:7
+  84 |     if (!seedJob || state !== "submitting") return;
+  85 |     if (seedJob.status === "running") {
+> 86 |       setMessage(seedJob.message ?? "Demo seed is running.");
+     |       ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  87 |       return;
+  88 |     }
+  89 |     if (seedJob.status === "succeeded" && seedJob.result) {  react-hooks/set-state-in-effect
+
+✖ 1 problem (1 error, 0 warnings)
+
+/Users/ansarullahanas/Documents/OpenBooks/apps/web:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @openbooks/web@0.1.0 lint: `eslint`
+Exit status 1
+ ELIFECYCLE  Command failed with exit code 1.
+ ELIFECYCLE  Command failed with exit code 1.

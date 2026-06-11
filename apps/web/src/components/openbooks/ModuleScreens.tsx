@@ -104,6 +104,12 @@ function moneyInputToMinor(value: string) {
   return Math.round(amount * 100);
 }
 
+function aiBatchStatusLabel(status: "completed" | "partial" | "degraded") {
+  if (status === "completed") return "Completed";
+  if (status === "partial") return "Partial";
+  return "Degraded";
+}
+
 function ModuleIntro({
   title,
   description,
@@ -936,6 +942,10 @@ export function RemainingSettingsScreens() {
     api.ai.providerStatus,
     viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
   );
+  const aiBatchRuns = useQuery(
+    api.ai.latestCategorizationBatchRuns,
+    data?.entity?.id ? { entityId: data.entity.id as Id<"entities">, limit: 1 } : "skip",
+  );
   const ensureLiveSandboxEntity = useMutation(api.ledger.ensureLiveSandboxEntity);
   const setAiConfig = useMutation(api.ai.setConfig);
   const recordCategorizationEvalRun = useMutation(api.ai.recordCategorizationEvalRun);
@@ -952,6 +962,7 @@ export function RemainingSettingsScreens() {
   const [creatingEntity, setCreatingEntity] = useState(false);
   const aiStatus = frontendAiStatus(aiProviderStatus);
   const aiAutonomy = aiAutonomyOverride ?? aiProviderStatus?.autonomy ?? "balanced";
+  const latestAiBatchRun = aiBatchRuns?.[0];
 
   async function saveAiAutonomy(value: AiAutonomyMode) {
     setAiAutonomyOverride(value);
@@ -1018,10 +1029,11 @@ export function RemainingSettingsScreens() {
         entityId: data.entity.id as Id<"entities">,
         limit: 10,
       });
+      const status = result.batchStatus ? ` ${aiBatchStatusLabel(result.batchStatus)}.` : "";
       const degraded = result.degradedCount > 0 ? ` ${result.degradedCount} degraded.` : "";
       const fallback = result.fallbackCount > 0 ? ` ${result.fallbackCount} fallback.` : "";
       setAiBatchMessage(
-        `${result.attemptedCount} checked. ${result.postedCount} posted, ${result.needsReviewCount} updated for review, ${result.skippedCount} skipped.${degraded}${fallback}`,
+        `${result.attemptedCount} checked. ${result.postedCount} posted, ${result.needsReviewCount} updated for review, ${result.skippedCount} skipped.${status}${degraded}${fallback}`,
       );
     } catch (error) {
       setAiBatchMessage(error instanceof Error ? error.message : "Could not run batch categorization.");
@@ -1146,6 +1158,12 @@ export function RemainingSettingsScreens() {
             {aiBatchMessage ? (
               <p className="mt-2 text-sm text-primary" data-testid="m10-ai-batch-result">
                 {aiBatchMessage}
+              </p>
+            ) : null}
+            {latestAiBatchRun ? (
+              <p className="mt-2 text-xs leading-5 text-muted-foreground" data-testid="m10-ai-batch-last-run">
+                Last run: {aiBatchStatusLabel(latestAiBatchRun.status)} at{" "}
+                {new Date(latestAiBatchRun.createdAt).toLocaleString("en-US")}. {latestAiBatchRun.summary}
               </p>
             ) : null}
           </div>

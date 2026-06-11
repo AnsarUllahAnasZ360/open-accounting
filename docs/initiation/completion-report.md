@@ -27,13 +27,13 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 11 | Full data export | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m7-settings-export.json` | Settings export passed in reports spec. |
 | 12 | Plaid sandbox connect → sync → pipeline | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m9-plaid-settings-e2e.png`; `docs/initiation/evidence/2026-06-11-m9-plaid-token-persistence-verify.txt`; `docs/initiation/evidence/2026-06-11-m9-plaid-token-persistence-e2e.txt` | Sandbox-ready path connects, selects accounts, syncs Plaid-shaped rows through the pipeline, shows recent imports, simulates relink, and now persists sandbox Plaid item tokens server-side without exposing them in public connection state. Scheduled stored-token sync remains hardening. |
 | 13 | Stripe test sync + payout drill-down + invoice via Stripe | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-object-ids.json`; `docs/initiation/evidence/2026-06-11-m8-stripe-webhook-register.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-webhook-negative-http.txt` | Stripe spec passed in the final production run; payout reconciliation remains fixture-backed per sandbox-reality notes. Production Convex now has a signed Stripe test webhook endpoint that records verified events. |
-| 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png`; `docs/initiation/evidence/2026-06-11-m10-semantic-memory-focused-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-categorization-verify.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-ui-vercel-deploy.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-result.json`; `docs/initiation/evidence/2026-06-11-m10-live-eval-production-e2e.txt` | Report-backed chat, confirmed Uber rule, Bedrock categorizer, vector-backed semantic correction memory, Settings-triggered batch categorization for imported needs-review rows, and owner-authenticated 120-row seeded eval pass. Full streaming/tool-call chat remains partial. |
+| 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png`; `docs/initiation/evidence/2026-06-11-m10-semantic-memory-focused-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-categorization-verify.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-ui-vercel-deploy.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-history-verify.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-history-e2e-retry3-stale-lease.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-result.json`; `docs/initiation/evidence/2026-06-11-m10-live-eval-production-e2e.txt` | Report-backed chat, confirmed Uber rule, Bedrock categorizer, vector-backed semantic correction memory, Settings-triggered batch categorization for imported needs-review rows with persisted latest-run history, and owner-authenticated 120-row seeded eval pass. Full streaming/tool-call chat remains partial. |
 | 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-receipt-vectors-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-receipt-vectors-e2e.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Image uploads attempt Bedrock vision OCR, deterministic matching, embedding-assisted transaction matching, and persisted receipt vectors, then fall back to manual match. PDF OCR remains an allowed degradation. |
 | 16 | Mobile usability (4 core surfaces) | WORKING | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-mobile.png`; `docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile.png`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-production-e2e.txt` | Dashboard, Inbox/Transactions responsive coverage, and mobile chat drawer evidence are present, including a production-domain mobile chat run. |
 | 17 | Audit log attribution (user/rule/AI) | WORKING | `docs/initiation/evidence/2026-06-11-m13-audit-attribution.png`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-e2e.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-production-ai-e2e.txt` | Settings audit log now shows user, rule, and AI actor badges. AI-confirmed rules write audit events, and rule-routed ledger postings derive rule attribution from the posted journal entry. |
 | 18 | Honesty check — this table complete with evidence (acceptance #18) | WORKING | `docs/initiation/completion-report.md` | This table separates working, partial, and blocked rows and names next steps. |
-| 19 | `pnpm verify` + `pnpm test:e2e` green; eval accuracy reported (goal.md §2; ≥80% is a target, not a blocker) | WORKING | `docs/initiation/evidence/2026-06-11-m13-verify-after-production-reset-harness.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-local-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-mobile-chat-verify.txt`; `docs/initiation/evidence/2026-06-11-m13-mobile-chat-full-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-production-e2e.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-verify.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-full-e2e.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-production-ai-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-verify.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-full-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-production-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-result.json` | `pnpm verify` is green, local/dev e2e is 16/16 after adding mobile chat, audit attribution, and live eval coverage; production-domain AI focused runs are 2/2; the owner-authenticated seeded eval is 120/120 = 100.0%, above the 80.0% target. |
-| 20 | Production URL live, owner login in prod (goal.md §1.9) | WORKING | `docs/initiation/evidence/2026-06-11-m13-http-checks-after-seed-job-and-plaid-fixes.txt`; `docs/initiation/evidence/2026-06-11-m13-vercel-deploy-after-seed-job-and-plaid-fixes.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-vercel-deploy.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-http-check.txt` | `https://openbooks.ansarullahanas.com` is live, owner login is evidenced, and the custom domain still serves the prototype landing copy/assets after the audit attribution redeploy. |
+| 19 | `pnpm verify` + `pnpm test:e2e` green; eval accuracy reported (goal.md §2; ≥80% is a target, not a blocker) | WORKING | `docs/initiation/evidence/2026-06-11-m13-verify-after-production-reset-harness.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-local-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-mobile-chat-verify.txt`; `docs/initiation/evidence/2026-06-11-m13-mobile-chat-full-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-production-e2e.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-verify.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-full-e2e.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-production-ai-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-verify.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-full-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-production-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-result.json`; `docs/initiation/evidence/2026-06-11-m10-seed-stale-lease-verify-retry1.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-history-e2e-retry3-stale-lease.txt` | `pnpm verify` is green, local/dev e2e is 16/16 after adding mobile chat, audit attribution, live eval, batch history, and seed stale-lease recovery coverage; production-domain AI focused runs are 2/2; the owner-authenticated seeded eval is 120/120 = 100.0%, above the 80.0% target. |
+| 20 | Production URL live, owner login in prod (goal.md §1.9) | WORKING | `docs/initiation/evidence/2026-06-11-m13-http-checks-after-seed-job-and-plaid-fixes.txt`; `docs/initiation/evidence/2026-06-11-m13-vercel-deploy-after-seed-job-and-plaid-fixes.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-vercel-deploy.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-http-check.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-history-vercel-deploy.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-history-http-check.txt` | `https://openbooks.ansarullahanas.com` is live, owner login is evidenced, and the custom domain still serves the prototype landing copy/assets after the batch-history redeploy. |
 
 ## Run metadata (fill at start and end of the overnight run)
 
@@ -61,8 +61,8 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | Spec section | Deviation | Why | Restore plan |
 |---|---|---|---|
 | Product spec §4 / §6.8 | M10 ships a real Bedrock categorization action plus a report-backed deterministic chat, not full Vercel AI SDK streaming with Bedrock chat/tool calls. | The safe increment proves confirm-first actions, provider/degraded state, and ledger-safe routing; the Bedrock categorizer now produces structured proposals but chat remains deterministic/report-backed. | Add the AI SDK provider registry, streaming `useChat`, server-side read/action tools, and route chat tool calls through Bedrock before marking M10 fully complete. |
-| Product spec §4 | Bedrock batch categorization now exists for bounded imported needs-review rows, but it is not yet automatically scheduled after every Plaid/Stripe/CSV sync or exposed with persistent job status UI. | The safe increment proves queue draining without changing external sync semantics late in the acceptance run. | Trigger the batch action from import/sync completion, persist batch job status/retry metadata, and surface it in Settings/Inbox. |
-| Product spec §4 | Semantic memory now participates in the batch categorizer before the LLM stage, but the batch worker is bounded and manually/action-triggered rather than a continuous background queue. | This keeps the ledger/pipeline invariant testable: exact and semantic memory still route through pipeline mutations, while Bedrock calls stay in Convex actions. | Add scheduled/queued processing for all uncategorized import rows with retry/degraded handling and operator-visible job history. |
+| Product spec §4 | Bedrock batch categorization now exists for bounded imported needs-review rows with persistent Settings-visible run history, but it is not yet automatically scheduled after every Plaid/Stripe/CSV sync. | The safe increment proves queue draining and durable operator history without changing external sync semantics late in the acceptance run. | Trigger the batch action from import/sync completion, add retry metadata, and surface queue state in Settings/Inbox. |
+| Product spec §4 | Semantic memory now participates in the batch categorizer before the LLM stage, but the batch worker is bounded and manually/action-triggered rather than a continuous background queue. | This keeps the ledger/pipeline invariant testable: exact and semantic memory still route through pipeline mutations, while Bedrock calls stay in Convex actions. | Add scheduled/queued processing for all uncategorized import rows with retry/degraded handling. |
 | Goal §2 categorization eval | Historical: before the Settings eval runner, only the 5-row backend fixture accuracy was recorded. | CLI execution lacked the signed-in owner workspace context required by authorization. | Resolved with an owner-authenticated Settings eval runner; current production evidence records the seeded 120-row eval at 100.0%. |
 | Product spec §5.2 / M11 | Receipt extraction now attempts Bedrock vision OCR for PNG/JPEG/WebP uploads, but PDF OCR and live model-quality evidence remain partial. | The milestone explicitly allows degradation to upload + manual match; the app now tries Bedrock when safe and keeps the current manual review/match UI as fallback. | Add PDF/image conversion and authenticated live OCR quality evidence before marking receipt extraction fully complete. |
 | Product spec §5.2 / M11 | Receipt matching now persists receipt vectors after Bedrock image extraction, but candidate transaction vectors are still computed on demand and PDF OCR is not implemented. | This preserves the safe matching boundary: embeddings can only choose among same-entity, amount/date-plausible transactions and never post ledger rows. | Persist reusable transaction vectors, add PDF/image conversion, and capture authenticated live OCR+matching quality evidence before marking this fully complete. |
@@ -943,7 +943,7 @@ Verification:
 Remaining partials:
 
 - M10 chat remains report-backed/deterministic rather than full AI SDK streaming + Bedrock tool-call implementation; categorization now has a real Bedrock Runtime action for structured proposals.
-- Correction memory now has a vector-indexed semantic memory table, and bounded batch categorization can run imported needs-review rows through semantic memory before the LLM stage; automatic post-sync scheduling/job history remains open.
+- Correction memory now has a vector-indexed semantic memory table, and bounded batch categorization can run imported needs-review rows through semantic memory before the LLM stage; automatic post-sync scheduling remains open, while persistent batch history was resolved in the 12:42 CDT follow-up.
 - Live seeded >=100-row eval is now resolved by the owner-authenticated Settings runner: 120/120 = 100.0%.
 - Receipts now attempt Bedrock image OCR, embedding-assisted transaction matching, and persisted receipt vectors; PDF OCR remains open.
 - Stripe webhook registration is now complete for signed test-mode event receipt; payout E2E remains fixture-backed per sandbox-reality notes, and event-driven webhook sync jobs remain hardening work.
@@ -1303,7 +1303,7 @@ What changed:
 - Added `pipeline.applyProposalToExistingTransactionInternal`, which applies semantic-memory or LLM proposals to an existing transaction row without re-inserting a duplicate transaction.
 - Added `bedrockCategorizer.categorizePendingTransactions`, a bounded action that checks semantic memory first, then Bedrock LLM categorization, then applies the proposal through the pipeline mutation.
 - Kept degraded mode safe: if Bedrock env is absent/incomplete, the batch action leaves imported rows in review and records a degraded result instead of posting.
-- Updated M10/task-list status: pipeline stages 4-6 are now working as a backend capability; M10 remains PARTIAL because the AI SDK provider registry and full streaming/tool-call chat are still open, and automatic post-sync batch scheduling/job status is hardening work.
+- Updated M10/task-list status: pipeline stages 4-6 are now working as a backend capability; M10 remains PARTIAL because the AI SDK provider registry and full streaming/tool-call chat are still open, and automatic post-sync batch scheduling remains hardening work.
 
 Evidence:
 
@@ -1331,7 +1331,7 @@ PASS/PARTIAL table:
 | Semantic memory before LLM | PASS | Batch action checks vector semantic memory before invoking the Bedrock LLM stage. |
 | Ledger invariant | PASS | Batch auto-posting still goes through pipeline mutation and `ledger.postEntry`. |
 | Degraded mode | PASS | Missing AI env leaves rows in review and returns degraded batch results. |
-| Automatic sync trigger/job UI | PARTIAL | The backend action is deployed, but Plaid/Stripe/CSV sync completion does not yet enqueue it with persistent job history. |
+| Automatic sync trigger | PARTIAL | The backend action is deployed, but Plaid/Stripe/CSV sync completion does not yet enqueue it automatically. Persistent history was resolved in the later batch-history follow-up. |
 
 ### 2026-06-11 12:11 CDT — M10 Settings batch trigger
 
@@ -1363,7 +1363,7 @@ PASS/PARTIAL table:
 | Operator trigger | PASS | Settings AI now exposes the bounded batch categorizer. |
 | Verification | PASS | Full verify and focused AI e2e stayed green after the UI change. |
 | Production deploy | PASS | Vercel production redeployed and the custom domain returns HTTP 200. |
-| Persistent job history | PARTIAL | The trigger reports immediate counts, but does not yet persist batch job history/retry state. |
+| Persistent job history | PASS | Later resolved at 12:42 CDT with `aiBatchRuns` and a Settings latest-run readout. Retry metadata and automatic sync scheduling remain separate hardening work. |
 
 ### 2026-06-11 12:15 CDT — M9 Plaid sandbox token persistence
 
@@ -1402,3 +1402,53 @@ PASS/PARTIAL table:
 | Account linkage | PASS | Selected bank accounts store the Plaid item id for later sync. |
 | Production schema | PASS | `plaidItems` indexes are deployed in production Convex. |
 | Stored-token sync job | PARTIAL | The stored token is now available, but a scheduled/action sync path using it remains hardening work. |
+
+### 2026-06-11 12:42 CDT — M10 AI batch history + seed-job recovery
+
+What changed:
+
+- Added `aiBatchRuns`, a durable Convex table for Settings-triggered AI batch categorization runs.
+- `bedrockCategorizer.categorizePendingTransactions` now records a batch run after each bounded pass, including status (`completed`, `partial`, or `degraded`), checked/posted/review/skipped counts, and degraded/fallback counts.
+- Settings → AI now displays the latest batch run, so the owner can see whether the last operator-triggered drain completed, partially completed, or degraded.
+- Hardened Settings → Data after repeated browser evidence failures: the UI now reads the durable `demoSeedJobs` row to recover from a transient Convex action disconnect, and stale seed leases expire after 90 seconds instead of blocking reset retries for 10 minutes.
+- Kept the M10 status honest: persistent batch history is now working; automatic post-sync scheduling and full streaming/tool-call chat remain partial.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m10-batch-history-codegen.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-history-unit.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-history-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m10-seed-recovery-verify-retry1.txt`
+- `docs/initiation/evidence/2026-06-11-m10-seed-stale-lease-unit.txt`
+- `docs/initiation/evidence/2026-06-11-m10-seed-stale-lease-verify-retry1.txt`
+- `docs/initiation/evidence/2026-06-11-m10-seed-stale-lease-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-history-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-history-e2e-retry1.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-history-e2e-retry2-after-recovery.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-history-e2e-retry3-stale-lease.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-history-convex-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-history-vercel-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-history-http-check.txt`
+
+Verification:
+
+- `pnpm test:unit -- convex/ai.test.ts` green; current unit total is 13 files / 61 tests.
+- `pnpm test:unit -- convex/seedDemo.test.ts` green after declaring the long-running seed test timeout explicitly.
+- `pnpm verify` green: typecheck, lint, Next.js production build, and 13 unit files / 61 tests.
+- Initial focused AI e2e attempts failed before reaching AI assertions because the browser reset hit `Connection lost while action was in flight` and then joined a stale running seed job. This was resolved with Settings seed-job recovery plus the shorter stale lease.
+- Final focused `pnpm test:e2e -- tests/e2e/ai-chat.spec.ts` green: 2/2 passed after the stale-lease deployment to the dev Convex deployment.
+- `npx convex deploy --yes` green for production Convex and added `aiBatchRuns.by_entity`.
+- `vercel deploy --prod --yes` green: production deployment `dpl_GrKRLX1kqw54X7JCjW9vfaTEtgB3` ready.
+- `curl -I https://openbooks.ansarullahanas.com` returned HTTP 200.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Durable AI batch history | PASS | Each Settings-triggered batch run persists counts, status, requester, and summary in `aiBatchRuns`. |
+| Settings latest-run readout | PASS | Settings → AI shows the latest batch run without exposing provider secrets or raw model output. |
+| Degraded batch auditability | PASS | Missing AI env still leaves rows in review, returns degraded counts, and records a durable degraded run. |
+| Seed reset recovery | PASS | The Data panel now reads durable seed-job state and no longer strands the operator on a transient action-disconnect message. |
+| Stale seed lease behavior | PASS | Dead running seed jobs can be replaced after 90 seconds while active jobs continue to prove liveness by heartbeat. |
+| Automatic sync scheduling | PARTIAL | Plaid/Stripe/CSV completion still does not automatically enqueue the batch worker. |
+| Streaming/tool-call chat | PARTIAL | Chat remains report-backed/deterministic rather than full AI SDK streaming Bedrock tools. |

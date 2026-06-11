@@ -799,6 +799,8 @@ export const categorizePendingTransactions = action({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<{
+    batchRunId: Id<"aiBatchRuns"> | null;
+    batchStatus: "completed" | "partial" | "degraded" | null;
     attemptedCount: number;
     postedCount: number;
     needsReviewCount: number;
@@ -815,13 +817,25 @@ export const categorizePendingTransactions = action({
     for (const candidate of candidates) {
       results.push(await categorizeExistingCandidate(ctx, candidate));
     }
-    return {
+    const counts = {
       attemptedCount: results.length,
       postedCount: results.filter((result) => result.route.status === "posted").length,
       needsReviewCount: results.filter((result) => result.route.status === "needs_review").length,
       skippedCount: results.filter((result) => result.route.status === "skipped").length,
       degradedCount: results.filter((result) => result.mode === "degraded").length,
       fallbackCount: results.filter((result) => result.mode === "fallback").length,
+    };
+    const run: { batchRunId: Id<"aiBatchRuns">; status: "completed" | "partial" | "degraded" } = await ctx.runMutation(
+      internal.ai.recordCategorizationBatchRun,
+      {
+        entityId: args.entityId,
+        ...counts,
+      },
+    );
+    return {
+      batchRunId: run.batchRunId,
+      batchStatus: run.status,
+      ...counts,
       results,
     };
   },

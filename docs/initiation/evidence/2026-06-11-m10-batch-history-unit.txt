@@ -1,0 +1,13 @@
+
+> openbooks@0.0.0 test:unit /Users/ansarullahanas/Documents/OpenBooks
+> vitest run --passWithNoTests -- convex/ai.test.ts
+
+
+ RUN  v4.1.8 /Users/ansarullahanas/Documents/OpenBooks
+
+
+ Test Files  13 passed (13)
+      Tests  61 passed (61)
+   Start at  12:22:53
+   Duration  6.25s (transform 2.40s, setup 0ms, import 4.52s, tests 8.36s, environment 938ms)
+

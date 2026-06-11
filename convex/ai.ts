@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { action, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireWorkspaceRole } from "./authz";
 
 export const AI_AUTONOMY_THRESHOLDS = {
@@ -275,6 +275,74 @@ export const categorizationBatchCandidates = internalQuery({
         source: transaction.source,
         externalId: transaction.externalId,
       }));
+  },
+});
+
+export const recordCategorizationBatchRun = internalMutation({
+  args: {
+    entityId: v.id("entities"),
+    attemptedCount: v.number(),
+    postedCount: v.number(),
+    needsReviewCount: v.number(),
+    skippedCount: v.number(),
+    degradedCount: v.number(),
+    fallbackCount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireEntityAccess(ctx, args.entityId);
+    const status =
+      args.degradedCount > 0 && args.degradedCount === args.attemptedCount
+        ? "degraded" as const
+        : args.fallbackCount > 0 || args.degradedCount > 0
+          ? "partial" as const
+          : "completed" as const;
+    const summary = `${args.attemptedCount} checked. ${args.postedCount} posted, ${args.needsReviewCount} updated for review, ${args.skippedCount} skipped.`;
+    const batchRunId = await ctx.db.insert("aiBatchRuns", {
+      entityId: args.entityId,
+      requestedByUserId: userId,
+      status,
+      attemptedCount: args.attemptedCount,
+      postedCount: args.postedCount,
+      needsReviewCount: args.needsReviewCount,
+      skippedCount: args.skippedCount,
+      degradedCount: args.degradedCount,
+      fallbackCount: args.fallbackCount,
+      summary,
+      createdAt: Date.now(),
+    });
+    return { batchRunId, status, summary };
+  },
+});
+
+export const latestCategorizationBatchRuns = query({
+  args: {
+    entityId: v.id("entities"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new ConvexError("OpenBooks entity not found.");
+    }
+    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    const limit = Math.min(10, Math.max(1, Math.floor(args.limit ?? 3)));
+    const runs = await ctx.db
+      .query("aiBatchRuns")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .order("desc")
+      .take(limit);
+    return runs.map((run) => ({
+      id: run._id,
+      status: run.status,
+      attemptedCount: run.attemptedCount,
+      postedCount: run.postedCount,
+      needsReviewCount: run.needsReviewCount,
+      skippedCount: run.skippedCount,
+      degradedCount: run.degradedCount,
+      fallbackCount: run.fallbackCount,
+      summary: run.summary,
+      createdAt: run.createdAt,
+    }));
   },
 });
 

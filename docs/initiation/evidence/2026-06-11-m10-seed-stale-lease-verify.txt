@@ -1,0 +1,89 @@
+
+> openbooks@0.0.0 verify /Users/ansarullahanas/Documents/OpenBooks
+> pnpm typecheck && pnpm lint && pnpm build && pnpm test:unit
+
+
+> openbooks@0.0.0 typecheck /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web typecheck
+
+
+> @openbooks/web@0.1.0 typecheck /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> tsc --noEmit
+
+
+> openbooks@0.0.0 lint /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web lint
+
+
+> @openbooks/web@0.1.0 lint /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> eslint
+
+
+> openbooks@0.0.0 build /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web build
+
+
+> @openbooks/web@0.1.0 build /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> next build
+
+▲ Next.js 16.2.7 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.5s
+  Running TypeScript ...
+  Finished TypeScript in 4.4s ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/14) ...
+  Generating static pages using 7 workers (3/14) 
+  Generating static pages using 7 workers (6/14) 
+  Generating static pages using 7 workers (10/14) 
+✓ Generating static pages using 7 workers (14/14) in 421ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ● /[section]
+│ ├ /dashboard
+│ ├ /inbox
+│ ├ /transactions
+│ └ [+6 more paths]
+└ ○ /sign-in
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+> openbooks@0.0.0 test:unit /Users/ansarullahanas/Documents/OpenBooks
+> vitest run --passWithNoTests
+
+
+ RUN  v4.1.8 /Users/ansarullahanas/Documents/OpenBooks
+
+ ❯ convex/seedDemo.test.ts (2 tests | 1 failed) 7150ms
+     × seeds deterministic ledger-backed books and remains idempotent 5554ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  convex/seedDemo.test.ts > demo seed engine > seeds deterministic ledger-backed books and remains idempotent
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ convex/seedDemo.test.ts:46:3
+     44|
+     45| describe("demo seed engine", () => {
+     46|   it("seeds deterministic ledger-backed books and remains idempotent",…
+       |   ^
+     47|     const t = convexTest(schema, modules);
+     48|     const ids = await setupWorkspace(t);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 12 passed (13)
+      Tests  1 failed | 60 passed (61)
+   Start at  12:37:42
+   Duration  8.90s (transform 2.97s, setup 0ms, import 7.51s, tests 11.81s, environment 3.73s)
+
+ ELIFECYCLE  Command failed with exit code 1.
+ ELIFECYCLE  Command failed with exit code 1.

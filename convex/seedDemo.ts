@@ -7,7 +7,7 @@ import { requireAnyWorkspaceRole } from "./authz";
 
 const DEMO_SEED = "openbooks-demo-v1-2026-06-11";
 const DEMO_SEED_JOB_KIND = "demo" as const;
-const SEED_JOB_STALE_MS = 10 * 60 * 1000;
+const SEED_JOB_STALE_MS = 90 * 1000;
 const SEED_JOB_WAIT_MS = 10 * 60 * 1000;
 const months = [
   "2025-07",
@@ -742,6 +742,28 @@ export const getSeedJob = internalQuery({
         q.eq("workspaceId", args.workspaceId).eq("kind", DEMO_SEED_JOB_KIND),
       )
       .unique();
+  },
+});
+
+export const jobStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const { membership } = await requireAnyWorkspaceRole(ctx, "member");
+    const job = await ctx.db
+      .query("demoSeedJobs")
+      .withIndex("by_workspace_and_kind", (q) =>
+        q.eq("workspaceId", membership.workspaceId).eq("kind", DEMO_SEED_JOB_KIND),
+      )
+      .unique();
+    if (!job) return null;
+    return {
+      status: job.status,
+      message: job.message ?? null,
+      startedAt: job.startedAt,
+      heartbeatAt: job.heartbeatAt,
+      finishedAt: job.finishedAt ?? null,
+      result: job.result ?? null,
+    };
   },
 });
 

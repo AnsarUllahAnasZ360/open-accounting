@@ -108,6 +108,8 @@ const categorizePendingTransactions = makeFunctionReference<
   "action",
   { entityId: string; limit?: number },
   {
+    batchRunId: string | null;
+    batchStatus: "completed" | "partial" | "degraded" | null;
     attemptedCount: number;
     postedCount: number;
     needsReviewCount: number;
@@ -129,6 +131,23 @@ const categorizePendingTransactions = makeFunctionReference<
     }>;
   }
 >("bedrockCategorizer:categorizePendingTransactions");
+
+const latestCategorizationBatchRuns = makeFunctionReference<
+  "query",
+  { entityId: string; limit?: number },
+  Array<{
+    id: string;
+    status: "completed" | "partial" | "degraded";
+    attemptedCount: number;
+    postedCount: number;
+    needsReviewCount: number;
+    skippedCount: number;
+    degradedCount: number;
+    fallbackCount: number;
+    summary: string;
+    createdAt: number;
+  }>
+>("ai:latestCategorizationBatchRuns");
 
 async function setupAIBackend(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {
@@ -506,6 +525,7 @@ describe("M10 AI backend", () => {
     });
 
     expect(result).toMatchObject({
+      batchStatus: "degraded",
       attemptedCount: 1,
       postedCount: 0,
       needsReviewCount: 0,
@@ -519,6 +539,23 @@ describe("M10 AI backend", () => {
       proposalSource: null,
       route: { status: "skipped", transactionId, entryId: null },
     });
+    expect(result.batchRunId).toBeTruthy();
+    const runs = await session.query(latestCategorizationBatchRuns, {
+      entityId: ids.entityId,
+      limit: 5,
+    });
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      id: result.batchRunId,
+      status: "degraded",
+      attemptedCount: 1,
+      postedCount: 0,
+      needsReviewCount: 0,
+      skippedCount: 1,
+      degradedCount: 1,
+      fallbackCount: 0,
+    });
+    expect(runs[0].summary).toContain("1 checked");
     await t.run(async (ctx) => {
       const transaction = await ctx.db.get(transactionId);
       expect(transaction).toMatchObject({

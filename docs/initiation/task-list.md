@@ -317,8 +317,17 @@ M10 batch UI note, 2026-06-11: exposed the bounded batch action in Settings →
 AI as a compact operator trigger that reports checked/posted/review/skipped
 counts. This gives the owner a product-visible way to drain pending imported
 rows. Still open: AI SDK provider registry and streaming/full-page chat tool
-calls; automatic post-sync scheduling and persistent batch-job history remain
-hardening items.
+calls; automatic post-sync scheduling remains a hardening item. Persistent
+batch-job history was resolved in the later M10 batch-history note below.
+
+M10 batch-history note, 2026-06-11: added durable `aiBatchRuns` history for
+Settings-triggered batch categorization, including requested user, completion
+status, counts, degraded/fallback counts, and a latest-run Settings readout.
+The browser seed reset path also now recovers from transient Convex action
+disconnects by reading the durable seed job row, and stale seed leases expire
+after 90 seconds instead of blocking retries for 10 minutes. Still open: AI SDK
+provider registry, streaming/full-page chat tool calls, and automatic post-sync
+batch scheduling.
 
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules

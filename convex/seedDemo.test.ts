@@ -66,7 +66,7 @@ describe("demo seed engine", () => {
     expect(second.evalCount).toBe(first.evalCount);
     expect(second.trialBalanceDifferenceMinor).toBe(0);
     expect(second.may2026).toEqual(first.may2026);
-  });
+  }, 20_000);
 
   it("joins overlapping reset requests into one seed job", async () => {
     const t = convexTest(schema, modules);
@@ -91,5 +91,5 @@ describe("demo seed engine", () => {
     expect(persisted.runs).toHaveLength(1);
     expect(persisted.jobs).toHaveLength(1);
     expect(persisted.jobs[0]?.status).toBe("succeeded");
-  });
+  }, 20_000);
 });

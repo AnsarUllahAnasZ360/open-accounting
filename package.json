@@ -14,6 +14,7 @@
     "test:e2e": "playwright test",
     "seed:demo": "node scripts/seed-demo.mjs",
     "receipts:fixtures": "node scripts/generate-receipt-fixtures.mjs",
+    "stripe:webhook:register": "node scripts/register-stripe-webhook.mjs",
     "preflight": "node scripts/preflight.mjs",
     "verify": "pnpm typecheck && pnpm lint && pnpm build && pnpm test:unit",
     "convex:dev": "convex dev",

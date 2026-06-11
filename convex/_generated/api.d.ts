@@ -28,6 +28,7 @@ import type * as seedDemo from "../seedDemo.js";
 import type * as semanticMemory from "../semanticMemory.js";
 import type * as session from "../session.js";
 import type * as stripe from "../stripe.js";
+import type * as stripeWebhook from "../stripeWebhook.js";
 
 import type {
   ApiFromModules,
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   semanticMemory: typeof semanticMemory;
   session: typeof session;
   stripe: typeof stripe;
+  stripeWebhook: typeof stripeWebhook;
 }>;
 
 /**

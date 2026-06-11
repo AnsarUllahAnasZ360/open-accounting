@@ -381,6 +381,18 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_entity", ["entityId"]),
+  stripeWebhookEvents: defineTable({
+    stripeEventId: v.string(),
+    type: v.string(),
+    objectId: v.optional(v.string()),
+    livemode: v.boolean(),
+    apiVersion: v.optional(v.string()),
+    status: v.union(v.literal("received"), v.literal("ignored"), v.literal("duplicate")),
+    summary: v.string(),
+    receivedAt: v.number(),
+  })
+    .index("by_event_id", ["stripeEventId"])
+    .index("by_received_at", ["receivedAt"]),
   demoSeedRuns: defineTable({
     entityId: v.id("entities"),
     seed: v.string(),

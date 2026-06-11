@@ -1,0 +1,13 @@
+Unsigned delivery should be rejected
+HTTP/2 400 
+date: Thu, 11 Jun 2026 16:44:23 GMT
+content-type: application/json
+content-length: 40
+convex-usher: usher
+via: 1.1 Caddy
+cf-cache-status: DYNAMIC
+server: cloudflare
+cf-ray: a0a214858b65978c-DFW
+alt-svc: h3=":443"; ma=86400
+
+{"ok":false,"error":"invalid_signature"}

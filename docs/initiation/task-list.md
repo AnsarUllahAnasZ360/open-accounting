@@ -344,9 +344,9 @@ Evidence: inbox receipt-card screenshot.
 M12 integration note, 2026-06-11: shipped production deploy with custom-domain
 HTTP 200, Convex prod env synced, production auth signing keys generated, live
 owner login verified, Acme demo seeded in prod, and request-access verified on
-the custom domain. Stripe webhook registration is not applicable in the current
-code path because no Stripe webhook HTTP route exists yet; the Stripe slice
-still uses manual sync/fixtures as recorded in M8/M13 deviations.
+the custom domain. Stripe webhook registration was later completed with a
+production Convex HTTP route, signed test-mode event receipt, and unsigned-request
+rejection evidence; event-driven sync jobs still remain hardening work.
 
 Done when: live URL serves the app over the custom domain; owner can log in;
 demo entity renders; no secrets in client bundles (spot-check page source).
@@ -376,7 +376,7 @@ follow-up added one Playwright acceptance check, making local/dev
 attribution follow-up moved the user/rule/AI audit matrix to WORKING with
 dedicated local and production evidence. The completion report still records
 product-level partials such as full Bedrock AI/chat depth, receipt PDF OCR, and
-Stripe webhook registration.
+event-driven Stripe webhook sync jobs.
 
 Done when: every acceptance row has a status and evidence; the outcome in
 goal.md §1 is satisfied per the verification surface in goal.md §2, or

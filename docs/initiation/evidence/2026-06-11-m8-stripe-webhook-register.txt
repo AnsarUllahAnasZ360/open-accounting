@@ -1,0 +1,28 @@
+
+> openbooks@0.0.0 stripe:webhook:register /Users/ansarullahanas/Documents/OpenBooks
+> node scripts/register-stripe-webhook.mjs
+
+{
+  "ok": true,
+  "created": true,
+  "endpointId": "we_1ThBiEGzLxUQ7bIMuLjlVGcv",
+  "endpointUrl": "https://perceptive-guanaco-487.convex.site/stripe/webhook",
+  "enabledEvents": [
+    "payment_intent.succeeded",
+    "invoice.finalized",
+    "invoice.paid",
+    "payout.paid",
+    "payout.failed"
+  ],
+  "convexProdSecretSet": true,
+  "signedDeliveryStatus": 200,
+  "signedDeliveryBody": {
+    "ok": true,
+    "status": "received",
+    "event": {
+      "id": "evt_openbooks_evidence_1781196255656",
+      "type": "payment_intent.succeeded",
+      "livemode": false
+    }
+  }
+}

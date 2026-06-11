@@ -365,10 +365,12 @@ Evidence: live URL screenshots incl. mobile.
 M13 integration note, 2026-06-11: `pnpm verify` is green, production is live,
 and the acceptance table is filled. The seed-reset blocker was resolved with a
 workspace-scoped seed job lock plus a production-safe reset harness. Final
-local/dev `pnpm test:e2e` is 15/15 and final production-domain
-`pnpm test:e2e` is 15/15. The completion report still records product-level
-partials such as full Bedrock AI/chat depth, receipt embedding matching,
-and Stripe webhook registration.
+local/dev `pnpm test:e2e` was 15/15 and final production-domain
+`pnpm test:e2e` was 15/15 at M13 closure. A later mobile-chat evidence
+follow-up added one Playwright acceptance check, making local/dev
+`pnpm test:e2e` 16/16 and production-domain AI chat 2/2. The completion report
+still records product-level partials such as full Bedrock AI/chat depth,
+receipt PDF OCR, and Stripe webhook registration.
 
 Done when: every acceptance row has a status and evidence; the outcome in
 goal.md §1 is satisfied per the verification surface in goal.md §2, or

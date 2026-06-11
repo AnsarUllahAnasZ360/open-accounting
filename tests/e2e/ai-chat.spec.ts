@@ -97,3 +97,28 @@ test("M10 AI chat answers read questions and keeps actions confirm-first", async
   await page.goto("/settings");
   await expect(page.getByText("AI confirmed: Uber")).toBeVisible({ timeout: 15000 });
 });
+
+test("M10 mobile chat drawer answers a ledger-backed question", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await signInOwner(page);
+  await page.goto("/reports");
+  await expect(page.getByTestId("reports-screen")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled({ timeout: 15000 });
+  await page.getByRole("button", { name: "Explain report" }).click();
+  const chatDrawer = page.getByTestId("m10-ai-chat-drawer");
+  await expect(chatDrawer).toBeVisible();
+  await expect(chatDrawer.getByText(/Degraded mode|Bedrock active/)).toBeVisible();
+  await expect(chatDrawer.getByText("Explain this report")).toBeVisible({ timeout: 15000 });
+
+  await chatDrawer.getByPlaceholder("Ask about your books").fill("Who owes me money right now?");
+  await chatDrawer.getByRole("button", { name: "Send question" }).click();
+  await expect(chatDrawer.getByText("Customers who owe you money").first()).toBeVisible({ timeout: 15000 });
+  await expect(chatDrawer.getByTestId("ai-answer-table").locator("tbody tr").first()).toBeVisible();
+
+  await page.screenshot({
+    path: "docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile.png",
+    fullPage: true,
+  });
+});

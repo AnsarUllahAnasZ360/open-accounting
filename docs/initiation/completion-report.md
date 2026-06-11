@@ -29,10 +29,10 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 13 | Stripe test sync + payout drill-down + invoice via Stripe | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-object-ids.json` | Stripe spec passed in the final production run; payout reconciliation remains fixture-backed per sandbox-reality notes and webhook registration remains a product deviation. |
 | 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png`; `docs/initiation/evidence/2026-06-11-m10-semantic-memory-focused-e2e.txt` | Report-backed chat, confirmed Uber rule, Bedrock categorizer, and vector-backed semantic correction memory pass. Full streaming/tool-call chat and live five-question semantic verification remain partial. |
 | 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-e2e.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Image uploads attempt Bedrock vision OCR, deterministic matching, and embedding-assisted transaction matching as a bounded tie-breaker, then fall back to manual match. PDF OCR remains an allowed degradation. |
-| 16 | Mobile usability (4 core surfaces) | PARTIAL | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-mobile.png`; `docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png` | Dashboard mobile evidenced; Inbox/Transactions are covered in core responsive spec. Chat mobile still needs a dedicated screenshot. |
+| 16 | Mobile usability (4 core surfaces) | WORKING | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-mobile.png`; `docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile.png`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-production-e2e.txt` | Dashboard, Inbox/Transactions responsive coverage, and mobile chat drawer evidence are present, including a production-domain mobile chat run. |
 | 17 | Audit log attribution (user/rule/AI) | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png` | User/rule ledger history and confirmed AI rule evidence are present. Full audit attribution matrix remains partial. |
 | 18 | Honesty check — this table complete with evidence (acceptance #18) | WORKING | `docs/initiation/completion-report.md` | This table separates working, partial, and blocked rows and names next steps. |
-| 19 | `pnpm verify` + `pnpm test:e2e` green; eval accuracy reported (goal.md §2; ≥80% is a target, not a blocker) | WORKING | `docs/initiation/evidence/2026-06-11-m13-verify-after-production-reset-harness.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-local-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-categorization-eval.json` | `pnpm verify` is green, local/dev e2e is 15/15, production-domain e2e is 15/15, and fixture eval is reported at 100.0%. |
+| 19 | `pnpm verify` + `pnpm test:e2e` green; eval accuracy reported (goal.md §2; ≥80% is a target, not a blocker) | WORKING | `docs/initiation/evidence/2026-06-11-m13-verify-after-production-reset-harness.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-local-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m13-mobile-chat-verify.txt`; `docs/initiation/evidence/2026-06-11-m13-mobile-chat-full-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-production-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-categorization-eval.json` | `pnpm verify` is green, local/dev e2e is 16/16 after adding mobile chat coverage, production-domain e2e was 15/15 before the added local mobile test, the production-domain AI chat focused run is 2/2, and fixture eval is reported at 100.0%. |
 | 20 | Production URL live, owner login in prod (goal.md §1.9) | WORKING | `docs/initiation/evidence/2026-06-11-m13-http-checks-after-seed-job-and-plaid-fixes.txt`; `docs/initiation/evidence/2026-06-11-m13-vercel-deploy-after-seed-job-and-plaid-fixes.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt` | `https://openbooks.ansarullahanas.com` is live and owner login is evidenced. |
 
 ## Run metadata (fill at start and end of the overnight run)
@@ -54,7 +54,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 2026-06-11 06:52 CDT | Live seeded categorization eval cannot be run through `npx convex run` because the eval/status functions correctly require a signed-in workspace role. | M10 live eval | Add a safe owner-authenticated eval UI/action or an admin-only eval runner that derives the owner workspace without exposing secrets. | Recorded fixture/backend eval and saved the failed auth probe in evidence; continued with browser-verified chat and pipeline tests. |
 | 2026-06-11 07:31 CDT | First M12 production login failed because Convex Auth prod env was missing `JWT_PRIVATE_KEY`/`JWKS`. | M12 owner login | Generate Convex Auth signing keys for the production deployment. | Resolved at 2026-06-11 07:33 CDT; keys were generated in memory and set in Convex prod with evidence showing names/status only. |
 | 2026-06-11 07:34 CDT | Production dashboard crashed on first login because report queries threw when the owner workspace existed before an entity was seeded. | M12 owner login + prod seed | Make report queries return a zeroed first-run report pack when no entity exists yet. | Resolved at 2026-06-11 07:39 CDT; first-run fallback deployed to Convex/Vercel and prod seed completed. |
-| 2026-06-11 08:35 CDT | Browser-triggered demo reset was not safe to run repeatedly while a previous seed action was still routing hundreds of transactions. Convex logs showed `resetDemoEntity` OCC conflicts against `pipeline:routeTransaction`; after three attempts, full M13 e2e remained red. | M13 acceptance gate; affected core, Plaid, and chat when demo entity context was unsettled. | Add a durable seed job lock/chunked background workflow: acquire lock, clear seeded entity in bounded chunks, route transactions as one job, expose job status, and have tests wait for status instead of stacking resets. | Resolved at 2026-06-11 09:22 CDT with a workspace-scoped seed job lock, production-safe reset harness, Plaid recent-import query hardening, and final local/prod e2e 15/15. |
+| 2026-06-11 08:35 CDT | Browser-triggered demo reset was not safe to run repeatedly while a previous seed action was still routing hundreds of transactions. Convex logs showed `resetDemoEntity` OCC conflicts against `pipeline:routeTransaction`; after three attempts, full M13 e2e remained red. | M13 acceptance gate; affected core, Plaid, and chat when demo entity context was unsettled. | Add a durable seed job lock/chunked background workflow: acquire lock, clear seeded entity in bounded chunks, route transactions as one job, expose job status, and have tests wait for status instead of stacking resets. | Resolved at 2026-06-11 09:22 CDT with a workspace-scoped seed job lock, production-safe reset harness, Plaid recent-import query hardening, and final local/prod e2e green; local is now 16/16 after the mobile chat evidence test was added. |
 
 ## Deviations from product spec (append as made)
 
@@ -67,7 +67,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | Product spec §5.2 / M11 | Receipt extraction now attempts Bedrock vision OCR for PNG/JPEG/WebP uploads, but PDF OCR and live model-quality evidence remain partial. | The milestone explicitly allows degradation to upload + manual match; the app now tries Bedrock when safe and keeps the current manual review/match UI as fallback. | Add PDF/image conversion and authenticated live OCR quality evidence before marking receipt extraction fully complete. |
 | Product spec §5.2 / M11 | Receipt matching now includes embedding-assisted tie-breaking across hard-gated candidate transactions, but does not persist reusable receipt vectors yet. | This avoids unsafe receipt attachment: embeddings can only choose among same-entity, amount/date-plausible transactions and never post ledger rows. | Persist reusable receipt/transaction vectors and add live OCR+matching quality evidence before marking this fully complete. |
 | Product spec §5.1 / M12 | No Stripe webhook was registered against the production `.convex.site` URL. | The current codebase exposes Convex Auth HTTP routes only; the Stripe slice uses manual sync and fixture-backed payout evidence. | Add a Stripe webhook HTTP action, signature verification, and webhook registration before marking webhooks complete. |
-| Goal §2 / M13 | Historical: full `pnpm test:e2e` was not green at the first M13 handoff. | Repeated browser demo resets conflicted with long-running seed actions and left report/entity context temporarily unsettled. | Resolved with seed job locking and a clean-reset harness; final local/prod e2e are 15/15. |
+| Goal §2 / M13 | Historical: full `pnpm test:e2e` was not green at the first M13 handoff. | Repeated browser demo resets conflicted with long-running seed actions and left report/entity context temporarily unsettled. | Resolved with seed job locking and a clean-reset harness; final local/prod e2e were 15/15 at M13 closure, and local e2e is now 16/16 after adding dedicated mobile chat coverage. |
 
 ---
 
@@ -935,8 +935,8 @@ Evidence:
 Verification:
 
 - `pnpm verify` green: typecheck, lint, Next.js production build, 12 unit files / 42 tests.
-- Local/dev `pnpm test:e2e` green: 15/15 passed.
-- Production-domain `PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm test:e2e` green: 15/15 passed.
+- Local/dev `pnpm test:e2e` green at M13 closure: 15/15 passed; after the mobile chat evidence follow-up, local/dev `pnpm test:e2e` is 16/16.
+- Production-domain `PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm test:e2e` green at M13 closure: 15/15 passed; the production-domain AI chat focused run is now 2/2 with mobile chat included.
 - Convex prod deploy succeeded and added `demoSeedJobs.by_workspace_and_kind`.
 - Vercel prod deploy succeeded: `https://openbooks-1qo1mdx2e-ansar-ullah-anas-projects.vercel.app`, aliased to `https://openbooks-flax.vercel.app`; custom domain HTTP 200.
 
@@ -1139,3 +1139,26 @@ Verification:
 - Vercel production deploy succeeded: `https://openbooks-gw64pif3i-ansar-ullah-anas-projects.vercel.app`, aliased to `https://openbooks-flax.vercel.app`.
 - `https://openbooks.ansarullahanas.com` returned HTTP 200.
 - `PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm test:e2e -- tests/e2e/ai-chat.spec.ts` green: 1/1 passed.
+
+### 2026-06-11 10:31 CDT — M13 mobile chat evidence follow-up
+
+What changed:
+
+- Added a dedicated mobile Playwright acceptance check for the Ask AI drawer at a 390px viewport.
+- The test opens the Reports screen on mobile, launches the contextual chat drawer with "Explain report", asks "Who owes me money right now?", and verifies the AR-aging-backed answer table renders.
+- Captured a dedicated mobile chat screenshot and updated acceptance row 16 from PARTIAL to WORKING.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile.png`
+- `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-production-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m13-mobile-chat-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m13-mobile-chat-full-e2e.txt`
+
+Verification:
+
+- `pnpm test:e2e -- tests/e2e/ai-chat.spec.ts` green: 2/2 passed.
+- `pnpm verify` green: typecheck, lint, production build, and 12 unit files / 52 tests.
+- `pnpm test:e2e` green: 16/16 passed locally after adding the mobile chat spec.
+- `PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm test:e2e -- tests/e2e/ai-chat.spec.ts -g "M10 mobile chat drawer"` green: 2/2 passed on the production custom domain.

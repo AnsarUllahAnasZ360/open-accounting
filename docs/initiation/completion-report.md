@@ -665,3 +665,25 @@ other machine — values are distributed per access-and-questions.md §3.
 - Added acceptance.md (18-point walkthrough) and this report structure.
 - Copied the four Fable docs to `docs/product/01–04` as canonical references;
   marked `docs/product/bootstrap-scope.md` superseded.
+
+### 2026-06-11 06:34 CDT — M1 landing prototype correction
+
+What changed:
+
+- Restored the landing page's final CTA/footer shape to match the `OpenBook - Prototype/Landing.dc.html` content flow instead of the custom two-column remix.
+- Kept the required invite-only request-access intake, but moved it into a contained block below the prototype CTA so the prototype content stays intact.
+- Aligned visible license copy with the repo contract (`AGPL-3.0-only`) while preserving the prototype's landing content and section order.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-landing-prototype-correction-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-landing-prototype-correction-verify.txt`
+
+Verification:
+
+- `pnpm test:e2e -- tests/e2e/landing.spec.ts` green: 2 passing tests.
+- `pnpm verify` red for unrelated M10 AI WIP already present in the tree: missing Convex module `ai`, `pipeline.routeTransaction` not yet accepting `aiProposal`, and memory routing expectations not implemented. Typecheck, lint, and production build all passed before the Vitest AI failures.
+
+Next:
+
+- Keep the landing patch scoped; resume M10 integration separately and bring `pnpm verify` back to green there.

@@ -1,0 +1,170 @@
+
+> openbooks@0.0.0 verify /Users/ansarullahanas/Documents/OpenBooks
+> pnpm typecheck && pnpm lint && pnpm build && pnpm test:unit
+
+
+> openbooks@0.0.0 typecheck /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web typecheck
+
+
+> @openbooks/web@0.1.0 typecheck /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> tsc --noEmit
+
+
+> openbooks@0.0.0 lint /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web lint
+
+
+> @openbooks/web@0.1.0 lint /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> eslint
+
+
+> openbooks@0.0.0 build /Users/ansarullahanas/Documents/OpenBooks
+> pnpm --filter @openbooks/web build
+
+
+> @openbooks/web@0.1.0 build /Users/ansarullahanas/Documents/OpenBooks/apps/web
+> next build
+
+▲ Next.js 16.2.7 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 1323ms
+  Running TypeScript ...
+  Finished TypeScript in 2.7s ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/14) ...
+  Generating static pages using 7 workers (3/14) 
+  Generating static pages using 7 workers (6/14) 
+  Generating static pages using 7 workers (10/14) 
+✓ Generating static pages using 7 workers (14/14) in 232ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ● /[section]
+│ ├ /dashboard
+│ ├ /inbox
+│ ├ /transactions
+│ └ [+6 more paths]
+└ ○ /sign-in
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+
+> openbooks@0.0.0 test:unit /Users/ansarullahanas/Documents/OpenBooks
+> vitest run --passWithNoTests
+
+
+ RUN  v4.1.8 /Users/ansarullahanas/Documents/OpenBooks
+
+ ❯ convex/ai.test.ts (5 tests | 5 failed) 54ms
+     × reports degraded provider status when Bedrock env is absent 6ms
+     × reports Bedrock as active provider when required env names are present 1ms
+     × keeps suggest-mode AI proposals in the Inbox without journal lines 13ms
+     × auto-posts autopilot AI proposals only through balanced journal entries 5ms
+     × turns repeated human corrections into memory and an inactive AI-drafted rule 28ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  convex/ai.test.ts > M10 AI backend > reports degraded provider status when Bedrock env is absent
+Error: Could not find module for: "ai"
+ ❯ node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1288:19
+ ❯ resolveFunction node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1912:76
+ ❯ Object.queryFromPath node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1622:40
+ ❯ query node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1705:41
+ ❯ node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1486:80
+ ❯ Object.result.<computed> [as query] node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1486:56
+ ❯ convex/ai.test.ts:138:34
+    136|     const session = authed(t, ids.userId);
+    137|
+    138|     const status = await session.query(providerStatus, { workspaceId: …
+       |                                  ^
+    139|
+    140|     expect(status).toMatchObject({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  convex/ai.test.ts > M10 AI backend > reports Bedrock as active provider when required env names are present
+Error: Could not find module for: "ai"
+ ❯ node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1288:19
+ ❯ resolveFunction node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1912:76
+ ❯ Object.queryFromPath node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1622:40
+ ❯ query node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1705:41
+ ❯ node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1486:80
+ ❯ Object.result.<computed> [as query] node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1486:56
+ ❯ convex/ai.test.ts:161:34
+    159|     const session = authed(t, ids.userId);
+    160|
+    161|     const status = await session.query(providerStatus, { workspaceId: …
+       |                                  ^
+    162|
+    163|     expect(status).toMatchObject({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  convex/ai.test.ts > M10 AI backend > keeps suggest-mode AI proposals in the Inbox without journal lines
+Error: Validator error: Unexpected field `aiProposal` in object
+ ❯ validateValidator node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:871:27
+ ❯ Object.mutationFromPath node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1667:17
+ ❯ mutation node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1714:20
+ ❯ convex/ai.test.ts:188:20
+    186|     const session = authed(t, ids.userId);
+    187|
+    188|     const result = await session.mutation(api.pipeline.routeTransactio…
+       |                    ^
+    189|       entityId: ids.entityId,
+    190|       bankAccountId: ids.bankAccountId,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  convex/ai.test.ts > M10 AI backend > auto-posts autopilot AI proposals only through balanced journal entries
+Error: Validator error: Unexpected field `aiProposal` in object
+ ❯ validateValidator node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:871:27
+ ❯ Object.mutationFromPath node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1667:17
+ ❯ mutation node_modules/.pnpm/convex-test@0.0.53_convex@1.40.0_react@19.2.4_/node_modules/convex-test/dist/index.js:1714:20
+ ❯ convex/ai.test.ts:231:20
+    229|     const session = authed(t, ids.userId);
+    230|
+    231|     const result = await session.mutation(api.pipeline.routeTransactio…
+       |                    ^
+    232|       entityId: ids.entityId,
+    233|       bankAccountId: ids.bankAccountId,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  convex/ai.test.ts > M10 AI backend > turns repeated human corrections into memory and an inactive AI-drafted rule
+AssertionError: expected { entryId: null, …(3) } to match object { status: 'posted', stage: 'memory' }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "stage": "memory",
+-   "status": "posted",
++   "stage": "needs_review",
++   "status": "needs_review",
+  }
+
+ ❯ convex/ai.test.ts:303:26
+    301|     });
+    302|
+    303|     expect(memoryRouted).toMatchObject({ status: "posted", stage: "mem…
+       |                          ^
+    304|     await t.run(async (ctx) => {
+    305|       const memories = await ctx.db
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed | 10 passed (11)
+      Tests  5 failed | 33 passed (38)
+   Start at  06:33:57
+   Duration  4.06s (transform 917ms, setup 0ms, import 2.15s, tests 6.05s, environment 590ms)
+
+ ELIFECYCLE  Command failed with exit code 1.
+ ELIFECYCLE  Command failed with exit code 1.

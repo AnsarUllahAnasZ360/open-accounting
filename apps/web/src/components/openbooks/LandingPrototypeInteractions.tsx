@@ -50,7 +50,7 @@ const faqs = [
   {
     question: "Is it really free? What's the catch?",
     answer:
-      "The software is free and MIT-licensed, forever. Your only costs are the keys you bring: AI usage (typically a few dollars a month for categorization) and Plaid if you outgrow its free tier — CSV import always works without it. There's no hosted tier to upsell you to yet, and the anti-scope list in the README rules out ads and payment-processing funnels permanently.",
+      "The software is free and AGPL-licensed, forever. Your only costs are the keys you bring: AI usage (typically a few dollars a month for categorization) and Plaid if you outgrow its free tier — CSV import always works without it. There's no hosted tier to upsell you to yet, and the anti-scope list in the README rules out ads and payment-processing funnels permanently.",
   },
   {
     question: "What do I need to run it?",
@@ -65,7 +65,7 @@ const faqs = [
   {
     question: "What happens if the project dies?",
     answer:
-      "Nothing happens to your books. They live in your own database, with full CSV, JSON and general-ledger export at all times — that's a hard product principle, learned from watching hosted bookkeeping services shut down overnight. The code is MIT-licensed, so anyone can fork it and keep it alive.",
+      "Nothing happens to your books. They live in your own database, with full CSV, JSON and general-ledger export at all times — that's a hard product principle, learned from watching hosted bookkeeping services shut down overnight. The code is AGPL, so anyone can keep it alive.",
   },
 ] as const;
 

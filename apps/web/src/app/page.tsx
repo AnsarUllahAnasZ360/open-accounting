@@ -2,13 +2,11 @@
 import Link from "next/link";
 import {
   AlertTriangle,
-  ArrowRight,
   Building2,
   Heart,
   Inbox,
   LineChart,
   Mail,
-  PanelRight,
   UsersRound,
 } from "lucide-react";
 
@@ -75,7 +73,7 @@ const compareRows = [
   ["Bank sync", "BYO Plaid", "yes", "yes", "no"],
   ["AI categorization + inbox", "BYO model", "yes", "yes", "no"],
   ["Stripe payout reconciliation", "yes", "partial", "yes", "no"],
-  ["Open source", "MIT", "no", "no", "AGPL"],
+  ["Open source", "AGPL", "no", "no", "AGPL"],
   ["Self-hosted, you own the data", "yes", "no", "no", "yes"],
   ["Price per month", "$0", "$38–275", "$0–200", "$0"],
 ];
@@ -200,7 +198,7 @@ export default function Home() {
             <span className="money-figures font-semibold text-foreground">15 min</span> to first dashboard
           </span>
           <span>
-            <span className="money-figures font-semibold text-foreground">MIT</span> licensed
+            <span className="money-figures font-semibold text-foreground">AGPL</span> licensed
           </span>
         </div>
 
@@ -431,8 +429,8 @@ export default function Home() {
                   "Your books live on your machine as data you can always export. No vendor can shut down overnight and take your records with it.",
                 ],
                 [
-                  "Open source, MIT licensed",
-                  "The ledger engine is public, auditable, and free to use anywhere — even inside your own products. No ads, no upsells, no payments funnel disguised as bookkeeping software.",
+                  "Open source, AGPL-3.0",
+                  "The ledger engine is public and auditable. No ads, no upsells, no payments funnel disguised as bookkeeping software.",
                 ],
               ].map(([title, body]) => (
                 <div key={title} className="flex gap-3.5">
@@ -511,28 +509,22 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="request-access" className="mx-auto grid max-w-[1080px] gap-8 px-4 py-20 lg:grid-cols-[1fr_380px] lg:px-6">
-        <div className="text-center lg:text-left">
-          <h2 className="text-[34px] font-semibold tracking-normal">
-            Connect your accounts. Answer a few questions a week.
-          </h2>
-          <p className="mt-3 text-base text-muted-foreground">Your books are always done — and they're yours.</p>
-          <div className="mt-7 flex flex-col gap-2 sm:flex-row lg:justify-start">
-            <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]">
-              <Link href="/dashboard">
-                Try the live demo
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-            <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]" variant="outline">
-              <a href="#mobile">
-                See it on mobile
-                <PanelRight className="size-4" />
-              </a>
-            </Button>
-          </div>
+      <section className="mx-auto max-w-[1080px] px-4 py-20 text-center lg:px-6">
+        <h2 className="text-[34px] font-semibold tracking-normal">
+          Connect your accounts. Answer a few questions a week.
+        </h2>
+        <p className="mt-3 text-base text-muted-foreground">Your books are always done — and they're yours.</p>
+        <div className="mt-7 flex flex-col justify-center gap-2 sm:flex-row">
+          <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]">
+            <Link href="/dashboard">Try the live demo</Link>
+          </Button>
+          <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]" variant="outline">
+            <a href="#mobile">See it on mobile</a>
+          </Button>
         </div>
-        <RequestAccessForm />
+        <div id="request-access" className="mx-auto mt-10 max-w-[420px] text-left">
+          <RequestAccessForm />
+        </div>
       </section>
 
       <footer className="mx-auto flex max-w-[1080px] flex-wrap items-center justify-center gap-4 border-t px-4 py-8 text-[12.5px] text-muted-foreground lg:px-6">
@@ -543,7 +535,7 @@ export default function Home() {
           open books
         </span>
         <span>·</span>
-        <span>MIT licensed</span>
+        <span>AGPL-3.0</span>
         <span>·</span>
         <a className="hover:text-foreground" href="https://github.com/AnsarUllahAnasZ360/open-accounting" rel="noreferrer" target="_blank">
           GitHub

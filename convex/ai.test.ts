@@ -65,6 +65,71 @@ const categorizeAndRouteTransaction = makeFunctionReference<
   }
 >("bedrockCategorizer:categorizeAndRouteTransaction");
 
+const categorizationBatchCandidates = makeFunctionReference<
+  "query",
+  { entityId: string; limit?: number },
+  Array<{
+    transactionId: string;
+    entityId: string;
+    bankAccountId: string;
+    merchant: string;
+    rawDescription: string;
+    externalId: string;
+  }>
+>("ai:categorizationBatchCandidates");
+
+const applyProposalToExistingTransactionInternal = makeFunctionReference<
+  "mutation",
+  {
+    transactionId: string;
+    aiProposal?: {
+      categoryAccountId: string;
+      confidence: number;
+      reasoning: string;
+      needsHuman: boolean;
+      question?: string;
+    };
+    semanticMemoryProposal?: {
+      categoryAccountId: string;
+      confidence: number;
+      reasoning: string;
+    };
+  },
+  {
+    status: "posted" | "needs_review" | "skipped";
+    transactionId: string;
+    entryId: string | null;
+    stage: string;
+    reason?: string;
+  }
+>("pipeline:applyProposalToExistingTransactionInternal");
+
+const categorizePendingTransactions = makeFunctionReference<
+  "action",
+  { entityId: string; limit?: number },
+  {
+    attemptedCount: number;
+    postedCount: number;
+    needsReviewCount: number;
+    skippedCount: number;
+    degradedCount: number;
+    fallbackCount: number;
+    results: Array<{
+      transactionId: string;
+      mode: "bedrock" | "degraded" | "fallback";
+      proposalSource: "semantic_memory" | "llm" | null;
+      fallbackReason: string | null;
+      route: {
+        status: "posted" | "needs_review" | "skipped";
+        transactionId: string;
+        entryId: string | null;
+        stage: string;
+        reason?: string;
+      };
+    }>;
+  }
+>("bedrockCategorizer:categorizePendingTransactions");
+
 async function setupAIBackend(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {
     const now = Date.now();
@@ -151,6 +216,53 @@ async function setupAIBackend(t: ReturnType<typeof convexTest>) {
       softwareAccountId,
       mealsAccountId,
     };
+  });
+}
+
+async function insertImportedNeedsReviewTransaction(
+  t: ReturnType<typeof convexTest>,
+  ids: {
+    entityId: Id<"entities">;
+    bankAccountId: Id<"bankAccounts">;
+  },
+  overrides: Partial<{
+    merchant: string;
+    rawDescription: string;
+    amountMinor: number;
+    externalId: string;
+    review: "auto" | "confirmed" | "needs_review" | "excluded";
+    decidedBy: "needs_review" | "plaid_prior" | "ai" | "rule";
+  }> = {},
+) {
+  return await t.run(async (ctx) => {
+    const now = Date.now();
+    const transactionId = await ctx.db.insert("transactions", {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      date: "2026-05-14",
+      amountMinor: overrides.amountMinor ?? -9900,
+      currency: "USD",
+      merchant: overrides.merchant ?? "Figma",
+      rawDescription: overrides.rawDescription ?? "Figma monthly subscription",
+      status: "posted",
+      review: overrides.review ?? "needs_review",
+      source: "bank",
+      externalId: overrides.externalId ?? `batch-${now}`,
+      decidedBy: overrides.decidedBy ?? "needs_review",
+      evalSet: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("inboxItems", {
+      entityId: ids.entityId,
+      transactionId,
+      kind: "categorize",
+      payloadSummary: "Figma needs review for USD 99",
+      status: "open",
+      createdAt: now,
+      updatedAt: now,
+    });
+    return transactionId;
   });
 }
 
@@ -300,6 +412,119 @@ describe("M10 AI backend", () => {
       activeProvider: "bedrock",
       model: "anthropic.claude-3-5-sonnet-test",
       embeddingsModel: "test-embed-model",
+    });
+  });
+
+  it("selects bounded existing transactions for AI batch categorization", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const transactionId = await insertImportedNeedsReviewTransaction(t, ids, {
+      externalId: "batch-candidate-1",
+    });
+    await insertImportedNeedsReviewTransaction(t, ids, {
+      externalId: "batch-confirmed-skip",
+      review: "confirmed",
+      decidedBy: "rule",
+    });
+    const session = authed(t, ids.userId);
+
+    const candidates = await session.query(categorizationBatchCandidates, {
+      entityId: ids.entityId,
+      limit: 5,
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      transactionId,
+      merchant: "Figma",
+      externalId: "batch-candidate-1",
+    });
+  });
+
+  it("applies an AI proposal to an existing imported row without duplicating transactions", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const transactionId = await insertImportedNeedsReviewTransaction(t, ids, {
+      externalId: "batch-apply-existing",
+    });
+    const session = authed(t, ids.userId);
+
+    const result = await session.mutation(applyProposalToExistingTransactionInternal, {
+      transactionId,
+      aiProposal: {
+        categoryAccountId: ids.softwareAccountId,
+        confidence: 0.95,
+        reasoning: "Figma is recurring design software.",
+        needsHuman: false,
+      },
+    });
+
+    expect(result).toMatchObject({ status: "posted", transactionId, stage: "ai" });
+    await t.run(async (ctx) => {
+      const transaction = await ctx.db.get(transactionId);
+      expect(transaction).toMatchObject({
+        review: "auto",
+        categoryAccountId: ids.softwareAccountId,
+        decidedBy: "ai",
+      });
+      expect(transaction?.entryId).toBeTruthy();
+      const transactions = await ctx.db
+        .query("transactions")
+        .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+        .collect();
+      expect(transactions).toHaveLength(1);
+      const openInbox = await ctx.db
+        .query("inboxItems")
+        .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+        .collect();
+      expect(openInbox.every((item) => item.status !== "open")).toBe(true);
+      const lines = await ctx.db
+        .query("journalLines")
+        .withIndex("by_entry", (q) => q.eq("entryId", transaction!.entryId!))
+        .collect();
+      expect(lines).toHaveLength(2);
+    });
+  });
+
+  it("degrades AI batch categorization without posting when Bedrock env is absent", async () => {
+    vi.stubEnv("AI_PROVIDER", "");
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "");
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
+    vi.stubEnv("AWS_REGION", "");
+    vi.stubEnv("AI_MODEL", "");
+    vi.stubEnv("AI_EMBEDDINGS_MODEL", "");
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const transactionId = await insertImportedNeedsReviewTransaction(t, ids, {
+      externalId: "batch-degraded-1",
+    });
+    const session = authed(t, ids.userId);
+
+    const result = await session.action(categorizePendingTransactions, {
+      entityId: ids.entityId,
+      limit: 5,
+    });
+
+    expect(result).toMatchObject({
+      attemptedCount: 1,
+      postedCount: 0,
+      needsReviewCount: 0,
+      skippedCount: 1,
+      degradedCount: 1,
+      fallbackCount: 0,
+    });
+    expect(result.results[0]).toMatchObject({
+      transactionId,
+      mode: "degraded",
+      proposalSource: null,
+      route: { status: "skipped", transactionId, entryId: null },
+    });
+    await t.run(async (ctx) => {
+      const transaction = await ctx.db.get(transactionId);
+      expect(transaction).toMatchObject({
+        review: "needs_review",
+      });
+      expect(transaction?.entryId).toBeUndefined();
     });
   });
 

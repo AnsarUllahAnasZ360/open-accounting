@@ -299,6 +299,117 @@ async function routeProposedCategory(
   return { status: "needs_review" as const, transactionId: args.transactionId, entryId: null, stage: "needs_review" as const };
 }
 
+async function upsertOpenCategorizationInbox(
+  ctx: MutationCtx,
+  args: {
+    entityId: Id<"entities">;
+    transactionId: Id<"transactions">;
+    merchant: string;
+    currency: string;
+    amountMinor: number;
+    question?: string;
+    now: number;
+  },
+) {
+  const items = await ctx.db
+    .query("inboxItems")
+    .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+    .collect();
+  const existing = items.find(
+    (item) =>
+      item.transactionId === args.transactionId &&
+      item.status === "open" &&
+      (item.kind === "categorize" || item.kind === "question"),
+  );
+  const kind = args.question ? "question" as const : "categorize" as const;
+  const payloadSummary = `${args.merchant} needs review for ${args.currency} ${absoluteMinor(args.amountMinor) / 100}`;
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      kind,
+      payloadSummary,
+      updatedAt: args.now,
+    });
+    return existing._id;
+  }
+  return await ctx.db.insert("inboxItems", {
+    entityId: args.entityId,
+    transactionId: args.transactionId,
+    kind,
+    payloadSummary,
+    status: "open",
+    createdAt: args.now,
+    updatedAt: args.now,
+  });
+}
+
+async function routeExistingProposedCategory(
+  ctx: MutationCtx,
+  args: {
+    entity: Doc<"entities">;
+    bankAccount: Doc<"bankAccounts">;
+    transaction: Doc<"transactions">;
+    categoryAccountId: Id<"ledgerAccounts">;
+    confidence: number;
+    reasoning: string;
+    stage: "memory" | "ai";
+    needsHuman?: boolean;
+    question?: string;
+    now: number;
+  },
+) {
+  await assertCategoryAccount(ctx, args.entity._id, args.categoryAccountId);
+  const autonomy = await getEntityAutonomy(ctx, args.entity);
+
+  if (
+    shouldAutoPostAI({
+      autonomy,
+      confidence: args.confidence,
+      needsHuman: args.needsHuman,
+    })
+  ) {
+    const entryId = await postTransactionEntry(ctx, {
+      entity: args.entity,
+      bankAccount: args.bankAccount,
+      date: args.transaction.date,
+      amountMinor: args.transaction.amountMinor,
+      merchant: args.transaction.merchant,
+      source: args.transaction.source,
+      sourceId: args.transaction.externalId,
+      categoryAccountId: args.categoryAccountId,
+      memoSuffix: `pipeline ${args.stage}`,
+    });
+    await ctx.db.patch(args.transaction._id, {
+      review: "auto",
+      categoryAccountId: args.categoryAccountId,
+      entryId,
+      decidedBy: args.stage,
+      confidence: args.confidence,
+      reasoning: args.reasoning,
+      updatedAt: args.now,
+    });
+    await resolveInboxItems(ctx, args.entity._id, args.transaction._id, args.now);
+    return { status: "posted" as const, transactionId: args.transaction._id, entryId, stage: args.stage };
+  }
+
+  await ctx.db.patch(args.transaction._id, {
+    categoryAccountId: args.categoryAccountId,
+    decidedBy: args.stage,
+    confidence: args.confidence,
+    reasoning: args.question ? `${args.reasoning} Question: ${args.question}` : args.reasoning,
+    updatedAt: args.now,
+  });
+  await upsertOpenCategorizationInbox(ctx, {
+    entityId: args.entity._id,
+    transactionId: args.transaction._id,
+    merchant: args.transaction.merchant,
+    currency: args.transaction.currency,
+    amountMinor: args.transaction.amountMinor,
+    ...(args.question ? { question: args.question } : {}),
+    now: args.now,
+  });
+  return { status: "needs_review" as const, transactionId: args.transaction._id, entryId: null, stage: "needs_review" as const };
+}
+
 async function recordCorrectionMemory(
   ctx: MutationCtx,
   args: {
@@ -707,6 +818,79 @@ export const confirmTransactionInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     return await confirmTransactionCore(ctx, args);
+  },
+});
+
+export const applyProposalToExistingTransactionInternal = internalMutation({
+  args: {
+    transactionId: v.id("transactions"),
+    semanticMemoryProposal: v.optional(semanticMemoryProposalValidator),
+    aiProposal: v.optional(aiProposalValidator),
+  },
+  handler: async (ctx, args) => {
+    const { entity, transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
+    if (transaction.entryId) {
+      return {
+        status: "skipped" as const,
+        transactionId: transaction._id,
+        entryId: transaction.entryId,
+        stage: transaction.decidedBy ?? "posted",
+        reason: "Transaction already has a posted journal entry.",
+      };
+    }
+    if (transaction.review !== "needs_review") {
+      return {
+        status: "skipped" as const,
+        transactionId: transaction._id,
+        entryId: null,
+        stage: transaction.decidedBy ?? "reviewed",
+        reason: "Transaction is not in needs-review state.",
+      };
+    }
+    const bankAccount = transaction.bankAccountId ? await ctx.db.get(transaction.bankAccountId) : null;
+    if (!bankAccount || bankAccount.entityId !== transaction.entityId) {
+      return {
+        status: "skipped" as const,
+        transactionId: transaction._id,
+        entryId: null,
+        stage: "missing_bank_account",
+        reason: "Transaction needs a bank account before AI categorization can post or suggest.",
+      };
+    }
+    const now = Date.now();
+    if (args.semanticMemoryProposal) {
+      return await routeExistingProposedCategory(ctx, {
+        entity,
+        bankAccount,
+        transaction,
+        categoryAccountId: args.semanticMemoryProposal.categoryAccountId,
+        confidence: args.semanticMemoryProposal.confidence,
+        reasoning: args.semanticMemoryProposal.reasoning,
+        stage: "memory",
+        now,
+      });
+    }
+    if (args.aiProposal) {
+      return await routeExistingProposedCategory(ctx, {
+        entity,
+        bankAccount,
+        transaction,
+        categoryAccountId: args.aiProposal.categoryAccountId,
+        confidence: args.aiProposal.confidence,
+        reasoning: `Pipeline stage 6 LLM proposal: ${args.aiProposal.reasoning}`,
+        stage: "ai",
+        needsHuman: args.aiProposal.needsHuman,
+        ...(args.aiProposal.question ? { question: args.aiProposal.question } : {}),
+        now,
+      });
+    }
+    return {
+      status: "skipped" as const,
+      transactionId: transaction._id,
+      entryId: null,
+      stage: transaction.decidedBy ?? "needs_review",
+      reason: "No AI or semantic-memory proposal was supplied.",
+    };
   },
 });
 

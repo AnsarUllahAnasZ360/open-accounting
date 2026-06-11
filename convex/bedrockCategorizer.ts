@@ -82,6 +82,28 @@ type RouteResult = {
   stage: string;
 };
 
+type ExistingRouteResult = {
+  status: "posted" | "needs_review" | "skipped";
+  transactionId: Id<"transactions">;
+  entryId: Id<"journalEntries"> | null;
+  stage: string;
+  reason?: string;
+};
+
+type BatchCandidate = RouteTransactionArgs & {
+  transactionId: Id<"transactions">;
+};
+
+type BatchItemResult = {
+  transactionId: Id<"transactions">;
+  mode: "bedrock" | "degraded" | "fallback";
+  provider: "bedrock" | null;
+  model: string | null;
+  proposalSource: "semantic_memory" | "llm" | null;
+  fallbackReason: string | null;
+  route: ExistingRouteResult;
+};
+
 export type BedrockPayload = {
   contentType: string;
   accept: string;
@@ -512,6 +534,133 @@ async function routeThroughPipeline(
   });
 }
 
+async function applyProposalToExistingTransaction(
+  ctx: ActionCtx,
+  args: {
+    transactionId: Id<"transactions">;
+    semanticMemoryProposal?: SemanticMemoryProposal | null;
+    aiProposal?: PipelineProposal | null;
+  },
+): Promise<ExistingRouteResult> {
+  return await ctx.runMutation(internal.pipeline.applyProposalToExistingTransactionInternal, {
+    transactionId: args.transactionId,
+    ...(args.semanticMemoryProposal ? { semanticMemoryProposal: args.semanticMemoryProposal } : {}),
+    ...(args.aiProposal ? { aiProposal: args.aiProposal } : {}),
+  });
+}
+
+function skippedExistingRoute(
+  candidate: BatchCandidate,
+  stage: string,
+  reason: string,
+): ExistingRouteResult {
+  return {
+    status: "skipped",
+    transactionId: candidate.transactionId,
+    entryId: null,
+    stage,
+    reason,
+  };
+}
+
+async function categorizeExistingCandidate(
+  ctx: ActionCtx,
+  candidate: BatchCandidate,
+): Promise<BatchItemResult> {
+  const context: CategorizationContext = await ctx.runQuery(categorizationContextRef, {
+    entityId: candidate.entityId,
+    bankAccountId: candidate.bankAccountId,
+    amountMinor: candidate.amountMinor,
+  });
+  const env = bedrockRuntimeEnv(context.provider.model);
+  const skip = (
+    mode: "degraded" | "fallback",
+    reason: string,
+    stage = "skipped",
+  ): BatchItemResult => ({
+    transactionId: candidate.transactionId,
+    mode,
+    provider: mode === "degraded" ? context.provider.activeProvider : "bedrock",
+    model: context.provider.model,
+    proposalSource: null,
+    fallbackReason: reason,
+    route: skippedExistingRoute(candidate, stage, reason),
+  });
+
+  if (
+    context.provider.mode !== "active" ||
+    context.provider.activeProvider !== "bedrock" ||
+    !env.ready
+  ) {
+    return skip("degraded", "Bedrock env is absent or incomplete; existing imported row was left in review.");
+  }
+
+  if (context.candidateAccounts.length === 0) {
+    return skip("fallback", "No active candidate category accounts were available for the transaction direction.");
+  }
+
+  try {
+    const semanticMemoryProposal: SemanticMemoryProposal | null = await ctx.runAction(
+      internal.semanticMemory.proposeCategorizationMemory,
+      {
+        entityId: candidate.entityId,
+        merchant: candidate.merchant,
+        rawDescription: candidate.rawDescription,
+        amountMinor: candidate.amountMinor,
+        currency: candidate.currency,
+      },
+    );
+    if (semanticMemoryProposal) {
+      return {
+        transactionId: candidate.transactionId,
+        mode: "bedrock",
+        provider: "bedrock",
+        model: env.modelId,
+        proposalSource: "semantic_memory",
+        fallbackReason: null,
+        route: await applyProposalToExistingTransaction(ctx, {
+          transactionId: candidate.transactionId,
+          semanticMemoryProposal,
+        }),
+      };
+    }
+
+    const prompt = buildCategorizationPrompt({
+      entityName: context.entity.name,
+      amountMinor: candidate.amountMinor,
+      currency: candidate.currency,
+      merchant: candidate.merchant,
+      rawDescription: candidate.rawDescription,
+      date: candidate.date,
+      accounts: context.candidateAccounts,
+    });
+    const text = await invokeBedrockText({ env, prompt });
+    const normalized = normalizeBedrockCategorizationProposal(
+      parseBedrockCategorizationText(text),
+      context.candidateAccounts,
+    );
+    if (!normalized) {
+      return skip("fallback", "Bedrock returned no usable category from the allowed account list.");
+    }
+
+    return {
+      transactionId: candidate.transactionId,
+      mode: "bedrock",
+      provider: "bedrock",
+      model: env.modelId,
+      proposalSource: "llm",
+      fallbackReason: null,
+      route: await applyProposalToExistingTransaction(ctx, {
+        transactionId: candidate.transactionId,
+        aiProposal: normalized.aiProposal,
+      }),
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? truncate(error.message, 160) : "Bedrock batch categorization failed.";
+    return skip("fallback", reason);
+  }
+}
+
 export const categorizeAndRouteTransaction = action({
   args: {
     entityId: v.id("entities"),
@@ -641,5 +790,39 @@ export const categorizeAndRouteTransaction = action({
         error instanceof Error ? truncate(error.message, 160) : "Bedrock categorization failed.",
       );
     }
+  },
+});
+
+export const categorizePendingTransactions = action({
+  args: {
+    entityId: v.id("entities"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{
+    attemptedCount: number;
+    postedCount: number;
+    needsReviewCount: number;
+    skippedCount: number;
+    degradedCount: number;
+    fallbackCount: number;
+    results: BatchItemResult[];
+  }> => {
+    const candidates: BatchCandidate[] = await ctx.runQuery(internal.ai.categorizationBatchCandidates, {
+      entityId: args.entityId,
+      ...(args.limit !== undefined ? { limit: args.limit } : {}),
+    });
+    const results: BatchItemResult[] = [];
+    for (const candidate of candidates) {
+      results.push(await categorizeExistingCandidate(ctx, candidate));
+    }
+    return {
+      attemptedCount: results.length,
+      postedCount: results.filter((result) => result.route.status === "posted").length,
+      needsReviewCount: results.filter((result) => result.route.status === "needs_review").length,
+      skippedCount: results.filter((result) => result.route.status === "skipped").length,
+      degradedCount: results.filter((result) => result.mode === "degraded").length,
+      fallbackCount: results.filter((result) => result.mode === "fallback").length,
+      results,
+    };
   },
 });

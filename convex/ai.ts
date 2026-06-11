@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { action, mutation, query, type MutationCtx } from "./_generated/server";
+import { action, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireWorkspaceRole } from "./authz";
 
 export const AI_AUTONOMY_THRESHOLDS = {
@@ -233,6 +233,48 @@ export const categorizationContext = query({
           subtype: account.subtype,
         })),
     };
+  },
+});
+
+export const categorizationBatchCandidates = internalQuery({
+  args: {
+    entityId: v.id("entities"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new ConvexError("OpenBooks entity not found.");
+    }
+    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    const limit = Math.min(25, Math.max(1, Math.floor(args.limit ?? 10)));
+    const transactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .take(500);
+    return transactions
+      .filter((transaction) => transaction.review === "needs_review")
+      .filter((transaction) => !transaction.entryId)
+      .filter((transaction) => Boolean(transaction.bankAccountId))
+      .filter((transaction) =>
+        !transaction.decidedBy ||
+        transaction.decidedBy === "needs_review" ||
+        transaction.decidedBy === "plaid_prior",
+      )
+      .slice(0, limit)
+      .map((transaction) => ({
+        transactionId: transaction._id,
+        entityId: transaction.entityId,
+        bankAccountId: transaction.bankAccountId!,
+        date: transaction.date,
+        amountMinor: transaction.amountMinor,
+        currency: transaction.currency,
+        merchant: transaction.merchant,
+        rawDescription: transaction.rawDescription,
+        status: transaction.status,
+        source: transaction.source,
+        externalId: transaction.externalId,
+      }));
   },
 });
 

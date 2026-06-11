@@ -1,0 +1,11 @@
+Command: npx convex dev --once
+Date: 2026-06-11
+
+Result: PASS
+
+Summary:
+- Convex dev deployment: z360/openbooks dev deployment ceaseless-mandrill-524.
+- Functions ready in 2.81s.
+- This was required after the first browser seed attempt hit stale remote functions.
+- Final post-verification push also succeeded; functions ready in 2.35s.
+- Final post-fixture-move push also succeeded; functions ready in 2.49s.

@@ -12,6 +12,7 @@
     "test": "vitest run --passWithNoTests",
     "test:unit": "vitest run --passWithNoTests",
     "test:e2e": "playwright test",
+    "seed:demo": "node scripts/seed-demo.mjs",
     "preflight": "node scripts/preflight.mjs",
     "verify": "pnpm typecheck && pnpm lint && pnpm build && pnpm test:unit",
     "convex:dev": "convex dev",

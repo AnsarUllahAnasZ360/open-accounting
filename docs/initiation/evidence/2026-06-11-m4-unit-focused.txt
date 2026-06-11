@@ -1,0 +1,10 @@
+Command: pnpm test:unit -- convex/pipeline.test.ts convex/seedDemo.test.ts convex/ledger.test.ts
+Date: 2026-06-11
+
+Result: PASS
+
+Summary:
+- Test Files: 6 passed
+- Tests: 15 passed
+- Coverage focus: ledger invariant, pipeline stages 1-3, duplicate protection, Inbox routing, transfers, deterministic seed idempotency, golden May 2026 report fixture.
+

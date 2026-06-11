@@ -36,6 +36,7 @@ async function signInOwner(page: Page) {
 
 test("manual journal entry appears in GL and locked periods reject backdating", async ({ page }) => {
   const memo = `M3 manual JE ${Date.now()}`;
+  const entryDate = "2026-06-30";
 
   await signInOwner(page);
   await page.goto("/settings");
@@ -46,7 +47,7 @@ test("manual journal entry appears in GL and locked periods reject backdating", 
   await page.getByRole("button", { name: "Initialize chart" }).click();
   await expect(page.getByText(/Chart ready/)).toBeVisible({ timeout: 15000 });
 
-  await page.getByLabel("Date").fill("2026-04-15");
+  await page.getByLabel("Date").fill(entryDate);
   await page.getByLabel("Amount").fill("123.45");
   await page.getByLabel("Memo").fill(memo);
   await page.getByRole("button", { name: "Post entry" }).click();
@@ -54,7 +55,7 @@ test("manual journal entry appears in GL and locked periods reject backdating", 
   await expect(page.getByText(memo)).toBeVisible();
   await expect(page.getByText("$123.45").first()).toBeVisible();
 
-  const trialBalance = page.locator("section").filter({ hasText: "Trial Balance" }).first();
+  const trialBalance = page.getByRole("heading", { name: "Trial Balance" }).locator("..");
   await expect(trialBalance).toContainText("Difference:");
   await expect(trialBalance).toContainText("$0.00");
 

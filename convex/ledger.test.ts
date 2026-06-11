@@ -182,7 +182,11 @@ describe("ledger core", () => {
     const snapshot = await session.query(api.ledger.accountingSnapshot, {});
     expect(snapshot.trialBalance.differenceMinor).toBe(0);
     expect(snapshot.journalEntries).toHaveLength(3);
-    expect(snapshot.journalEntries.some((entry) => entry.reversesEntryId === original.entryId)).toBe(true);
+    expect(
+      snapshot.journalEntries.some(
+        (entry: { reversesEntryId: string | null }) => entry.reversesEntryId === original.entryId,
+      ),
+    ).toBe(true);
   });
 
   it("blocks posting into a locked period", async () => {

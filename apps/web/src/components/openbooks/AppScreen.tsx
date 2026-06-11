@@ -10,6 +10,7 @@ import {
   StatCard,
 } from "@/components/openbooks/primitives";
 import { AccountingPanel } from "@/components/openbooks/AccountingPanel";
+import { DemoDataPanel } from "@/components/openbooks/DemoDataPanel";
 import { LeadsPanel } from "@/components/openbooks/LeadsPanel";
 import { accountIcon, bankStatus, emptyStateRows, type AppRoute } from "@/lib/openbooks/content";
 
@@ -97,6 +98,7 @@ export function AppScreen({ route }: { route: AppRoute }) {
 
       {route.href === "/settings" ? (
         <>
+          <DemoDataPanel />
           <AccountingPanel />
           <LeadsPanel />
         </>

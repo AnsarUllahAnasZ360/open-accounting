@@ -14,7 +14,10 @@ import type * as authz from "../authz.js";
 import type * as bootstrap from "../bootstrap.js";
 import type * as http from "../http.js";
 import type * as ledger from "../ledger.js";
+import type * as pipeline from "../pipeline.js";
+import type * as reports from "../reports.js";
 import type * as requestAccess from "../requestAccess.js";
+import type * as seedDemo from "../seedDemo.js";
 import type * as session from "../session.js";
 
 import type {
@@ -30,7 +33,10 @@ declare const fullApi: ApiFromModules<{
   bootstrap: typeof bootstrap;
   http: typeof http;
   ledger: typeof ledger;
+  pipeline: typeof pipeline;
+  reports: typeof reports;
   requestAccess: typeof requestAccess;
+  seedDemo: typeof seedDemo;
   session: typeof session;
 }>;
 

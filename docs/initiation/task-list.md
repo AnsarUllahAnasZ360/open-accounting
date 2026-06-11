@@ -104,14 +104,14 @@ Evidence: test output + GL/TB screenshots.
 
 ## M4 — Pipeline stages 1–3 + demo engine: 12 months of deterministic books
 
-- [ ] Build categorization pipeline stages 1–3 per spec §4 BEFORE the seed
+- [x] Build categorization pipeline stages 1–3 per spec §4 BEFORE the seed
       engine (everything routes through it): (1) dedupe/transfer detection,
       (2) record match against open invoices/bills/payroll/expected payouts,
       (3) rules engine — ordered, first-match-wins, conditions on
       merchant/description/amount/direction with OR groups, auto-post flag,
       hit counts. Confident results post via `postEntry`; uncertain results
       create inbox items. Unit-test routing.
-- [ ] Seeded-RNG generator (fixed seed, stable output) creating, for Demo
+- [x] Seeded-RNG generator (fixed seed, stable output) creating, for Demo
       entity "Acme Studio LLC" (services, USD): 2 bank accounts + 1 credit
       card; ~900 transactions over 12 months with realistic merchants and
       monthly rhythm (rent, SaaS, payroll, ads, fees); monthly Stripe-style
@@ -122,11 +122,11 @@ Evidence: test output + GL/TB screenshots.
       with hit counts; ~12 open inbox items covering every card type; audit
       log entries throughout. All money movements post via the pipeline +
       `postEntry` — no screen-only numbers anywhere.
-- [ ] Labeled subset (≥100 transactions) reserved as the categorization eval
+- [x] Labeled subset (≥100 transactions) reserved as the categorization eval
       set with expected categories.
-- [ ] `pnpm seed:demo` (idempotent reset + reseed) + Settings → Data
+- [x] `pnpm seed:demo` (idempotent reset + reseed) + Settings → Data
       "Reset demo data" action.
-- [ ] Golden fixtures: hand-computed P&L, Balance Sheet, Trial Balance for at
+- [x] Golden fixtures: hand-computed P&L, Balance Sheet, Trial Balance for at
       least one seeded month, committed as test fixtures.
 
 Done when: seed runs idempotently; trial balance = 0 over the whole year;

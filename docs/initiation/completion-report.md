@@ -272,6 +272,59 @@ Next:
 
 - M4 — pipeline stages 1-3 and deterministic 12-month demo seed, with all seeded numbers flowing through `postEntry`.
 
+### 2026-06-11 03:01 CDT — M4 Pipeline + deterministic demo engine
+
+What changed:
+
+- Added operational bookkeeping tables for bank/card accounts, contacts, rules, transactions, inbox items, documents/receipts, invoices, bills, employees, payroll runs, Stripe clearing/payouts, and demo seed run history.
+- Added `pipeline.routeTransaction`, covering stages 1-3: duplicate protection, transfer posting, open-record matching, ordered rules, rule hit counts, high-confidence seeded category posting, and forced-review Inbox routing.
+- Added deterministic demo seeding for Acme Studio LLC using fixed seed `openbooks-demo-v1-2026-06-11`.
+- The seeded books create 922 imported transactions across 12 months; 915 are posted; 12 remain open in Inbox; 120 are labeled for categorization eval; 12 monthly Stripe-style payout entries reconcile through clearing; the whole-year Trial Balance difference is $0.00.
+- Added 18 contacts, 14 invoices with paid/open/overdue statuses, 10 bills, 6 employees across USD/PKR/INR, 12 payroll runs, 6 rules with hit counts, 3 matched receipts, and 2 pending receipts.
+- Added `reports.seedVerification` and golden May 2026 fixtures for P&L + Balance Sheet verification. May 2026 fixture: income $47,157.00, expense $40,971.45, net income $6,185.55, balance sheet difference $0.00.
+- Added Settings → Data with “Reset demo data” and seed status counts, plus `pnpm seed:demo` that signs in through the invite-only UI and runs the reset action without printing env values.
+- Updated the existing ledger Playwright test to account for realistic seeded ledger history.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m4-convex-dev-once.txt`
+- `docs/initiation/evidence/2026-06-11-m4-seed-demo.txt`
+- `docs/initiation/evidence/2026-06-11-m4-unit-focused.txt`
+- `docs/initiation/evidence/2026-06-11-m4-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m4-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m4-settings-data.png`
+- `docs/initiation/evidence/2026-06-11-m4-demo-data-panel.png`
+- `docs/initiation/evidence/2026-06-11-m4-settings-mobile.png`
+
+Verification:
+
+- `npx convex dev --once` pushed the new Convex functions to the dev deployment after the first seed attempt hit stale remote functions.
+- `pnpm seed:demo` green: 922 transactions, 915 posted, 12 Inbox, 120 eval labels, Trial Balance difference $0.00.
+- `pnpm test:unit -- convex/pipeline.test.ts convex/seedDemo.test.ts convex/ledger.test.ts` green.
+- `pnpm verify` green: typecheck, lint, Next.js production build, Vitest.
+- `pnpm test:e2e` green with 6 passing Playwright tests.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Pipeline stages 1-3 | PASS | Dedupe, transfer, open-record match, ordered rules, hit counts, auto-post, and Inbox uncertainty are implemented and unit-tested. |
+| Seeded demo books | PASS | Fixed-seed Acme Studio LLC generates 12 months of deterministic books with bank/card, Stripe clearing, invoices, bills, payroll, contacts, receipts, rules, and Inbox items. |
+| Ledger source of truth | PASS | Seeded postings flow through `pipeline.routeTransaction` and `ledger.postEntry`; invoice, bill, payroll, and settlement postings also use `postEntry`. |
+| Labeled eval subset | PASS | 120 transactions carry expected category account ids for M10 categorization evaluation. |
+| Idempotent reset | PASS | `seedDemo.resetAndSeed` deletes prior Acme demo data and reseeds stable counts; unit test runs it twice and compares output. |
+| Settings reset action | PASS | Settings → Data reset action works; `pnpm seed:demo` exercises it through a browser login. |
+| Golden fixtures | PASS | May 2026 P&L and Balance Sheet fixture is committed and tested to the cent; whole-year Trial Balance difference is 0. |
+| External sandbox/live data | PARTIAL | M4 is deterministic fixture/demo data only by design; Plaid and Stripe live sandbox connections start in M8/M9. |
+
+Notes:
+
+- First browser seed attempt failed because the remote Convex dev deployment had not yet registered the new `seedDemo` functions. After `npx convex dev --once`, the same command succeeded.
+
+Next:
+
+- M5 — wire Dashboard, Inbox, Transactions, CSV import, and transaction drawers to the ledger-backed demo data.
+
 ### 2026-06-11 00:44 CDT — Pre-goal access readiness
 
 What changed:

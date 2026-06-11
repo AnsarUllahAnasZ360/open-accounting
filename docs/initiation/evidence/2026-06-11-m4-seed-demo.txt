@@ -1,0 +1,13 @@
+Command: pnpm seed:demo
+Date: 2026-06-11
+
+Result: PASS
+
+Output:
+Demo seed complete | transactions=922 | posted=915 | inbox=12 | evalLabels=120 | trialBalance=Trial balance difference$0.00
+
+Notes:
+- Script authenticates through the invite-only UI.
+- Script prints counts only; it does not print env values.
+- The seed is idempotent and uses the Settings -> Data reset action.
+

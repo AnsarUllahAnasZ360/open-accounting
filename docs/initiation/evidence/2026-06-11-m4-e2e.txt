@@ -1,0 +1,10 @@
+Command: pnpm test:e2e
+Date: 2026-06-11
+
+Result: PASS
+
+Summary:
+- Playwright tests: 6 passed
+- Covered landing shell, signed-out app gate, owner sign-in, random email self-registration block, request-access leads in Settings, ledger manual JE/Trial Balance/period-lock flow.
+- The ledger acceptance test was updated to use a post-seed date and a precise Trial Balance selector because M4 adds seeded ledger history and a Settings Data panel.
+

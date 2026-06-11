@@ -1,0 +1,27 @@
+2026-06-11 15:21 CDT — M10 action tools closeout verification
+
+Commands rerun after compaction/resume:
+
+- pnpm verify
+  - exit code: 0
+  - result: typecheck, lint, Next.js production build, and unit tests passed
+  - unit summary: 17 test files passed, 75 tests passed
+
+- pnpm test:e2e -- tests/e2e/core-screens.spec.ts
+  - exit code: 0
+  - result: 1 passed
+  - note: rerun followed a real full-suite failure where the dashboard was still loading after a demo reset when the test used Playwright's default 5-second assertion timeout. The test now waits up to 30 seconds for the seeded dashboard surface, matching the post-seed reality of the app.
+
+- pnpm test:e2e
+  - exit code: 0
+  - result: 17 passed
+
+- curl -I https://openbooks.ansarullahanas.com/ask-ai
+  - exit code: 0
+  - result: HTTP/2 200
+
+- PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm test:e2e -- tests/e2e/ai-chat.spec.ts
+  - exit code: 0
+  - result: 3 passed
+
+No secrets were printed in these command outputs.

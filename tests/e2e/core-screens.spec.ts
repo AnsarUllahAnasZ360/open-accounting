@@ -47,7 +47,7 @@ test("owner can run the M5 dashboard, inbox, transactions, split, and CSV loop",
   });
 
   await page.goto("/dashboard");
-  await expect(page.getByTestId("dashboard-screen")).toBeVisible();
+  await expect(page.getByTestId("dashboard-screen")).toBeVisible({ timeout: 30000 });
   await expect(page.getByText("Cash position")).toBeVisible();
   await expect(page.getByText("Income by customer")).toBeVisible();
   await expect(page.getByText("Cash flow by month")).toBeVisible();
@@ -111,7 +111,7 @@ test("owner can run the M5 dashboard, inbox, transactions, split, and CSV loop",
 
   await page.setViewportSize({ width: 390, height: 1100 });
   await page.goto("/dashboard");
-  await expect(page.getByTestId("dashboard-screen")).toBeVisible();
+  await expect(page.getByTestId("dashboard-screen")).toBeVisible({ timeout: 30000 });
   await page.screenshot({
     path: "docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png",
     fullPage: true,

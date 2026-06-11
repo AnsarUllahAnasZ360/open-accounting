@@ -9,6 +9,7 @@
  */
 
 import type * as ai from "../ai.js";
+import type * as aiChatActions from "../aiChatActions.js";
 import type * as aiChatRuntime from "../aiChatRuntime.js";
 import type * as aiChatTools from "../aiChatTools.js";
 import type * as aiProviderRegistry from "../aiProviderRegistry.js";
@@ -42,6 +43,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   ai: typeof ai;
+  aiChatActions: typeof aiChatActions;
   aiChatRuntime: typeof aiChatRuntime;
   aiChatTools: typeof aiChatTools;
   aiProviderRegistry: typeof aiProviderRegistry;

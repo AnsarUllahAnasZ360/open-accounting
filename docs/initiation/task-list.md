@@ -272,7 +272,7 @@ Evidence: Playwright spec using sandbox token + screenshots of Link flow.
       write memory; 3 identical corrections → AI-drafted rule pending
       approval in Rules manager.
 - [x] Run the pipeline over the demo eval set; record accuracy (target ≥80%).
-- [ ] Chat panel per spec §6.8: streaming drawer + full-page mode; read tools
+- [x] Chat panel per spec §6.8: streaming drawer + full-page mode; read tools
       (queryTransactions, getReport, getBalances, searchContacts,
       getPayrollRuns); action tools behind confirm cards
       (categorizeTransactions, createRule, draftInvoice, addBill,
@@ -379,9 +379,19 @@ write-like prompts confirm-first. The chat checkbox stays open until the full
 confirm-card action tool set (`categorizeTransactions`, `draftInvoice`,
 `addBill`, `createJournalEntry`) is wired and evidenced.
 
+M10 action-tools note, 2026-06-11: added the remaining confirm-card action
+tools and wired them into the shared drawer/full-page chat UI:
+`categorizeTransactions` routes matching transactions through the existing
+pipeline, `draftInvoice` creates a draft without posting revenue, `addBill`
+posts the open bill to A/P through `ledger.postEntry`, and
+`createJournalEntry` posts balanced two-line entries through `ledger.postEntry`.
+Local and production Playwright now cover the full confirm-card set plus mobile
+and full-page chat, so the chat checkbox is complete.
+
 Done when: the five sample questions from spec §6.8 answer correctly against
-demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules
-after confirmation; eval accuracy logged.
+demo data (cross-checked vs. reports); chat-proposed actions stay confirm-first
+and execute through their server-side tools after confirmation; eval accuracy
+logged.
 Evidence: chat transcripts + eval numbers in completion report.
 
 ## M11 — Receipts (full attempt; cannot block completion)

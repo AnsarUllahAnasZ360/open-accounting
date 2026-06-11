@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import {
   aiSuggestedPrompts,
   answerOpenBooksQuestion,
+  formatAiMoney,
   type AiAnswer,
   type AiStatus,
 } from "@/lib/openbooks/ai";
@@ -172,6 +173,16 @@ function AnswerCard({
         <div className="mt-3 rounded-lg bg-muted/40 p-2 text-xs text-muted-foreground">
           Nothing has been posted or written yet.
         </div>
+        {answer.facts.length ? (
+          <div className="mt-3 divide-y rounded-lg border text-xs">
+            {answer.facts.map((fact) => (
+              <div key={fact.label} className="grid grid-cols-[0.7fr_1fr] gap-3 px-3 py-2">
+                <span className="text-muted-foreground">{fact.label}</span>
+                <span className="font-medium">{fact.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {state.message ? (
           <div
             className={cn(
@@ -234,6 +245,10 @@ export function OpenBooksAIChat({
 }) {
   const authToken = useAuthToken();
   const createConfirmedRule = useMutation(api.ai.createConfirmedRule);
+  const categorizeTransactions = useMutation(api.aiChatActions.categorizeTransactions);
+  const draftInvoice = useMutation(api.aiChatActions.draftInvoice);
+  const addBill = useMutation(api.aiChatActions.addBill);
+  const createJournalEntry = useMutation(api.aiChatActions.createJournalEntry);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -333,12 +348,13 @@ export function OpenBooksAIChat({
   }, [aiStatus.configured, authToken, booksContextReady, reportPack, workspaceId]);
 
   const confirmProposal = useCallback(async (messageId: string, answer: ProposalAnswer) => {
-    if (!reportPack?.entity.id) {
+    const entityId = reportPack?.entity.id as Id<"entities"> | undefined;
+    if (!entityId) {
       setProposalStates((current) => ({
         ...current,
         [messageId]: {
           status: "error",
-          message: "Load the entity report context before confirming this rule.",
+          message: "Load the entity report context before confirming this action.",
         },
       }));
       return;
@@ -346,20 +362,73 @@ export function OpenBooksAIChat({
 
     setProposalStates((current) => ({
       ...current,
-      [messageId]: { status: "saving", message: "Creating the rule after your confirmation..." },
+      [messageId]: { status: "saving", message: "Applying this action after your confirmation..." },
     }));
 
     try {
-      const result = await createConfirmedRule({
-        entityId: reportPack.entity.id as Id<"entities">,
-        merchantContains: answer.merchantContains,
-        autoPost: false,
-      });
+      let message: string;
+      switch (answer.action) {
+        case "createRule": {
+          const result = await createConfirmedRule({
+            entityId,
+            merchantContains: answer.merchantContains,
+            autoPost: false,
+          });
+          message = `Rule ${result.status}; ${answer.merchantContains} will file to ${result.categoryName} after review.`;
+          break;
+        }
+        case "categorizeTransactions": {
+          const result = await categorizeTransactions({
+            entityId,
+            merchantContains: answer.merchantContains,
+            categoryAccountNumber: answer.categoryAccountNumber,
+            limit: answer.limit,
+          });
+          message = `${result.updatedCount} transaction${result.updatedCount === 1 ? "" : "s"} categorized as ${result.categoryName}.`;
+          break;
+        }
+        case "draftInvoice": {
+          const result = await draftInvoice({
+            entityId,
+            customerName: answer.customerName,
+            amountMinor: answer.amountMinor,
+            issueDate: answer.issueDate,
+            dueDate: answer.dueDate,
+            ...(answer.memo ? { memo: answer.memo } : {}),
+          });
+          message = `Draft invoice ${result.number} created. No revenue was posted yet.`;
+          break;
+        }
+        case "addBill": {
+          const result = await addBill({
+            entityId,
+            vendorName: answer.vendorName,
+            amountMinor: answer.amountMinor,
+            issueDate: answer.issueDate,
+            dueDate: answer.dueDate,
+            expenseAccountNumber: answer.expenseAccountNumber,
+          });
+          message = `Bill added and posted to A/P through postEntry as ${result.expenseAccountName}.`;
+          break;
+        }
+        case "createJournalEntry": {
+          const result = await createJournalEntry({
+            entityId,
+            date: answer.date,
+            memo: answer.memo,
+            amountMinor: answer.amountMinor,
+            debitAccountNumber: answer.debitAccountNumber,
+            creditAccountNumber: answer.creditAccountNumber,
+          });
+          message = `Balanced journal entry posted. Debits and credits both equal ${formatAiMoney(result.debitTotal, reportPack?.entity.currency)}.`;
+          break;
+        }
+      }
       setProposalStates((current) => ({
         ...current,
         [messageId]: {
           status: "saved",
-          message: `Rule ${result.status}; ${answer.merchantContains} will file to ${result.categoryName} after review.`,
+          message,
         },
       }));
     } catch (error) {
@@ -371,7 +440,15 @@ export function OpenBooksAIChat({
         },
       }));
     }
-  }, [createConfirmedRule, reportPack?.entity.id]);
+  }, [
+    addBill,
+    categorizeTransactions,
+    createConfirmedRule,
+    createJournalEntry,
+    draftInvoice,
+    reportPack?.entity.currency,
+    reportPack?.entity.id,
+  ]);
 
   useEffect(() => {
     if (!pendingPrompt || pendingPrompt === lastExternalPromptRef.current) return;

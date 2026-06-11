@@ -108,6 +108,39 @@ test("M10 AI chat answers read questions and keeps actions confirm-first", async
   await expect(chatDrawer.getByTestId("ai-proposal-result")).toContainText(/Rule (created|updated); Uber/, {
     timeout: 15000,
   });
+
+  await chatDrawer.getByPlaceholder("Ask about your books").fill("Categorize Lyft transactions as Travel");
+  await chatDrawer.getByRole("button", { name: "Send question" }).click();
+  await expect(chatDrawer.getByText("Categorization proposal").first()).toBeVisible({ timeout: 15000 });
+  await expect(chatDrawer.getByText("Nothing has been posted or written yet.").last()).toBeVisible();
+  await chatDrawer.getByRole("button", { name: "Categorize transactions" }).click();
+  await expect(chatDrawer.getByTestId("ai-proposal-result").last()).toContainText(/transactions? categorized as Travel/, {
+    timeout: 30000,
+  });
+
+  await chatDrawer.getByPlaceholder("Ask about your books").fill("Draft invoice for Northstar Dental for $1200 on 2026-06-10 due 2026-07-10");
+  await chatDrawer.getByRole("button", { name: "Send question" }).click();
+  await expect(chatDrawer.getByText("Draft invoice proposal").first()).toBeVisible({ timeout: 15000 });
+  await chatDrawer.getByRole("button", { name: "Draft invoice" }).click();
+  await expect(chatDrawer.getByTestId("ai-proposal-result").last()).toContainText(/Draft invoice AI-DRAFT-\d{4} created/, {
+    timeout: 15000,
+  });
+
+  await chatDrawer.getByPlaceholder("Ask about your books").fill("Add bill for Figma for $24 on 2026-06-10 due 2026-06-30");
+  await chatDrawer.getByRole("button", { name: "Send question" }).click();
+  await expect(chatDrawer.getByText("Bill posting proposal").first()).toBeVisible({ timeout: 15000 });
+  await chatDrawer.getByRole("button", { name: "Add bill" }).click();
+  await expect(chatDrawer.getByTestId("ai-proposal-result").last()).toContainText(/Bill added and posted to A\/P through postEntry/, {
+    timeout: 15000,
+  });
+
+  await chatDrawer.getByPlaceholder("Ask about your books").fill("Create journal entry for owner contribution of $100 on 2026-06-10");
+  await chatDrawer.getByRole("button", { name: "Send question" }).click();
+  await expect(chatDrawer.getByText("Journal entry proposal").first()).toBeVisible({ timeout: 15000 });
+  await chatDrawer.getByRole("button", { name: "Post journal entry" }).click();
+  await expect(chatDrawer.getByTestId("ai-proposal-result").last()).toContainText("Balanced journal entry posted.", {
+    timeout: 15000,
+  });
   await page.screenshot({
     path: "docs/initiation/evidence/2026-06-11-m10-ai-chat.png",
     fullPage: true,

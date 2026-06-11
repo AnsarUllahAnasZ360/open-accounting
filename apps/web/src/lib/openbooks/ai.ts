@@ -31,7 +31,63 @@ export type AiAnswer =
       title: string;
       body: string;
       actionLabel: string;
+      action: "createRule";
       merchantContains: string;
+      facts: Array<{ label: string; value: string }>;
+    }
+  | {
+      kind: "proposal";
+      title: string;
+      body: string;
+      actionLabel: string;
+      action: "categorizeTransactions";
+      merchantContains: string;
+      categoryAccountNumber: string;
+      categoryLabel: string;
+      limit: number;
+      facts: Array<{ label: string; value: string }>;
+    }
+  | {
+      kind: "proposal";
+      title: string;
+      body: string;
+      actionLabel: string;
+      action: "draftInvoice";
+      customerName: string;
+      amountMinor: number;
+      issueDate: string;
+      dueDate: string;
+      memo?: string;
+      facts: Array<{ label: string; value: string }>;
+    }
+  | {
+      kind: "proposal";
+      title: string;
+      body: string;
+      actionLabel: string;
+      action: "addBill";
+      vendorName: string;
+      amountMinor: number;
+      issueDate: string;
+      dueDate: string;
+      expenseAccountNumber: string;
+      expenseLabel: string;
+      facts: Array<{ label: string; value: string }>;
+    }
+  | {
+      kind: "proposal";
+      title: string;
+      body: string;
+      actionLabel: string;
+      action: "createJournalEntry";
+      amountMinor: number;
+      date: string;
+      memo: string;
+      debitAccountNumber: string;
+      debitAccountLabel: string;
+      creditAccountNumber: string;
+      creditAccountLabel: string;
+      facts: Array<{ label: string; value: string }>;
     };
 
 export const OPENBOOKS_AI_EVENT = "openbooks:ask-ai";
@@ -124,11 +180,167 @@ function extractMerchantForRule(question: string) {
   return raw.split(/\s+/).slice(0, 4).join(" ") || "Uber";
 }
 
+function addDays(date: string, days: number) {
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function fallbackActionDate(pack: ReportPack | undefined) {
+  return pack?.controls.endDate ?? "2026-06-10";
+}
+
+function extractIsoDates(question: string) {
+  return question.match(/\b20\d{2}-\d{2}-\d{2}\b/g) ?? [];
+}
+
+function extractAmountMinor(question: string, fallback: number) {
+  const match = question.match(/\$\s*([0-9][0-9,]*(?:\.\d{1,2})?)/);
+  if (!match) return fallback;
+  return Math.round(Number(match[1].replaceAll(",", "")) * 100);
+}
+
+function extractEntityName(question: string, fallback: string) {
+  const match = question.match(/(?:for|to|vendor|customer)\s+([a-z0-9&.\-'\s]+?)(?:\s+for\s+\$|\s+\$|\s+due\b|\s+on\b|\s+dated\b|$)/i);
+  const name = match?.[1]?.trim().replace(/\s+/g, " ");
+  return name && name.length > 1 ? name : fallback;
+}
+
+function categoryFromQuestion(question: string) {
+  const normalized = question.toLowerCase();
+  if (/aws|vercel|supabase|cloud|infrastructure/.test(normalized)) {
+    return { number: "5300", label: "Cloud/Infrastructure" };
+  }
+  if (/stripe|processing|fee/.test(normalized)) {
+    return { number: "5600", label: "Payment Processing Fees" };
+  }
+  if (/lyft|uber|travel|flight|hotel|airbnb/.test(normalized)) {
+    return { number: "5900", label: "Travel" };
+  }
+  if (/adobe|figma|notion|openai|software|saas|subscription/.test(normalized)) {
+    return { number: "5200", label: "Software & SaaS" };
+  }
+  if (/ads|marketing|google ads|meta|linkedin/.test(normalized)) {
+    return { number: "5400", label: "Marketing & Ads" };
+  }
+  return { number: "6900", label: "Uncategorized Expense" };
+}
+
+function extractMerchantForCategorization(question: string) {
+  const match = question.match(/(?:categorize|recategorize|file|handle)\s+([a-z0-9&.\-'\s]+?)(?:\s+(?:transactions|transaction|charges|rides|receipts))?(?:\s+(?:as|to|under|into)\b|$)/i);
+  const raw = match?.[1]?.trim() || extractMerchantForRule(question);
+  return raw.split(/\s+/).slice(0, 4).join(" ") || "Lyft";
+}
+
 export function answerOpenBooksQuestion(question: string, pack: ReportPack | undefined): AiAnswer {
   const normalized = question.toLowerCase();
   const currency = pack?.entity.currency ?? "USD";
+  const actionDate = fallbackActionDate(pack);
+  const dates = extractIsoDates(question);
 
-  if (normalized.includes("create") || normalized.includes("rule") || normalized.includes("categorize")) {
+  if (normalized.includes("invoice")) {
+    const amountMinor = extractAmountMinor(question, 120000);
+    const issueDate = dates[0] ?? actionDate;
+    const dueDate = dates[1] ?? addDays(issueDate, 30);
+    const customerName = extractEntityName(question, "Northstar Dental");
+    return {
+      kind: "proposal",
+      title: "Draft invoice proposal",
+      body:
+        `Draft an invoice for ${customerName}. Draft invoices create the customer record and invoice shell, but do not post ledger revenue until the invoice is issued or paid.`,
+      actionLabel: "Draft invoice",
+      action: "draftInvoice",
+      customerName,
+      amountMinor,
+      issueDate,
+      dueDate,
+      memo: "Drafted from Ask AI",
+      facts: [
+        { label: "Customer", value: customerName },
+        { label: "Amount", value: formatAiMoney(amountMinor, currency) },
+        { label: "Due date", value: dueDate },
+      ],
+    };
+  }
+
+  if (normalized.includes("bill")) {
+    const amountMinor = extractAmountMinor(question, 2400);
+    const issueDate = dates[0] ?? actionDate;
+    const dueDate = dates[1] ?? addDays(issueDate, 20);
+    const vendorName = extractEntityName(question, "Adobe");
+    const category = categoryFromQuestion(question);
+    return {
+      kind: "proposal",
+      title: "Bill posting proposal",
+      body:
+        `Add an open bill for ${vendorName}. On confirmation, OpenBooks will debit ${category.label} and credit Accounts Payable through the ledger engine.`,
+      actionLabel: "Add bill",
+      action: "addBill",
+      vendorName,
+      amountMinor,
+      issueDate,
+      dueDate,
+      expenseAccountNumber: category.number,
+      expenseLabel: category.label,
+      facts: [
+        { label: "Vendor", value: vendorName },
+        { label: "Amount", value: formatAiMoney(amountMinor, currency) },
+        { label: "Expense", value: category.label },
+      ],
+    };
+  }
+
+  if (normalized.includes("journal")) {
+    const amountMinor = extractAmountMinor(question, 10000);
+    const date = dates[0] ?? actionDate;
+    const memo = normalized.includes("owner")
+      ? "Owner contribution confirmed from chat"
+      : "AI-confirmed journal entry";
+    return {
+      kind: "proposal",
+      title: "Journal entry proposal",
+      body:
+        "Post a balanced two-line journal entry. On confirmation, the ledger engine will create equal debits and credits through postEntry.",
+      actionLabel: "Post journal entry",
+      action: "createJournalEntry",
+      amountMinor,
+      date,
+      memo,
+      debitAccountNumber: "1010",
+      debitAccountLabel: "Operating Checking",
+      creditAccountNumber: "3000",
+      creditAccountLabel: "Owner's Equity",
+      facts: [
+        { label: "Debit", value: "Operating Checking" },
+        { label: "Credit", value: "Owner's Equity" },
+        { label: "Amount", value: formatAiMoney(amountMinor, currency) },
+      ],
+    };
+  }
+
+  if (normalized.includes("categorize") || normalized.includes("recategorize") || normalized.includes("file ") || normalized.includes("handle ")) {
+    const merchantContains = extractMerchantForCategorization(question);
+    const category = categoryFromQuestion(question);
+    return {
+      kind: "proposal",
+      title: "Categorization proposal",
+      body:
+        `Categorize matching "${merchantContains}" transactions as ${category.label}. OpenBooks will route each match through the existing transaction pipeline, which reverses and reposts ledger entries when needed.`,
+      actionLabel: "Categorize transactions",
+      action: "categorizeTransactions",
+      merchantContains,
+      categoryAccountNumber: category.number,
+      categoryLabel: category.label,
+      limit: 5,
+      facts: [
+        { label: "Merchant text", value: merchantContains },
+        { label: "Category", value: category.label },
+        { label: "Limit", value: "Up to 5 transactions" },
+      ],
+    };
+  }
+
+  if (normalized.includes("create") || normalized.includes("rule")) {
     const merchantContains = extractMerchantForRule(question);
     return {
       kind: "proposal",
@@ -136,7 +348,12 @@ export function answerOpenBooksQuestion(question: string, pack: ReportPack | und
       body:
         `Create a rule for merchant text "${merchantContains}". This writes a rule only after confirmation; it never posts a journal entry from chat.`,
       actionLabel: "Confirm rule",
+      action: "createRule",
       merchantContains,
+      facts: [
+        { label: "Merchant text", value: merchantContains },
+        { label: "Auto-post", value: "Off" },
+      ],
     };
   }
 

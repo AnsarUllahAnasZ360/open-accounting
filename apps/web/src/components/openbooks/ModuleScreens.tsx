@@ -940,12 +940,15 @@ export function RemainingSettingsScreens() {
   const setAiConfig = useMutation(api.ai.setConfig);
   const recordCategorizationEvalRun = useMutation(api.ai.recordCategorizationEvalRun);
   const testAiConnection = useAction(api.ai.testProviderConnection);
+  const categorizePendingTransactions = useAction(api.bedrockCategorizer.categorizePendingTransactions);
   const [auditFilter, setAuditFilter] = useState("");
   const [entityMessage, setEntityMessage] = useState("");
   const [aiAutonomyOverride, setAiAutonomyOverride] = useState<AiAutonomyMode | null>(null);
   const [aiTestMessage, setAiTestMessage] = useState("");
   const [aiEvalMessage, setAiEvalMessage] = useState("");
+  const [aiBatchMessage, setAiBatchMessage] = useState("");
   const [runningAiEval, setRunningAiEval] = useState(false);
+  const [runningAiBatch, setRunningAiBatch] = useState(false);
   const [creatingEntity, setCreatingEntity] = useState(false);
   const aiStatus = frontendAiStatus(aiProviderStatus);
   const aiAutonomy = aiAutonomyOverride ?? aiProviderStatus?.autonomy ?? "balanced";
@@ -1000,6 +1003,30 @@ export function RemainingSettingsScreens() {
       setAiEvalMessage(error instanceof Error ? error.message : "Could not record the categorization eval.");
     } finally {
       setRunningAiEval(false);
+    }
+  }
+
+  async function runBatchCategorization() {
+    if (!data?.entity?.id) {
+      setAiBatchMessage("Business entity is still loading; try again in a moment.");
+      return;
+    }
+    setRunningAiBatch(true);
+    setAiBatchMessage("Checking imported transactions...");
+    try {
+      const result = await categorizePendingTransactions({
+        entityId: data.entity.id as Id<"entities">,
+        limit: 10,
+      });
+      const degraded = result.degradedCount > 0 ? ` ${result.degradedCount} degraded.` : "";
+      const fallback = result.fallbackCount > 0 ? ` ${result.fallbackCount} fallback.` : "";
+      setAiBatchMessage(
+        `${result.attemptedCount} checked. ${result.postedCount} posted, ${result.needsReviewCount} updated for review, ${result.skippedCount} skipped.${degraded}${fallback}`,
+      );
+    } catch (error) {
+      setAiBatchMessage(error instanceof Error ? error.message : "Could not run batch categorization.");
+    } finally {
+      setRunningAiBatch(false);
     }
   }
 
@@ -1107,6 +1134,29 @@ export function RemainingSettingsScreens() {
           >
             <CheckCircle2 className="size-4" />
             {runningAiEval ? "Running eval" : "Run eval"}
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-medium">Batch categorization</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Runs memory and Bedrock categorization on imported transactions still waiting in review.
+            </p>
+            {aiBatchMessage ? (
+              <p className="mt-2 text-sm text-primary" data-testid="m10-ai-batch-result">
+                {aiBatchMessage}
+              </p>
+            ) : null}
+          </div>
+          <Button
+            className="shrink-0"
+            disabled={!data?.entity?.id || runningAiBatch}
+            variant="outline"
+            onClick={() => void runBatchCategorization()}
+          >
+            <Sparkles className="size-4" />
+            {runningAiBatch ? "Running batch" : "Run batch"}
           </Button>
         </div>
       </CardContent>

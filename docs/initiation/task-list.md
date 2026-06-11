@@ -304,6 +304,13 @@ internal pipeline mutation without duplicating transactions or bypassing
 open: AI SDK provider registry and streaming/full-page chat tool calls; automatic
 post-sync scheduling/job status UI is a hardening item.
 
+M10 batch UI note, 2026-06-11: exposed the bounded batch action in Settings →
+AI as a compact operator trigger that reports checked/posted/review/skipped
+counts. This gives the owner a product-visible way to drain pending imported
+rows. Still open: AI SDK provider registry and streaming/full-page chat tool
+calls; automatic post-sync scheduling and persistent batch-job history remain
+hardening items.
+
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules
 after confirmation; eval accuracy logged.

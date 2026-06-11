@@ -27,7 +27,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 11 | Full data export | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m7-settings-export.json` | Settings export passed in reports spec. |
 | 12 | Plaid sandbox connect → sync → pipeline | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m9-plaid-settings-e2e.png` | Sandbox-ready path connects, selects accounts, syncs Plaid-shaped rows through the pipeline, shows recent imports, and simulates relink. Durable access-token persistence remains a hardening item. |
 | 13 | Stripe test sync + payout drill-down + invoice via Stripe | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-object-ids.json`; `docs/initiation/evidence/2026-06-11-m8-stripe-webhook-register.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-webhook-negative-http.txt` | Stripe spec passed in the final production run; payout reconciliation remains fixture-backed per sandbox-reality notes. Production Convex now has a signed Stripe test webhook endpoint that records verified events. |
-| 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png`; `docs/initiation/evidence/2026-06-11-m10-semantic-memory-focused-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-categorization-verify.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-result.json`; `docs/initiation/evidence/2026-06-11-m10-live-eval-production-e2e.txt` | Report-backed chat, confirmed Uber rule, Bedrock categorizer, vector-backed semantic correction memory, bounded batch categorization for imported needs-review rows, and owner-authenticated 120-row seeded eval pass. Full streaming/tool-call chat remains partial. |
+| 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final-green.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat.png`; `docs/initiation/evidence/2026-06-11-m10-semantic-memory-focused-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-categorization-verify.txt`; `docs/initiation/evidence/2026-06-11-m10-batch-ui-vercel-deploy.txt`; `docs/initiation/evidence/2026-06-11-m10-live-eval-result.json`; `docs/initiation/evidence/2026-06-11-m10-live-eval-production-e2e.txt` | Report-backed chat, confirmed Uber rule, Bedrock categorizer, vector-backed semantic correction memory, Settings-triggered batch categorization for imported needs-review rows, and owner-authenticated 120-row seeded eval pass. Full streaming/tool-call chat remains partial. |
 | 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m11-receipt-embedding-match-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-receipt-vectors-verify.txt`; `docs/initiation/evidence/2026-06-11-m11-receipt-vectors-e2e.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Image uploads attempt Bedrock vision OCR, deterministic matching, embedding-assisted transaction matching, and persisted receipt vectors, then fall back to manual match. PDF OCR remains an allowed degradation. |
 | 16 | Mobile usability (4 core surfaces) | WORKING | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-mobile.png`; `docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile.png`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-e2e.txt`; `docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile-production-e2e.txt` | Dashboard, Inbox/Transactions responsive coverage, and mobile chat drawer evidence are present, including a production-domain mobile chat run. |
 | 17 | Audit log attribution (user/rule/AI) | WORKING | `docs/initiation/evidence/2026-06-11-m13-audit-attribution.png`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-e2e.txt`; `docs/initiation/evidence/2026-06-11-m13-audit-attribution-production-ai-e2e.txt` | Settings audit log now shows user, rule, and AI actor badges. AI-confirmed rules write audit events, and rule-routed ledger postings derive rule attribution from the posted journal entry. |
@@ -1332,3 +1332,35 @@ PASS/PARTIAL table:
 | Ledger invariant | PASS | Batch auto-posting still goes through pipeline mutation and `ledger.postEntry`. |
 | Degraded mode | PASS | Missing AI env leaves rows in review and returns degraded batch results. |
 | Automatic sync trigger/job UI | PARTIAL | The backend action is deployed, but Plaid/Stripe/CSV sync completion does not yet enqueue it with persistent job history. |
+
+### 2026-06-11 12:11 CDT — M10 Settings batch trigger
+
+What changed:
+
+- Added a Settings → AI "Batch categorization" trigger for the bounded imported-row worker.
+- The UI calls `bedrockCategorizer.categorizePendingTransactions` with a small limit and reports checked, posted, review-updated, skipped, degraded, and fallback counts.
+- Kept the existing OpenBooks design system: compact bordered action row, lucide icon button, neutral copy, no new visual language.
+- Redeployed the Next.js app to Vercel production after the UI change and confirmed the custom domain still returns HTTP 200.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m10-batch-ui-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-ui-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-ui-vercel-deploy.txt`
+- `docs/initiation/evidence/2026-06-11-m10-batch-ui-http-check.txt`
+
+Verification:
+
+- `pnpm verify` green: typecheck, lint, Next.js production build, and 13 unit files / 60 tests.
+- `pnpm test:e2e -- tests/e2e/ai-chat.spec.ts` green: 2/2 AI browser regression passed.
+- `vercel deploy --prod --yes` green: production deployment `dpl_ADD9cnMsJfMJLQM5scwWPbUTY69m` ready and aliased.
+- `curl -I https://openbooks.ansarullahanas.com` returned HTTP 200.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Operator trigger | PASS | Settings AI now exposes the bounded batch categorizer. |
+| Verification | PASS | Full verify and focused AI e2e stayed green after the UI change. |
+| Production deploy | PASS | Vercel production redeployed and the custom domain returns HTTP 200. |
+| Persistent job history | PARTIAL | The trigger reports immediate counts, but does not yet persist batch job history/retry state. |

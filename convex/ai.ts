@@ -1,9 +1,9 @@
+import { makeFunctionReference } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
-import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { action, internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
-import { resolveAIProviderRegistry, type AIProviderMode } from "./aiProviderRegistry";
+import { resolveAIProviderRegistry } from "./aiProviderRegistry";
 import { requireWorkspaceRole } from "./authz";
 
 export const AI_AUTONOMY_THRESHOLDS = {
@@ -27,6 +27,21 @@ const aiAutonomyValidator = v.union(
   v.literal("balanced"),
   v.literal("autopilot"),
 );
+type ProviderConnectionTestResult = {
+  ok: boolean;
+  mode: "active" | "degraded";
+  provider: "bedrock" | null;
+  runtime: "ai_sdk" | "degraded";
+  message: string;
+  model?: string;
+  finishReason?: string;
+  latencyMs?: number;
+};
+const aiSdkTestProviderConnectionRef = makeFunctionReference<
+  "action",
+  { workspaceId: Id<"workspaces"> },
+  ProviderConnectionTestResult
+>("aiSdkRuntime:testProviderConnection");
 
 export function resolveAutonomyThreshold(autonomy: AIAutonomy) {
   return AI_AUTONOMY_THRESHOLDS[autonomy];
@@ -392,29 +407,7 @@ export const testProviderConnection = action({
     workspaceId: v.id("workspaces"),
   },
   handler: async (ctx, args) => {
-    const status: {
-      mode: AIProviderMode;
-      activeProvider: "bedrock" | null;
-      model: string | null;
-      region: string | null;
-      degradedReason: string | null;
-    } = await ctx.runQuery(api.ai.providerStatus, args);
-
-    if (status.mode === "degraded") {
-      return {
-        ok: false,
-        mode: status.mode,
-        provider: status.activeProvider,
-        message: status.degradedReason ?? "AI provider is not configured.",
-      };
-    }
-
-    return {
-      ok: true,
-      mode: status.mode,
-      provider: status.activeProvider,
-      message: `Bedrock provider is configured for ${status.model ?? "the configured chat model"} in ${status.region ?? "the configured region"}.`,
-    };
+    return await ctx.runAction(aiSdkTestProviderConnectionRef, args);
   },
 });
 

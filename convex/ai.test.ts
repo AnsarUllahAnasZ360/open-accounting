@@ -34,6 +34,18 @@ const providerStatus = makeFunctionReference<
   }
 >("ai:providerStatus");
 
+const testProviderConnection = makeFunctionReference<
+  "action",
+  { workspaceId: string },
+  {
+    ok: boolean;
+    mode: "active" | "degraded";
+    provider: "bedrock" | null;
+    runtime: "ai_sdk" | "degraded";
+    message: string;
+  }
+>("ai:testProviderConnection");
+
 const categorizeAndRouteTransaction = makeFunctionReference<
   "action",
   {
@@ -495,6 +507,27 @@ describe("M10 AI backend", () => {
       model: "anthropic.claude-3-5-sonnet-test",
       embeddingsModel: "test-embed-model",
     });
+  });
+
+  it("keeps the AI SDK connection test degraded when provider env is absent", async () => {
+    vi.stubEnv("AI_PROVIDER", "");
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "");
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
+    vi.stubEnv("AWS_REGION", "");
+    vi.stubEnv("AI_MODEL", "");
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const session = authed(t, ids.userId);
+
+    const result = await session.action(testProviderConnection, { workspaceId: ids.workspaceId });
+
+    expect(result).toMatchObject({
+      ok: false,
+      mode: "degraded",
+      provider: null,
+      runtime: "degraded",
+    });
+    expect(result.message).not.toContain("test-secret-key");
   });
 
   it("selects bounded existing transactions for AI batch categorization", async () => {

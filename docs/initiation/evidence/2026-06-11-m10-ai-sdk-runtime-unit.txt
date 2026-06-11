@@ -1,0 +1,11 @@
+Command: pnpm test:unit -- convex/ai.test.ts
+Date: 2026-06-11 13:16 CDT
+Result: PASS
+
+Summary:
+- Test files: 13 passed.
+- Tests: 65 passed.
+- Added coverage: AI SDK connection test returns safe degraded mode when provider env is absent, without exposing secrets.
+
+Notes:
+- No secret values were printed.

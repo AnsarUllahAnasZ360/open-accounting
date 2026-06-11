@@ -10,6 +10,7 @@
 
 import type * as ai from "../ai.js";
 import type * as aiProviderRegistry from "../aiProviderRegistry.js";
+import type * as aiSdkRuntime from "../aiSdkRuntime.js";
 import type * as auth from "../auth.js";
 import type * as authAdmin from "../authAdmin.js";
 import type * as authz from "../authz.js";
@@ -40,6 +41,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   ai: typeof ai;
   aiProviderRegistry: typeof aiProviderRegistry;
+  aiSdkRuntime: typeof aiSdkRuntime;
   auth: typeof auth;
   authAdmin: typeof authAdmin;
   authz: typeof authz;

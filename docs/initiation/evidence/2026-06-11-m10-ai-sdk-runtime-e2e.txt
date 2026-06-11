@@ -1,0 +1,11 @@
+Command: pnpm exec playwright test tests/e2e/ai-chat.spec.ts --grep "keeps actions"
+Date: 2026-06-11 13:21 CDT
+Result: PASS
+
+Summary:
+- M10 AI chat answers read questions and keeps actions confirm-first: PASS
+- Total: 1 passed in 1.4m.
+
+Notes:
+- This path clicks Settings -> AI -> Test AI connection and then exercises report-backed chat plus confirm-first rule creation.
+- The first attempt was interrupted while the seed job was running; the clean rerun passed.

@@ -1,0 +1,12 @@
+Command: npx convex dev --once --typecheck=disable
+Date: 2026-06-11 13:16 CDT
+Result: PASS
+
+Summary:
+- Development deployment: z360/openbooks dev/ansar-ullah-anas.
+- Convex functions ready.
+- Generated API now includes aiSdkRuntime:testProviderConnection.
+
+Notes:
+- Typecheck was disabled for this Convex CLI validation because the CLI currently typechecks test files and reports pre-existing test-file typing noise. The repository verification gate, `pnpm verify`, passed immediately after this run.
+- No secret values were printed.

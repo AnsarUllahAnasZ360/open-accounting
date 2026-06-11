@@ -253,7 +253,7 @@ Evidence: Playwright spec using sandbox token + screenshots of Link flow.
 
 ## M10 — AI on Bedrock: pipeline stages + chat panel
 
-- [ ] Provider layer via AI SDK with a registry shaped for
+- [x] Provider layer via AI SDK with a registry shaped for
       Anthropic/OpenAI/Google/Ollama/Bedrock; v1 active provider = Bedrock
       from env (model from `AI_MODEL`, embeddings `AI_EMBEDDINGS_MODEL`);
       Settings → AI: provider/status, model display, autonomy radio
@@ -344,6 +344,15 @@ waits for the ledger/report context before accepting prompts, and answers a
 ledger-backed question in Playwright. The chat checkbox remains open because the
 actual streaming AI SDK runtime and full server-side read/action tool set are
 still partial; the "full-page mode" portion is now evidenced as working.
+
+M10 AI SDK runtime note, 2026-06-11: installed `ai` and
+`@ai-sdk/amazon-bedrock`, added a Convex Node action
+`aiSdkRuntime.testProviderConnection`, and kept the existing Settings
+`ai.testProviderConnection` API as a wrapper. When Bedrock env is active, the
+connection test now performs a bounded AI SDK `generateText` smoke call from a
+Convex action; when env is absent, it degrades without calling a model. The
+provider-layer checkbox is now complete. Still open: streaming chat/tool calls
+and automatic post-sync batch scheduling.
 
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules

@@ -1,0 +1,16 @@
+Command: npx convex deploy --yes --typecheck=disable
+Date: 2026-06-11 13:22 CDT
+Result: PASS
+
+Deployment:
+- Production deployment: z360/openbooks production.
+- Convex URL: https://perceptive-guanaco-487.convex.cloud
+
+Summary:
+- Functions uploaded.
+- Schema validation complete.
+- Convex functions deployed.
+
+Notes:
+- Typecheck was disabled for the same known Convex CLI test-file typing noise documented in the dev-once evidence. `pnpm verify` passed before deployment.
+- No secret values were printed.

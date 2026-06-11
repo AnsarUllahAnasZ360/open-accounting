@@ -148,3 +148,26 @@ test("M10 mobile chat drawer answers a ledger-backed question", async ({ page })
     fullPage: true,
   });
 });
+
+test("M10 full-page Ask AI answers a ledger-backed question", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  await signInOwner(page);
+  await page.goto("/ask-ai");
+  await expect(page.getByRole("heading", { name: "Ask AI" })).toBeVisible({ timeout: 15000 });
+
+  const chatPage = page.getByTestId("m10-ai-chat-page");
+  await expect(chatPage).toBeVisible();
+  await expect(chatPage.getByText(/Degraded mode|Bedrock active/)).toBeVisible();
+  await expect(chatPage.getByPlaceholder("Ask about your books")).toBeEnabled({ timeout: 15000 });
+
+  await chatPage.getByPlaceholder("Ask about your books").fill("Top 5 expenses this quarter?");
+  await chatPage.getByRole("button", { name: "Send question" }).click();
+  await expect(chatPage.getByText("Top expense categories").first()).toBeVisible({ timeout: 15000 });
+  await expect(chatPage.getByTestId("ai-answer-table").locator("tbody tr").first()).toBeVisible();
+
+  await page.screenshot({
+    path: "docs/initiation/evidence/2026-06-11-m10-ai-chat-full-page.png",
+    fullPage: true,
+  });
+});

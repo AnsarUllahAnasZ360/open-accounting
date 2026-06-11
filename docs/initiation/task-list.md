@@ -338,6 +338,13 @@ checkbox remains open until actual AI SDK runtime invocation is wired into the
 chat/tool path; streaming/full-page chat and automatic post-sync batch scheduling
 also remain open.
 
+M10 full-page chat note, 2026-06-11: added a dedicated `/ask-ai` App Router page
+that reuses the existing report-backed Ask AI component, opens from the drawer,
+waits for the ledger/report context before accepting prompts, and answers a
+ledger-backed question in Playwright. The chat checkbox remains open because the
+actual streaming AI SDK runtime and full server-side read/action tool set are
+still partial; the "full-page mode" portion is now evidenced as working.
+
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules
 after confirmation; eval accuracy logged.

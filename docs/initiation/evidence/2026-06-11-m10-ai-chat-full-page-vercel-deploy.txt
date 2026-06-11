@@ -1,0 +1,18 @@
+Command: vercel deploy --prod --yes
+Date: 2026-06-11 13:08 CDT
+Result: PASS
+
+Deployment:
+- id: dpl_ax9rn1CmUANBt9q8NppuFEm3oYib
+- production url: https://openbooks-78deyagar-ansar-ullah-anas-projects.vercel.app
+- aliased url: https://openbooks-flax.vercel.app
+- inspector: https://vercel.com/ansar-ullah-anas-projects/openbooks/ax9rn1CmUANBt9q8NppuFEm3oYib
+
+Build route evidence:
+- /
+- /[section]
+- /ask-ai
+- /sign-in
+
+Notes:
+- No secret values were printed or copied into this evidence file.

@@ -1,0 +1,11 @@
+Command: PLAYWRIGHT_BASE_URL=https://openbooks.ansarullahanas.com pnpm exec playwright test tests/e2e/ai-chat.spec.ts --grep "full-page"
+Date: 2026-06-11 13:10 CDT
+Result: PASS
+
+Summary:
+- M10 full-page Ask AI answers a ledger-backed question: PASS
+- Total: 1 passed in 6.7s.
+
+Notes:
+- This run used the production custom domain and did not start a local Next.js dev server.
+- No secret values were printed.

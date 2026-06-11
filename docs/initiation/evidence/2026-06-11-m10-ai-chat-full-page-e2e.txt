@@ -1,0 +1,18 @@
+Command: pnpm exec playwright test tests/e2e/ai-chat.spec.ts
+Date: 2026-06-11 13:05 CDT
+Result: PASS
+
+Summary:
+- M10 AI chat answers read questions and keeps actions confirm-first: PASS
+- M10 mobile chat drawer answers a ledger-backed question: PASS
+- M10 full-page Ask AI answers a ledger-backed question: PASS
+- Total: 3 passed in 1.5m.
+
+Screenshots:
+- docs/initiation/evidence/2026-06-11-m10-ai-chat.png
+- docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile.png
+- docs/initiation/evidence/2026-06-11-m10-ai-chat-full-page.png
+
+Notes:
+- An earlier full-page test attempt exposed a report-pack timing bug: the chat accepted a prompt before the ledger/report context finished loading. The input and prompt chips now stay disabled until books context is ready.
+- One retry was blocked by local disk ENOSPC while writing generated Playwright/Convex artifacts. Generated Next build cache was cleared, then the final run passed.

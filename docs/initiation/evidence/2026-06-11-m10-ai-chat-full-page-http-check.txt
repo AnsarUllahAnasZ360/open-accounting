@@ -1,0 +1,20 @@
+Command: curl -I https://openbooks.ansarullahanas.com/ask-ai
+Date: 2026-06-11 13:08 CDT
+Result: PASS
+
+Response summary:
+- status: HTTP/2 200
+- server: Vercel
+- x-matched-path: /ask-ai
+- x-nextjs-prerender: 1
+- x-vercel-cache: PRERENDER
+
+Command: curl -I https://openbooks.ansarullahanas.com
+Result: PASS
+
+Response summary:
+- status: HTTP/2 200
+- server: Vercel
+- x-matched-path: /
+- x-nextjs-prerender: 1
+- x-vercel-cache: PRERENDER

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation } from "convex/react";
-import { ArrowUp, CheckCircle2, CircleAlert, PanelRightClose, Sparkles } from "lucide-react";
+import { ArrowUp, CheckCircle2, CircleAlert, Maximize2, PanelRightClose, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "../../../../../convex/_generated/api";
@@ -134,13 +135,15 @@ export function OpenBooksAIChat({
   reportPack,
   aiStatus,
   pendingPrompt,
+  mode = "drawer",
   onClose,
 }: {
   contextLabel: string;
   reportPack: ReportPack | undefined;
   aiStatus: AiStatus;
   pendingPrompt?: string;
-  onClose: () => void;
+  mode?: "drawer" | "page";
+  onClose?: () => void;
 }) {
   const createConfirmedRule = useMutation(api.ai.createConfirmedRule);
   const [input, setInput] = useState("");
@@ -155,10 +158,11 @@ export function OpenBooksAIChat({
   const [proposalStates, setProposalStates] = useState<Record<string, ProposalState>>({});
   const listRef = useRef<HTMLDivElement>(null);
   const lastExternalPromptRef = useRef("");
+  const booksContextReady = Boolean(reportPack?.entity.id);
 
   const submitQuestion = useCallback((question: string) => {
     const trimmed = question.trim();
-    if (!trimmed) return;
+    if (!trimmed || !booksContextReady) return;
 
     const pendingId = nextMessageId();
     setMessages((current) => [
@@ -183,7 +187,7 @@ export function OpenBooksAIChat({
         ),
       );
     }, 320);
-  }, [aiStatus.configured, reportPack]);
+  }, [aiStatus.configured, booksContextReady, reportPack]);
 
   const confirmProposal = useCallback(async (messageId: string, answer: ProposalAnswer) => {
     if (!reportPack?.entity.id) {
@@ -228,16 +232,23 @@ export function OpenBooksAIChat({
 
   useEffect(() => {
     if (!pendingPrompt || pendingPrompt === lastExternalPromptRef.current) return;
+    if (!booksContextReady) return;
     lastExternalPromptRef.current = pendingPrompt;
     submitQuestion(pendingPrompt.split("::")[0]);
-  }, [pendingPrompt, submitQuestion]);
+  }, [booksContextReady, pendingPrompt, submitQuestion]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   return (
-    <div className="flex h-full flex-col" data-testid="m10-ai-chat-drawer">
+    <div
+      className={cn(
+        "flex h-full flex-col bg-background",
+        mode === "page" && "min-h-[680px] overflow-hidden rounded-lg border shadow-xs",
+      )}
+      data-testid={mode === "page" ? "m10-ai-chat-page" : "m10-ai-chat-drawer"}
+    >
       <div className="flex h-14 items-center justify-between border-b px-4">
         <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
           <Sparkles className="size-4 text-primary" />
@@ -246,9 +257,20 @@ export function OpenBooksAIChat({
             {aiStatus.mode === "active" ? "Bedrock active" : "Degraded mode"}
           </Badge>
         </div>
-        <Button aria-label="Close Ask AI" size="icon-sm" variant="ghost" onClick={onClose}>
-          <PanelRightClose />
-        </Button>
+        <div className="flex items-center gap-1">
+          {mode === "drawer" ? (
+            <Button aria-label="Open Ask AI full page" asChild size="icon-sm" variant="ghost">
+              <Link href="/ask-ai">
+                <Maximize2 />
+              </Link>
+            </Button>
+          ) : null}
+          {onClose ? (
+            <Button aria-label="Close Ask AI" size="icon-sm" variant="ghost" onClick={onClose}>
+              <PanelRightClose />
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="border-b bg-muted/30 px-4 py-3">
@@ -296,6 +318,7 @@ export function OpenBooksAIChat({
             <Button
               key={prompt}
               className="shrink-0"
+              disabled={!booksContextReady}
               size="sm"
               type="button"
               variant="outline"
@@ -314,11 +337,12 @@ export function OpenBooksAIChat({
         >
           <Input
             aria-label="Ask about your books"
-            placeholder="Ask about your books"
+            disabled={!booksContextReady}
+            placeholder={booksContextReady ? "Ask about your books" : "Loading books context"}
             value={input}
             onChange={(event) => setInput(event.target.value)}
           />
-          <Button aria-label="Send question" size="icon" type="submit">
+          <Button aria-label="Send question" disabled={!booksContextReady} size="icon" type="submit">
             <ArrowUp className="size-4" />
           </Button>
         </form>

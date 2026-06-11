@@ -1,0 +1,14 @@
+Command: pnpm verify
+Date: 2026-06-11 13:03 CDT
+Result: PASS
+
+Summary:
+- Typecheck: PASS
+- Lint: PASS
+- Next.js production build: PASS
+- Build route evidence: /ask-ai is included as a static App Router page.
+- Unit tests: PASS, 13 files / 64 tests.
+
+Notes:
+- No secret values were printed.
+- apps/web/.next was deleted after this run to recover local disk space before browser acceptance; it is generated build output only.

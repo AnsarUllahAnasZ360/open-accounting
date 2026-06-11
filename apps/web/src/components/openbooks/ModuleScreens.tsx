@@ -96,6 +96,14 @@ function downloadCsv(filename: string, csv: string) {
   URL.revokeObjectURL(url);
 }
 
+function moneyInputToMinor(value: string) {
+  const normalized = value.trim().replace(/[$,]/g, "");
+  if (!normalized) return undefined;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount)) return undefined;
+  return Math.round(amount * 100);
+}
+
 function ModuleIntro({
   title,
   description,
@@ -445,21 +453,91 @@ function AgingMatrix({ bucket, currency }: { bucket: ModuleOverview["invoices"][
 
 export function BillsScreen() {
   const data = useModuleOverview();
+  const generateReceiptUploadUrl = useMutation(api.receipts.generateUploadUrl);
+  const recordReceiptUpload = useMutation(api.receipts.recordUpload);
+  const manualMatchReceipt = useMutation(api.receipts.manualMatch);
   const [selectedBill, setSelectedBill] = useState<BillRow | null>(null);
+  const [documentKind, setDocumentKind] = useState<"receipt" | "bill">("receipt");
+  const [vendor, setVendor] = useState("");
+  const [receiptDate, setReceiptDate] = useState("");
+  const [receiptAmount, setReceiptAmount] = useState("");
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   if (data === undefined) return <LoadingBlock label="bills" />;
   if (!data.entity) return <NoEntityState />;
+  const entity = data.entity;
+  const matchCandidates = data.bills.matchCandidates;
+
+  async function uploadReceiptFiles(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadMessage("");
+    try {
+      const uploadUrl = await generateReceiptUploadUrl({ entityId: entity.id as Id<"entities"> });
+      const uploadResult = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!uploadResult.ok) {
+        throw new Error("Receipt upload failed before it reached Convex storage.");
+      }
+      const { storageId } = await uploadResult.json() as { storageId: string };
+      const result = await recordReceiptUpload({
+        entityId: entity.id as Id<"entities">,
+        kind: documentKind,
+        storageId: storageId as Id<"_storage">,
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        vendor: vendor.trim() || undefined,
+        date: receiptDate.trim() || undefined,
+        totalMinor: moneyInputToMinor(receiptAmount),
+        currency: entity.currency,
+      });
+      setUploadMessage(
+        result.status === "matched"
+          ? `Uploaded ${file.name}: auto-matched to a bank transaction.`
+          : `Uploaded ${file.name}: queued for manual match.`,
+      );
+      setVendor("");
+      setReceiptDate("");
+      setReceiptAmount("");
+    } catch (error) {
+      setUploadMessage(error instanceof Error ? error.message : "Receipt upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function matchFirstCandidate(documentId: string) {
+    const candidate = matchCandidates[0];
+    if (!candidate) return;
+    setUploadMessage("");
+    try {
+      await manualMatchReceipt({
+        documentId: documentId as Id<"documents">,
+        transactionId: candidate.id as Id<"transactions">,
+      });
+      setUploadMessage(`Manual match saved to ${candidate.merchant}.`);
+    } catch (error) {
+      setUploadMessage(error instanceof Error ? error.message : "Manual match failed.");
+    }
+  }
 
   return (
     <div className="space-y-5" data-testid="m6-bills-screen">
       <ModuleIntro
         title="Bills and money you owe"
-        description="Bills are grouped by due window and carry A/P posting status. PDF upload is represented as a clear M11 placeholder while manual bill entry is ready for integration."
+        description="Bills are grouped by due window and carry A/P posting status. Upload now stores receipt or bill files, extracts reviewable metadata, and matches evidence to bank transactions."
         action={
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <FileUp className="size-4" />
-              Upload PDF
+            <Button asChild variant="outline" size="sm">
+              <label htmlFor="m11-receipt-file">
+                <FileUp className="size-4" />
+                Upload file
+              </label>
             </Button>
             <Button size="sm">
               <Plus className="size-4" />
@@ -474,6 +552,117 @@ export function BillsScreen() {
         <StatCard label="Due this week" value={<Amount amountMinor={data.bills.kpis.dueThisWeekMinor} currency={data.entity.currency} />} />
         <StatCard label="Overdue" value={<Amount amountMinor={data.bills.kpis.overdueMinor} currency={data.entity.currency} />} />
       </section>
+
+      <Card className="shadow-xs" data-testid="m11-receipt-upload-panel">
+        <CardHeader>
+          <CardTitle className="text-base">Receipt and bill upload</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="rounded-lg border border-dashed bg-muted/20 p-4">
+              <div className="flex items-start gap-3">
+                <FileUp className="mt-0.5 size-5 text-primary" />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">Upload evidence</div>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{data.bills.uploadPdf.reason}</p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-sm">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Type</span>
+                  <select
+                    className="h-9 w-full rounded-lg border bg-background px-3 text-sm"
+                    value={documentKind}
+                    onChange={(event) => setDocumentKind(event.target.value as "receipt" | "bill")}
+                  >
+                    <option value="receipt">Receipt</option>
+                    <option value="bill">Bill PDF</option>
+                  </select>
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Vendor override</span>
+                  <Input value={vendor} placeholder="Optional" onChange={(event) => setVendor(event.target.value)} />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Date override</span>
+                  <Input type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Amount override</span>
+                  <Input inputMode="decimal" value={receiptAmount} placeholder="42.00" onChange={(event) => setReceiptAmount(event.target.value)} />
+                </label>
+              </div>
+              <input
+                id="m11-receipt-file"
+                data-testid="m11-receipt-file"
+                className="sr-only"
+                type="file"
+                accept="image/png,image/jpeg,application/pdf"
+                disabled={uploading}
+                onChange={(event) => void uploadReceiptFiles(event.currentTarget.files)}
+              />
+              <Button asChild className="mt-4 w-full" disabled={uploading}>
+                <label htmlFor="m11-receipt-file">
+                  <FileUp className="size-4" />
+                  {uploading ? "Uploading..." : "Choose file"}
+                </label>
+              </Button>
+              {uploadMessage ? (
+                <div className="mt-3 rounded-lg border bg-primary/5 p-3 text-sm text-primary" data-testid="m11-receipt-upload-message">
+                  {uploadMessage}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-lg border">
+              <div className="border-b px-3 py-2 text-sm font-medium">Uploaded evidence</div>
+              <div className="divide-y">
+                {data.bills.uploadPdf.documents.slice(0, 6).map((document) => (
+                  <div key={document.id} className="grid gap-3 px-3 py-3 text-sm md:grid-cols-[1fr_auto] md:items-start" data-testid="m11-receipt-row">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{document.vendor}</span>
+                        <Badge variant="outline" className="capitalize">{document.status}</Badge>
+                        <CategoryChip label={`${Math.round(document.extractionConfidence * 100)}%`} />
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {document.kind} · {document.date} · {document.fileName ?? "seeded document"}
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{document.extractionNotes}</p>
+                      {document.matchedTransaction ? (
+                        <div className="mt-2 text-xs text-primary">
+                          Matched to {document.matchedTransaction.merchant} on {document.matchedTransaction.date}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col items-start gap-2 md:items-end">
+                      <Amount amountMinor={document.totalMinor} currency={document.currency} />
+                      {document.fileUrl ? (
+                        <Button asChild size="sm" variant="outline">
+                          <a href={document.fileUrl} target="_blank" rel="noreferrer">Preview</a>
+                        </Button>
+                      ) : null}
+                      {document.status !== "matched" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={data.bills.matchCandidates.length === 0}
+                          onClick={() => void matchFirstCandidate(document.id)}
+                        >
+                          Manual match first candidate
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+                {data.bills.uploadPdf.documents.length === 0 ? (
+                  <div className="p-3 text-sm text-muted-foreground">No uploaded receipts yet.</div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-4">

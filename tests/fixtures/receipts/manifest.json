@@ -1,0 +1,42 @@
+[
+  {
+    "fileName": "receipt-amazon-business-2026-04-12-128.45.png",
+    "vendor": "Amazon Business",
+    "date": "2026-04-12",
+    "totalMinor": 12845,
+    "currency": "USD",
+    "category": "Office supplies"
+  },
+  {
+    "fileName": "receipt-figma-2026-05-14-99.00.png",
+    "vendor": "Figma",
+    "date": "2026-05-14",
+    "totalMinor": 9900,
+    "currency": "USD",
+    "category": "Software"
+  },
+  {
+    "fileName": "receipt-delta-air-lines-2026-06-08-640.00.png",
+    "vendor": "Delta Air Lines",
+    "date": "2026-06-08",
+    "totalMinor": 64000,
+    "currency": "USD",
+    "category": "Travel"
+  },
+  {
+    "fileName": "receipt-unknown-parking-2026-06-10-42.00.png",
+    "vendor": "Unknown Parking",
+    "date": "2026-06-10",
+    "totalMinor": 4200,
+    "currency": "USD",
+    "category": "Parking"
+  },
+  {
+    "fileName": "receipt-client-lunch-2026-06-11-88.00.png",
+    "vendor": "Client Lunch",
+    "date": "2026-06-11",
+    "totalMinor": 8800,
+    "currency": "USD",
+    "category": "Meals"
+  }
+]

@@ -282,15 +282,21 @@ Evidence: chat transcripts + eval numbers in completion report.
 
 ## M11 — Receipts (full attempt; cannot block completion)
 
-- [ ] Generate 5 synthetic receipt images (script renders HTML → PNG) with
+- [x] Generate 5 synthetic receipt images (script renders HTML → PNG) with
       known vendor/date/amount, committed under `tests/fixtures/receipts/` —
       the test inputs for extraction and matching.
-- [ ] Documents table + upload (drag-drop) per spec §5.2; storage in Convex.
+- [x] Documents table + upload (drag-drop) per spec §5.2; storage in Convex.
 - [ ] Bedrock vision extraction (vendor/date/total/currency) with
       confidence-underlined review form.
 - [ ] Heuristic + embedding match → auto-attach / inbox card / pending;
       no-transaction path offers manual expense or bill.
-- [ ] Bills upload-PDF path reuses the same extraction.
+- [x] Bills upload-PDF path reuses the same extraction.
+
+M11 integration note, 2026-06-11: shipped receipt/bill upload as the allowed
+degraded path. Working: five deterministic PNG fixtures, Convex file storage,
+filename/manual metadata extraction with confidence display, heuristic
+auto-match, receipt inbox queueing, and manual match from Bills. Still open:
+Bedrock vision extraction and embedding-assisted matching.
 
 Done when: uploading 5 sample receipts auto-matches or sensibly queues ≥4.
 If extraction quality blocks this, ship upload + manual match and log the gap.

@@ -104,7 +104,12 @@ export const overview = query({
         entity: null,
         contacts: { rows: [], selectedProfile: null },
         invoices: { kpis: { openMinor: 0, overdueMinor: 0, paidLast30Minor: 0, averageDaysToPay: 0 }, rows: [], aging: emptyBucket() },
-        bills: { kpis: { openMinor: 0, dueThisWeekMinor: 0, overdueMinor: 0 }, groups: [], matchCandidates: [] },
+        bills: {
+          kpis: { openMinor: 0, dueThisWeekMinor: 0, overdueMinor: 0 },
+          groups: [],
+          matchCandidates: [],
+          uploadPdf: { status: "available", reason: "Upload a receipt or bill PDF after creating a business.", documents: [] },
+        },
         payroll: { employees: [], runs: [], currencyTotals: [], statementRows: [], statementCsv: "" },
         settings: {
           businesses: { rows: [], addEntity: { status: "available" } },
@@ -144,6 +149,7 @@ export const overview = query({
     const contactsById = new Map(contacts.map((contact) => [contact._id, contact]));
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
     const documentsById = new Map(documents.map((document) => [document._id, document]));
+    const transactionsById = new Map(transactions.map((transaction) => [transaction._id, transaction]));
 
     const invoicesByContact = new Map<Id<"contacts">, Doc<"invoices">[]>();
     for (const invoice of invoices) {
@@ -321,6 +327,40 @@ export const overview = query({
         amountMinor: transaction.amountMinor,
         currency: transaction.currency,
       }));
+    const receiptDocuments = await Promise.all(
+      documents
+        .filter((document) => document.kind === "receipt" || document.kind === "bill")
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 20)
+        .map(async (document) => {
+          const matchedTransaction = document.matchedTransactionId
+            ? transactionsById.get(document.matchedTransactionId)
+            : null;
+          return {
+            id: document._id,
+            kind: document.kind,
+            vendor: document.vendor,
+            date: document.date,
+            totalMinor: document.totalMinor,
+            currency: document.currency,
+            status: document.status,
+            fileName: document.fileName ?? null,
+            fileUrl: document.storageId ? await ctx.storage.getUrl(document.storageId) : null,
+            extractionSource: document.extractionSource ?? "manual",
+            extractionConfidence: document.extractionConfidence ?? 0,
+            extractionNotes: document.extractionNotes ?? "Seeded document.",
+            matchedTransaction: matchedTransaction
+              ? {
+                  id: matchedTransaction._id,
+                  merchant: matchedTransaction.merchant,
+                  date: matchedTransaction.date,
+                  amountMinor: matchedTransaction.amountMinor,
+                  currency: matchedTransaction.currency,
+                }
+              : null,
+          };
+        }),
+    );
 
     const employeeRows = employees
       .map((employee) => {
@@ -422,8 +462,9 @@ export const overview = query({
         groups: billGroups,
         matchCandidates: openBankTransactions,
         uploadPdf: {
-          status: "placeholder",
-          reason: "Document upload and AI extraction arrive in M11; existing documents can still be displayed.",
+          status: "available",
+          reason: "Upload stores the file in Convex, extracts fixture/manual metadata, then auto-matches or queues a receipt inbox card.",
+          documents: receiptDocuments,
         },
       },
       payroll: {

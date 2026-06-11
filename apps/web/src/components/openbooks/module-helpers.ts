@@ -17,7 +17,31 @@ export type ModuleOverview = {
     kpis: { openMinor: number; dueThisWeekMinor: number; overdueMinor: number };
     groups: Array<{ key: string; label: string; rows: BillRow[] }>;
     matchCandidates: Array<{ id: string; date: string; merchant: string; amountMinor: number; currency: string }>;
-    uploadPdf: { status: string; reason: string };
+    uploadPdf: {
+      status: string;
+      reason: string;
+      documents: Array<{
+        id: string;
+        kind: string;
+        vendor: string;
+        date: string;
+        totalMinor: number;
+        currency: string;
+        status: string;
+        fileName: string | null;
+        fileUrl: string | null;
+        extractionSource: string;
+        extractionConfidence: number;
+        extractionNotes: string;
+        matchedTransaction: {
+          id: string;
+          merchant: string;
+          date: string;
+          amountMinor: number;
+          currency: string;
+        } | null;
+      }>;
+    };
   };
   payroll: {
     employees: EmployeeRow[];

@@ -44,6 +44,7 @@ export function AskAIScreen() {
           contextLabel="Full-page assistant"
           reportPack={reportPack}
           aiStatus={aiStatus}
+          workspaceId={viewer?.workspace?.id}
           mode="page"
         />
       </section>

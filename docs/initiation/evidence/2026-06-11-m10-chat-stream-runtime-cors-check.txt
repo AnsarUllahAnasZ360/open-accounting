@@ -1,0 +1,15 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+HTTP/2 204
+date: Thu, 11 Jun 2026 18:58:20 GMT
+access-control-allow-headers: authorization, content-type
+access-control-allow-methods: POST, OPTIONS
+access-control-allow-origin: https://openbooks.ansarullahanas.com
+convex-usher: usher
+vary: origin
+via: 1.1 Caddy
+cf-cache-status: DYNAMIC
+server: cloudflare
+cf-ray: a0a2d8b94a8f99ff-IAH
+alt-svc: h3=":443"; ma=86400

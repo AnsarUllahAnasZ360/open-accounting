@@ -1,0 +1,10 @@
+
+Running 1 test using 1 worker
+
+(node:90148) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:90148) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › tests/e2e/ai-chat.spec.ts:152:5 › M10 full-page Ask AI answers a ledger-backed question (5.6s)
+
+  1 passed (11.5s)

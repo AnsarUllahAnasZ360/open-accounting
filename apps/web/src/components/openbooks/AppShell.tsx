@@ -237,6 +237,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
           contextLabel={appRoutes.find((route) => route.href === pathname)?.label ?? "OpenBooks"}
           reportPack={aiReportPack ?? reportPack}
           aiStatus={aiStatus}
+          workspaceId={viewer?.workspace?.id}
           pendingPrompt={pendingAiPrompt}
           onClose={() => setAiOpen(false)}
         />

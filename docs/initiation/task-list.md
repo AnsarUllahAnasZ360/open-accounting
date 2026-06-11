@@ -362,6 +362,16 @@ access. This completes the backend read-tool layer, but the chat checkbox stays
 open until these tools are called by the streaming AI SDK chat runtime and the
 remaining confirm-card action tools are wired.
 
+M10 chat stream-runtime note, 2026-06-11: added `aiChatRuntime.answer`, a
+Convex Node action that runs AI SDK Bedrock `generateText` with the five
+server-authorized read tools above. Added `/ai/chat` as an authenticated Convex
+HTTP route with restricted CORS and chunked text delivery, then wired the
+existing drawer/full-page chat surface to use that stream for free-form live
+read questions while keeping the five acceptance shortcuts deterministic and
+write-like prompts confirm-first. The chat checkbox stays open until the full
+confirm-card action tool set (`categorizeTransactions`, `draftInvoice`,
+`addBill`, `createJournalEntry`) is wired and evidenced.
+
 Done when: the five sample questions from spec §6.8 answer correctly against
 demo data (cross-checked vs. reports); a chat-proposed rule lands in Rules
 after confirmation; eval accuracy logged.

@@ -1,0 +1,12 @@
+
+> openbooks@0.0.0 test:unit /Users/ansarullahanas/Documents/OpenBooks
+> vitest run --passWithNoTests -- convex/aiChatRuntime.test.ts convex/aiChatTools.test.ts
+
+
+ RUN  v4.1.8 /Users/ansarullahanas/Documents/OpenBooks
+
+
+ Test Files  15 passed (15)
+      Tests  68 passed (68)
+   Start at  13:54:55
+   Duration  5.97s (transform 2.50s, setup 0ms, import 4.80s, tests 9.19s, environment 954ms)

@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuthToken } from "@convex-dev/auth/react";
 import { useMutation } from "convex/react";
 import { ArrowUp, CheckCircle2, CircleAlert, Maximize2, PanelRightClose, Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -25,6 +26,7 @@ type ChatMessage = {
   content: string;
   answer?: AiAnswer;
   pending?: boolean;
+  streaming?: boolean;
 };
 
 type ProposalAnswer = Extract<AiAnswer, { kind: "proposal" }>;
@@ -35,6 +37,89 @@ type ProposalState = {
 
 function nextMessageId() {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function convexSiteUrl() {
+  const raw = process.env.NEXT_PUBLIC_CONVEX_URL;
+  if (!raw) return null;
+
+  try {
+    const url = new URL(raw);
+    if (url.hostname.endsWith(".convex.cloud")) {
+      url.hostname = url.hostname.replace(/\.convex\.cloud$/, ".convex.site");
+      return url.toString().replace(/\/$/, "");
+    }
+    if ((url.hostname === "localhost" || url.hostname === "127.0.0.1") && url.port === "3210") {
+      url.port = "3211";
+      return url.toString().replace(/\/$/, "");
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function shouldUseLiveRuntime(question: string, answer: AiAnswer) {
+  if (answer.kind === "proposal") return false;
+  const normalized = question.trim().toLowerCase();
+  if (aiSuggestedPrompts.some((prompt) => prompt.toLowerCase() === normalized)) return false;
+  return ![
+    "top 5",
+    "expense",
+    "owe",
+    "owes",
+    "payroll",
+    "stripe",
+    "last month",
+    "explain this report",
+  ].some((phrase) => normalized.includes(phrase));
+}
+
+async function streamLiveAnswer({
+  question,
+  workspaceId,
+  entityId,
+  token,
+  onChunk,
+}: {
+  question: string;
+  workspaceId: Id<"workspaces">;
+  entityId?: Id<"entities">;
+  token: string;
+  onChunk: (text: string) => void;
+}) {
+  const siteUrl = convexSiteUrl();
+  if (!siteUrl) {
+    throw new Error("Convex HTTP endpoint is not configured.");
+  }
+
+  const response = await fetch(`${siteUrl}/ai/chat`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ workspaceId, entityId, question }),
+  });
+
+  if (!response.body) {
+    throw new Error("OpenBooks AI did not return a stream.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let received = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    received += decoder.decode(value, { stream: true });
+    onChunk(received);
+  }
+  received += decoder.decode();
+  if (!response.ok && !received) {
+    throw new Error(`OpenBooks AI returned HTTP ${response.status}.`);
+  }
+  return received.trim();
 }
 
 function AnswerCard({
@@ -134,6 +219,7 @@ export function OpenBooksAIChat({
   contextLabel,
   reportPack,
   aiStatus,
+  workspaceId,
   pendingPrompt,
   mode = "drawer",
   onClose,
@@ -141,10 +227,12 @@ export function OpenBooksAIChat({
   contextLabel: string;
   reportPack: ReportPack | undefined;
   aiStatus: AiStatus;
+  workspaceId?: Id<"workspaces">;
   pendingPrompt?: string;
   mode?: "drawer" | "page";
   onClose?: () => void;
 }) {
+  const authToken = useAuthToken();
   const createConfirmedRule = useMutation(api.ai.createConfirmedRule);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -160,11 +248,18 @@ export function OpenBooksAIChat({
   const lastExternalPromptRef = useRef("");
   const booksContextReady = Boolean(reportPack?.entity.id);
 
-  const submitQuestion = useCallback((question: string) => {
+  const submitQuestion = useCallback(async (question: string) => {
     const trimmed = question.trim();
     if (!trimmed || !booksContextReady) return;
 
     const pendingId = nextMessageId();
+    const localAnswer = answerOpenBooksQuestion(trimmed, reportPack);
+    const useLiveRuntime = Boolean(
+      aiStatus.configured &&
+        authToken &&
+        workspaceId &&
+        shouldUseLiveRuntime(trimmed, localAnswer),
+    );
     setMessages((current) => [
       ...current,
       { id: nextMessageId(), role: "user", content: trimmed },
@@ -173,21 +268,69 @@ export function OpenBooksAIChat({
         role: "assistant",
         content: aiStatus.configured ? "Reading your books..." : "Reading available report data in degraded mode...",
         pending: true,
+        streaming: useLiveRuntime,
       },
     ]);
     setInput("");
 
+    if (useLiveRuntime && authToken && workspaceId) {
+      try {
+        const text = await streamLiveAnswer({
+          question: trimmed,
+          workspaceId,
+          entityId: reportPack?.entity.id as Id<"entities"> | undefined,
+          token: authToken,
+          onChunk: (text) => {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === pendingId
+                  ? { ...message, content: text || "Reading your books...", pending: true, streaming: true }
+                  : message,
+              ),
+            );
+          },
+        });
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === pendingId
+              ? {
+                  ...message,
+                  content: text || "OpenBooks AI did not return an answer.",
+                  pending: false,
+                  streaming: false,
+                }
+              : message,
+          ),
+        );
+      } catch {
+        const answer = answerOpenBooksQuestion(trimmed, reportPack);
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === pendingId
+              ? {
+                  ...message,
+                  content: answer.title,
+                  answer,
+                  pending: false,
+                  streaming: false,
+                }
+              : message,
+          ),
+        );
+      }
+      return;
+    }
+
     window.setTimeout(() => {
-      const answer = answerOpenBooksQuestion(trimmed, reportPack);
       setMessages((current) =>
         current.map((message) =>
           message.id === pendingId
-            ? { ...message, content: answer.title, answer, pending: false }
+            ? { ...message, content: localAnswer.title, answer: localAnswer, pending: false, streaming: false }
             : message,
         ),
       );
     }, 320);
-  }, [aiStatus.configured, booksContextReady, reportPack]);
+  }, [aiStatus.configured, authToken, booksContextReady, reportPack, workspaceId]);
 
   const confirmProposal = useCallback(async (messageId: string, answer: ProposalAnswer) => {
     if (!reportPack?.entity.id) {
@@ -234,7 +377,7 @@ export function OpenBooksAIChat({
     if (!pendingPrompt || pendingPrompt === lastExternalPromptRef.current) return;
     if (!booksContextReady) return;
     lastExternalPromptRef.current = pendingPrompt;
-    submitQuestion(pendingPrompt.split("::")[0]);
+    void submitQuestion(pendingPrompt.split("::")[0]);
   }, [booksContextReady, pendingPrompt, submitQuestion]);
 
   useEffect(() => {
@@ -322,7 +465,7 @@ export function OpenBooksAIChat({
               size="sm"
               type="button"
               variant="outline"
-              onClick={() => submitQuestion(prompt)}
+              onClick={() => void submitQuestion(prompt)}
             >
               {prompt}
             </Button>
@@ -332,7 +475,7 @@ export function OpenBooksAIChat({
           className="flex items-center gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            submitQuestion(input);
+            void submitQuestion(input);
           }}
         >
           <Input

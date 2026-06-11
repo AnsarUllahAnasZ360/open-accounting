@@ -1,0 +1,20 @@
+◇ injected env (20) from .env.local // tip: ◈ secrets for agents [www.dotenvx.com]
+◇ injected env (0) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+i Step 1: Configure SITE_URL
+
+i Step 2: Configure private and public key
+✔ Successfully set JWT_PRIVATE_KEY (on dev deployment ceaseless-mandrill-524)
+✔ Successfully set JWKS (on dev deployment ceaseless-mandrill-524)
+
+i Step 3: Modify tsconfig file
+✔ The convex/tsconfig.json is already set up.
+
+i Step 4: Configure auth config file
+✔ The convex/auth.config.ts is already set up.
+
+i Step 5: Initialize auth file
+✔ The convex/auth.ts is already set up.
+
+i Step 6: Configure http file
+✔ The convex/http.ts is already set up.
+✔ You're all set. Continue by configuring your schema and frontend.

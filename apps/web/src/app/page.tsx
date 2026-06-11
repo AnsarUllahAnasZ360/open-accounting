@@ -580,7 +580,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-[1080px] gap-8 px-4 py-20 lg:grid-cols-[1fr_380px] lg:px-6">
+      <section id="request-access" className="mx-auto grid max-w-[1080px] gap-8 px-4 py-20 lg:grid-cols-[1fr_380px] lg:px-6">
         <div className="text-center lg:text-left">
           <h2 className="text-[34px] font-semibold tracking-normal">
             Connect your accounts. Answer a few questions a week.

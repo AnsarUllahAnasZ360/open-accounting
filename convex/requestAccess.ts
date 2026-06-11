@@ -1,7 +1,8 @@
-import { action, mutation } from "./_generated/server";
+import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { requireAnyWorkspaceRole } from "./authz";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -63,6 +64,14 @@ export const submit = mutation({
     });
 
     return { status: "stored", id };
+  },
+});
+
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAnyWorkspaceRole(ctx, "admin");
+    return await ctx.db.query("accessLeads").withIndex("by_status").collect();
   },
 });
 

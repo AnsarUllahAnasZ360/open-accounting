@@ -69,15 +69,15 @@ Evidence: screenshots (desktop + mobile) in `docs/initiation/evidence/`.
 
 ## M2 — Auth + invite gate
 
-- [ ] Convex Auth password provider; sign-in page styled per design system.
-- [ ] Invite-only: `OWNER_EMAIL` allowlist seed + `invites` table; non-invited
+- [x] Convex Auth password provider; sign-in page styled per design system.
+- [x] Invite-only: `OWNER_EMAIL` allowlist seed + `invites` table; non-invited
       sign-up attempts rejected with the request-access path offered.
-- [ ] Owner credential bootstrap from env: `OWNER_EMAIL` + `OWNER_PASSWORD`
+- [x] Owner credential bootstrap from env: `OWNER_EMAIL` + `OWNER_PASSWORD`
       (set by Ansar in `.env.local`) creates/updates the owner account so the
       morning login needs no secret handoff.
-- [ ] Workspace bootstrap: owner's first login → workspace + role=owner.
-- [ ] Minimal Settings → Leads view listing request-access submissions.
-- [ ] Authorization helper enforced in every Convex function (workspace/entity
+- [x] Workspace bootstrap: owner's first login → workspace + role=owner.
+- [x] Minimal Settings → Leads view listing request-access submissions.
+- [x] Authorization helper enforced in every Convex function (workspace/entity
       scoping); unit-test the guard.
 
 Done when: owner logs in and lands on the dashboard; a random email cannot

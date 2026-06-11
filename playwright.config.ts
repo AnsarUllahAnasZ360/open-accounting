@@ -30,6 +30,18 @@ function readPublicEnv(name: string) {
   return undefined;
 }
 
+function playwrightConvexUrl() {
+  const publicUrl = readPublicEnv("NEXT_PUBLIC_CONVEX_URL");
+  if (publicUrl && !/^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(publicUrl)) {
+    return publicUrl;
+  }
+  const deployment = readPublicEnv("CONVEX_DEPLOYMENT")?.split(":").pop();
+  if (deployment && /^[a-z0-9-]+$/.test(deployment)) {
+    return `https://${deployment}.convex.cloud`;
+  }
+  return readPublicEnv("CONVEX_URL") ?? publicUrl ?? "";
+}
+
 export default defineConfig({
   testDir: "./tests/e2e",
   outputDir: "docs/initiation/evidence/playwright-results",
@@ -45,7 +57,7 @@ export default defineConfig({
         command: `pnpm --filter @openbooks/web dev --hostname 127.0.0.1 --port ${port}`,
         env: {
           ...process.env,
-          NEXT_PUBLIC_CONVEX_URL: readPublicEnv("NEXT_PUBLIC_CONVEX_URL") ?? "",
+          NEXT_PUBLIC_CONVEX_URL: playwrightConvexUrl(),
         },
         url: baseURL,
         reuseExistingServer: !process.env.CI,

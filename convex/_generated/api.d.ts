@@ -9,9 +9,12 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as authAdmin from "../authAdmin.js";
+import type * as authz from "../authz.js";
 import type * as bootstrap from "../bootstrap.js";
 import type * as http from "../http.js";
 import type * as requestAccess from "../requestAccess.js";
+import type * as session from "../session.js";
 
 import type {
   ApiFromModules,
@@ -21,9 +24,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  authAdmin: typeof authAdmin;
+  authz: typeof authz;
   bootstrap: typeof bootstrap;
   http: typeof http;
   requestAccess: typeof requestAccess;
+  session: typeof session;
 }>;
 
 /**

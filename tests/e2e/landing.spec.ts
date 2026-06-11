@@ -17,22 +17,9 @@ test("landing shell renders the OpenBooks bootstrap surface", async ({ page }) =
   await expect(page.getByRole("button", { name: "Request access" })).toBeVisible();
 });
 
-test("app shell routes render first-class empty states", async ({ page }) => {
-  const routes = [
-    ["/dashboard", "Dashboard"],
-    ["/inbox", "Inbox"],
-    ["/transactions", "Transactions"],
-    ["/invoices", "Invoices"],
-    ["/bills", "Bills"],
-    ["/contacts", "Contacts"],
-    ["/payroll", "Payroll"],
-    ["/reports", "Reports"],
-    ["/settings", "Settings"],
-  ];
+test("app shell routes are gated for signed-out visitors", async ({ page }) => {
+  await page.goto("/dashboard");
 
-  for (const [route, heading] of routes) {
-    await page.goto(route);
-    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Ask AI$/ })).toBeVisible();
-  }
+  await expect(page.getByText("Invite-only access")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
 });

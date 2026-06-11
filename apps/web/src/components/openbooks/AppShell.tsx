@@ -1,18 +1,88 @@
 "use client";
 
+import { useAuthActions, useConvexAuth } from "@convex-dev/auth/react";
+import { useQuery } from "convex/react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Menu, PanelRightClose, Search, Sparkles, X } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { LogOut, Menu, PanelRightClose, Search, Sparkles, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
+import { api } from "../../../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { appRoutes, mobileRoutes } from "@/lib/openbooks/content";
 import { cn } from "@/lib/utils";
 
 export function AppShell({ children }: { children: ReactNode }) {
+  if (!process.env.NEXT_PUBLIC_CONVEX_URL) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm rounded-lg border bg-card p-5 shadow-xs">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+              ob
+            </span>
+            <div>
+              <div className="text-sm font-semibold">open books</div>
+              <div className="text-xs text-muted-foreground">Convex not configured</div>
+            </div>
+          </div>
+          <p className="mt-4 text-sm text-muted-foreground">
+            Configure `NEXT_PUBLIC_CONVEX_URL` to activate invite-only access locally.
+          </p>
+          <Button asChild className="mt-4 w-full">
+            <Link href="/sign-in">Sign in</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return <AuthenticatedAppShell>{children}</AuthenticatedAppShell>;
+}
+
+function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { signOut } = useAuthActions();
+  const viewer = useQuery(api.session.viewer, isAuthenticated ? {} : "skip");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm text-muted-foreground">
+        Checking your OpenBooks session...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm rounded-lg border bg-card p-5 shadow-xs">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+              ob
+            </span>
+            <div>
+              <div className="text-sm font-semibold">open books</div>
+              <div className="text-xs text-muted-foreground">Invite-only access</div>
+            </div>
+          </div>
+          <p className="mt-4 text-sm text-muted-foreground">
+            Sign in with an invited account to view this workspace.
+          </p>
+          <Button asChild className="mt-4 w-full">
+            <Link href="/sign-in">Sign in</Link>
+          </Button>
+          <Button asChild className="mt-2 w-full" variant="ghost">
+            <Link href="/#request-access">Request access</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -31,7 +101,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </span>
                 <span>
                   <span className="block text-sm font-semibold">OpenBooks</span>
-                  <span className="block text-xs text-muted-foreground">Acme Studio LLC</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {viewer?.workspace?.name ?? "Loading workspace"}
+                  </span>
                 </span>
               </Link>
               <Button
@@ -45,8 +117,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Button>
             </div>
             <button className="mt-4 flex w-full items-center justify-between rounded-lg border bg-background px-3 py-2 text-left text-sm">
-              <span>Acme Studio LLC</span>
-              <span className="text-muted-foreground">Demo</span>
+              <span>{viewer?.workspace?.name ?? "Workspace"}</span>
+              <span className="text-muted-foreground">{viewer?.role ?? "member"}</span>
             </button>
           </div>
 
@@ -100,10 +172,23 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span>Search transactions, contacts, reports</span>
             </button>
           </div>
-          <Button variant="outline" onClick={() => setAiOpen((value) => !value)}>
-            <Sparkles />
-            Ask AI
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setAiOpen((value) => !value)}>
+              <Sparkles />
+              Ask AI
+            </Button>
+            <Button
+              aria-label="Sign out"
+              size="icon-sm"
+              variant="ghost"
+              onClick={async () => {
+                await signOut();
+                router.push("/sign-in");
+              }}
+            >
+              <LogOut />
+            </Button>
+          </div>
         </header>
 
         <main className="mx-auto w-full max-w-[1200px] px-4 py-5 lg:px-6">{children}</main>

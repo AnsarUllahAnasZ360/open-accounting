@@ -1,0 +1,12 @@
+
+> openbooks@0.0.0 test:unit /Users/ansarullahanas/Documents/OpenBooks
+> vitest run --passWithNoTests -- convex/authz.test.ts convex/requestAccess.test.ts
+
+
+ RUN  v4.1.8 /Users/ansarullahanas/Documents/OpenBooks
+
+
+ Test Files  3 passed (3)
+      Tests  4 passed (4)
+   Start at  02:06:16
+   Duration  394ms (transform 134ms, setup 0ms, import 418ms, tests 52ms, environment 180ms)

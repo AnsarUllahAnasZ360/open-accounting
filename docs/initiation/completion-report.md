@@ -163,6 +163,63 @@ Next:
 
 - M2 — invite-only auth gate, owner login, invites, and Settings leads view.
 
+### 2026-06-11 02:10 CDT — M2 Auth + invite gate
+
+What changed:
+
+- Added Convex Auth password sign-in with an OpenBooks-styled `/sign-in` page.
+- Added `invites` and `workspaceMembers` tables plus server-side authorization helpers that derive the user from Convex Auth and require an active workspace role before protected reads.
+- Enforced invite-only account creation: `OWNER_EMAIL` is allowed; pending invites are allowed; all other password sign-up attempts are rejected with the request-access path.
+- Added owner bootstrap from env through `authAdmin:bootstrapOwner`. It reads `OWNER_EMAIL` and `OWNER_PASSWORD` inside Convex, creates or updates the owner password credential, and ensures the owner workspace membership exists. Evidence output records status only, not the secret.
+- Bootstrapped the owner workspace and role. Owner login now lands on Dashboard; signed-out app routes show an invite gate.
+- Added Settings → Request-access leads, backed by Convex and protected by admin/owner authorization.
+- Fixed a React 19 async form bug in request-access intake by capturing the form element before awaiting the Convex action.
+- Added Playwright acceptance for owner login, blocked random registration, and public request-access submission visible to the owner in Settings.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m2-convex-auth-setup.txt`
+- `docs/initiation/evidence/2026-06-11-m2-convex-dev-after-bootstrap-retry1.txt`
+- `docs/initiation/evidence/2026-06-11-m2-owner-bootstrap.txt`
+- `docs/initiation/evidence/2026-06-11-m2-authz-unit.txt`
+- `docs/initiation/evidence/2026-06-11-m2-verify.txt`
+- `docs/initiation/evidence/2026-06-11-m2-e2e.txt`
+- `docs/initiation/evidence/2026-06-11-m2-sign-in-desktop.png`
+- `docs/initiation/evidence/2026-06-11-m2-sign-in-mobile.png`
+- `docs/initiation/evidence/2026-06-11-m2-dashboard-gate-desktop.png`
+- `docs/initiation/evidence/2026-06-11-m2-dashboard-gate-mobile.png`
+- `docs/initiation/evidence/2026-06-11-m2-owner-dashboard-desktop.png`
+- `docs/initiation/evidence/2026-06-11-m2-settings-leads-desktop.png`
+- `docs/initiation/evidence/2026-06-11-m2-settings-leads-mobile.png`
+
+Verification:
+
+- `pnpm verify` green: typecheck, lint, Next.js production build, Vitest.
+- `pnpm test:unit -- convex/authz.test.ts convex/requestAccess.test.ts` green.
+- `pnpm test:e2e -- tests/e2e/landing.spec.ts tests/e2e/auth.spec.ts` green with 5 passing tests.
+- `npx convex run authAdmin:bootstrapOwner` returned `{"status":"updated"}` with no secret output.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| Convex Auth password provider | PASS | Password sign-in is active in Convex Auth. |
+| Invite-only gate | PASS | Owner allowlist and pending invites can create accounts; random public sign-up is rejected. |
+| Owner credential bootstrap | PASS | `authAdmin:bootstrapOwner` creates/updates owner credential from env and was run successfully. |
+| Workspace bootstrap | PASS | Owner has active workspace membership and lands on Dashboard. |
+| Settings leads | PASS | Public request-access lead appears in protected Settings view for owner. |
+| Server authorization helper | PASS | Protected lead listing rejects unauthenticated access and allows active owner workspace role. |
+| Plunk request-access notification | PARTIAL | Notification remains env-gated/fixture mode when Plunk env is absent or unavailable; lead storage is not blocked. |
+
+Notes:
+
+- `npx @convex-dev/auth` configured `JWT_PRIVATE_KEY` and `JWKS` in the Convex dev deployment. The evidence file shows only env names/status.
+- One `npx convex dev --once` retry was needed after a transient network timeout; the retry succeeded.
+
+Next:
+
+- M3 — ledger core: chart of accounts, single `postEntry` mutation, immutability, reversal/repost, period lock, audit events, and invariant tests.
+
 ### 2026-06-11 00:44 CDT — Pre-goal access readiness
 
 What changed:

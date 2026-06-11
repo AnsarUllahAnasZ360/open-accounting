@@ -19,10 +19,11 @@ export function RequestAccessFormClient() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setState("submitting");
     setError("");
 
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     try {
       await submitLead({
         email: String(form.get("email") ?? ""),
@@ -31,7 +32,7 @@ export function RequestAccessFormClient() {
         message: String(form.get("message") ?? ""),
         source: "landing",
       });
-      event.currentTarget.reset();
+      formElement.reset();
       setState("success");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Request could not be saved.");

@@ -1,0 +1,3 @@
+Unexpected error when authorizing - are you connected to the internet?
+✖ TypeError: fetch failed
+Unexpected Error: Error: read ETIMEDOUT

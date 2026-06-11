@@ -1,6 +1,6 @@
 import { convexAuth } from "@convex-dev/auth/server";
 import { Password } from "@convex-dev/auth/providers/Password";
-import type { GenericId } from "convex/values";
+import { ConvexError, type GenericId } from "convex/values";
 
 import { normalizeEmail, ownerEmail } from "./authz";
 import type { MutationCtx } from "./_generated/server";
@@ -11,7 +11,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       profile(params) {
         const email = normalizeEmail(String(params.email ?? ""));
         if (!email) {
-          throw new Error("Email is required.");
+          throw new ConvexError("Email is required.");
         }
 
         const profile: { email: string; name?: string } = {
@@ -29,7 +29,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       const appCtx = ctx as unknown as MutationCtx;
       const email = normalizeEmail(String(args.profile.email ?? ""));
       if (!email) {
-        throw new Error("Email is required.");
+        throw new ConvexError("Email is required.");
       }
 
       const configuredOwner = ownerEmail();
@@ -40,7 +40,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       const isOwner = configuredOwner !== null && email === configuredOwner;
 
       if (!args.existingUserId && !isOwner && invite?.status !== "pending") {
-        throw new Error("OpenBooks is invite-only. Request access from the landing page.");
+        throw new ConvexError("OpenBooks is invite-only. Request access from the landing page.");
       }
 
       const now = Date.now();
@@ -100,7 +100,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         .collect();
 
       if (!memberships.some((membership) => membership.status === "active")) {
-        throw new Error("OpenBooks is invite-only. Request access from the landing page.");
+        throw new ConvexError("OpenBooks is invite-only. Request access from the landing page.");
       }
     },
   },

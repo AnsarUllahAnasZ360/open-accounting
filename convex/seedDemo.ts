@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -122,17 +122,36 @@ type SeedResult = {
   payoutEntryCount: number;
 };
 
+function isRetryableSeedResetError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /conflict|write conflict|optimistic concurrency|document.*changed|transient|retry/i.test(message);
+}
+
+async function pauseForRetry(attempt: number) {
+  await new Promise((resolve) => setTimeout(resolve, 350 * attempt));
+}
+
 export const resetAndSeed = action({
   args: {},
   handler: async (ctx): Promise<SeedResult> => {
     const viewer = await ctx.runQuery(api.session.viewer, {});
     if (!viewer.workspace?.id) {
-      throw new Error("OpenBooks requires a workspace before seeding demo data.");
+      throw new ConvexError("OpenBooks requires a workspace before seeding demo data.");
     }
 
-    await ctx.runMutation(internal.seedDemo.resetDemoEntity, {
-      workspaceId: viewer.workspace.id,
-    });
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        await ctx.runMutation(internal.seedDemo.resetDemoEntity, {
+          workspaceId: viewer.workspace.id,
+        });
+        break;
+      } catch (error) {
+        if (attempt === 3 || !isRetryableSeedResetError(error)) {
+          throw new ConvexError("Demo reset could not finish cleanly. Try reset again after the current sync settles.");
+        }
+        await pauseForRetry(attempt);
+      }
+    }
     const entityResult: { entityId: Id<"entities">; accountsCreated: number } = await ctx.runMutation(
       api.ledger.ensureDefaultEntity,
       {},

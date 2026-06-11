@@ -14,26 +14,26 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 
 | # | Check (rows 1–18 = acceptance.md; 19–20 = goal.md gates) | Status | Evidence | Notes / next step |
 |---|---|---|---|---|
-| 1 | Landing + request-access (desktop/mobile) | | | |
-| 2 | Public sign-up disabled | | | |
-| 3 | Owner login | | | |
-| 4 | Dashboard on 12-month demo data, drill-throughs | | | |
-| 5 | Inbox confirm / correct / rule / batch | | | |
-| 6 | Register: drawer, accounting view, reverse+repost, split, exclude | | | |
-| 7 | Invoices + Bills flows | | | |
-| 8 | Contacts directory + profiles | | | |
-| 9 | Payroll runs + 3-currency statement + CSV | | | |
-| 10 | Reports suite + Balanced ✓ + TB=0 + cash/accrual + CSV export | | | |
-| 11 | Full data export | | | |
-| 12 | Plaid sandbox connect → sync → pipeline | | | |
-| 13 | Stripe test sync + payout drill-down + invoice via Stripe | | | |
-| 14 | Chat answers 5 questions correctly + confirmed action posts | | | |
-| 15 | Receipt upload → extraction → match | | | |
-| 16 | Mobile usability (4 core surfaces) | | | |
-| 17 | Audit log attribution (user/rule/AI) | | | |
-| 18 | Honesty check — this table complete with evidence (acceptance #18) | | | |
-| 19 | `pnpm verify` + `pnpm test:e2e` green; eval accuracy reported (goal.md §2; ≥80% is a target, not a blocker) | | | |
-| 20 | Production URL live, owner login in prod (goal.md §1.9) | | | |
+| 1 | Landing + request-access (desktop/mobile) | WORKING | `docs/initiation/evidence/2026-06-11-m12-prod-request-access.png`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt` | Public landing, request-access, and desktop/mobile production screenshots are evidenced. |
+| 2 | Public sign-up disabled | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-failed-specs-rerun.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt` | Random email rejection passed after the production-safe invite-only message fix. |
+| 3 | Owner login | WORKING | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-desktop.png`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt` | Owner login passes on the custom domain. |
+| 4 | Dashboard on 12-month demo data, drill-throughs | PARTIAL | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-desktop.png`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-core-rerun-after-test-adjustment.txt` | Dashboard/core flow passed in focused production rerun. Final full production run was destabilized by overlapping seed jobs. |
+| 5 | Inbox confirm / correct / rule / batch | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-core-rerun-after-test-adjustment.txt` | Focused production core spec passed Inbox confirm/rule flow. |
+| 6 | Register: drawer, accounting view, reverse+repost, split, exclude | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-core-rerun-after-test-adjustment.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-three-specs-rerun.txt` | Transactions drawer, balanced lines, recategorization, split, and locked-period behavior passed in focused production runs. |
+| 7 | Invoices + Bills flows | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt`; `docs/initiation/evidence/2026-06-11-m6-invoices-e2e.png`; `docs/initiation/evidence/2026-06-11-m6-bills-e2e.png` | M6 module spec passed in final production run. |
+| 8 | Contacts directory + profiles | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt`; `docs/initiation/evidence/2026-06-11-m6-contacts-e2e.png` | M6 module spec passed in final production run. |
+| 9 | Payroll runs + 3-currency statement + CSV | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt`; `docs/initiation/evidence/2026-06-11-m6-payroll-e2e.png` | Payroll screen and 3-currency evidence are present. |
+| 10 | Reports suite + Balanced ✓ + TB=0 + cash/accrual + CSV export | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt`; `docs/initiation/evidence/2026-06-11-m7-reports-e2e.png`; `docs/initiation/evidence/2026-06-11-m7-monthly-review.csv` | Reports spec passed in final production run. |
+| 11 | Full data export | WORKING | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt`; `docs/initiation/evidence/2026-06-11-m7-settings-export.json` | Settings export passed in reports spec. |
+| 12 | Plaid sandbox connect → sync → pipeline | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt`; `docs/initiation/evidence/2026-06-11-m9-plaid-fixture-mode.json` | Fixture-mode Plaid path exists; final production run could not find recent Plaid transactions after seed-state churn. Durable sandbox access-token storage remains a known M9 gap. |
+| 13 | Stripe test sync + payout drill-down + invoice via Stripe | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt`; `docs/initiation/evidence/2026-06-11-m8-stripe-object-ids.json` | Stripe spec passed in final production run. Payout matching remains fixture-backed and no Stripe webhook route is registered. |
+| 14 | Chat answers 5 questions correctly + confirmed action posts | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-three-specs-rerun.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt` | Focused production AI spec passed after rule insert fix; final full run failed once demo entity context became unsettled. Full 5-question semantic verification remains partial. |
+| 15 | Receipt upload → extraction → match | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt`; `docs/initiation/evidence/2026-06-11-m11-receipts-e2e.png` | Upload/manual metadata/manual match pass. Bedrock OCR and embedding-assisted matching remain open allowed degradations. |
+| 16 | Mobile usability (4 core surfaces) | PARTIAL | `docs/initiation/evidence/2026-06-11-m12-prod-dashboard-mobile.png`; `docs/initiation/evidence/2026-06-11-m5-core-mobile-e2e.png` | Dashboard mobile evidenced; Inbox/Transactions are covered in core responsive spec. Chat mobile still needs a dedicated screenshot. |
+| 17 | Audit log attribution (user/rule/AI) | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-e2e-production-core-rerun-after-test-adjustment.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-production-three-specs-rerun.txt` | User/rule ledger history is evidenced; final AI audit attribution was affected by seed-state churn. |
+| 18 | Honesty check — this table complete with evidence (acceptance #18) | WORKING | `docs/initiation/completion-report.md` | This table separates working, partial, and blocked rows and names next steps. |
+| 19 | `pnpm verify` + `pnpm test:e2e` green; eval accuracy reported (goal.md §2; ≥80% is a target, not a blocker) | PARTIAL | `docs/initiation/evidence/2026-06-11-m13-verify-after-prod-e2e-test-adjustment.txt`; `docs/initiation/evidence/2026-06-11-m13-e2e-local-final.txt`; `docs/initiation/evidence/2026-06-11-m10-categorization-eval.json` | `pnpm verify` is green and eval is reported. Full e2e is red after repeated seed-reset conflicts: final local/dev run 12/15 passed; final production run 11/15 passed. |
+| 20 | Production URL live, owner login in prod (goal.md §1.9) | WORKING | `docs/initiation/evidence/2026-06-11-m12-http-checks-after-invariant-fix.txt`; `docs/initiation/evidence/2026-06-11-m13-vercel-deploy-after-focused-fixes.txt` | `https://openbooks.ansarullahanas.com` is live and owner login is evidenced. |
 
 ## Run metadata (fill at start and end of the overnight run)
 
@@ -42,7 +42,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 - Vercel project: ansar-ullah-anas-projects/openbooks / production URL: https://openbooks.ansarullahanas.com (stable Vercel URL: https://openbooks-flax.vercel.app)
 - Owner credential location (never the secret itself): `.env.local` plus macOS Keychain item `OpenBooks_OWNER_PASSWORD`
 - Categorization eval accuracy: M10 backend fixture eval 5/5 = 100.0%; live seeded >=100-row eval not run because the available CLI path has no signed-in workspace context.
-- Goal ended (timestamp): / stop reason (complete / budget / blocked):
+- Goal ended (timestamp): 2026-06-11 08:35 CDT / stop reason: partial — M13 e2e blocked by repeatable seed-reset concurrency failures after three attempts.
 
 ## Blockers (append as found)
 
@@ -54,6 +54,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | 2026-06-11 06:52 CDT | Live seeded categorization eval cannot be run through `npx convex run` because the eval/status functions correctly require a signed-in workspace role. | M10 live eval | Add a safe owner-authenticated eval UI/action or an admin-only eval runner that derives the owner workspace without exposing secrets. | Recorded fixture/backend eval and saved the failed auth probe in evidence; continued with browser-verified chat and pipeline tests. |
 | 2026-06-11 07:31 CDT | First M12 production login failed because Convex Auth prod env was missing `JWT_PRIVATE_KEY`/`JWKS`. | M12 owner login | Generate Convex Auth signing keys for the production deployment. | Resolved at 2026-06-11 07:33 CDT; keys were generated in memory and set in Convex prod with evidence showing names/status only. |
 | 2026-06-11 07:34 CDT | Production dashboard crashed on first login because report queries threw when the owner workspace existed before an entity was seeded. | M12 owner login + prod seed | Make report queries return a zeroed first-run report pack when no entity exists yet. | Resolved at 2026-06-11 07:39 CDT; first-run fallback deployed to Convex/Vercel and prod seed completed. |
+| 2026-06-11 08:35 CDT | Browser-triggered demo reset is not safe to run repeatedly while a previous seed action is still routing hundreds of transactions. Convex logs show `resetDemoEntity` OCC conflicts against `pipeline:routeTransaction`; after three attempts, full M13 e2e remains red. | M13 acceptance gate; affects core, Plaid, and chat when demo entity context is unsettled. | Add a durable seed job lock/chunked background workflow: acquire lock, clear seeded entity in bounded chunks, route transactions as one job, expose job status, and have tests wait for status instead of stacking resets. | M13 marked PARTIAL. `pnpm verify` is green; focused production specs proved auth, AI, core, ledger, reports, receipts, modules, and Stripe, but full e2e is not green. |
 
 ## Deviations from product spec (append as made)
 
@@ -65,6 +66,7 @@ BLOCKED (needs listed input) · NOT REACHED (budget).
 | Product spec §5.2 / M11 | Receipt extraction is filename/manual metadata with confidence, not Bedrock vision OCR. | The milestone explicitly allows degradation to upload + manual match; this keeps receipt intake usable without unverified model extraction. | Wire Bedrock vision extraction in a Convex action, then keep the current manual review/match UI as fallback. |
 | Product spec §5.2 / M11 | Matching is heuristic by amount/date/merchant plus manual match, not embedding-assisted. | Embedding memory remains part of the open M10/M11 AI gap. | Add embedding generation/search for receipts once the vector memory layer is in place. |
 | Product spec §5.1 / M12 | No Stripe webhook was registered against the production `.convex.site` URL. | The current codebase exposes Convex Auth HTTP routes only; the Stripe slice uses manual sync and fixture-backed payout evidence. | Add a Stripe webhook HTTP action, signature verification, and webhook registration before marking webhooks complete. |
+| Goal §2 / M13 | Full `pnpm test:e2e` is not green at final handoff. | Repeated browser demo resets conflict with long-running seed actions and leave report/entity context temporarily unsettled. | Implement seed job locking/chunked reset, then rerun the full suite from a clean seed state. |
 
 ---
 
@@ -855,3 +857,56 @@ PASS/PARTIAL table:
 Next:
 
 - M13 acceptance run: full `pnpm verify`, full `pnpm test:e2e`, production walkthrough screenshots, and final WORKING/PARTIAL/BLOCKED acceptance table.
+
+### 2026-06-11 08:35 CDT — M13 Acceptance run + honest report
+
+What changed:
+
+- Filled the M13 acceptance checklist with WORKING/PARTIAL statuses and linked evidence for every row.
+- Fixed production acceptance bugs found during the first production e2e pass:
+  - invite-only sign-up now shows the correct public rejection message instead of a raw Convex server error;
+  - ledger locked-period backdating now pre-checks against the visible lock date before calling the posting mutation;
+  - AI rule creation no longer inserts an explicit optional `undefined` field.
+- Deployed the focused fixes to Convex production and Vercel production.
+- Adjusted the core Playwright spec so production runs verify the already-seeded demo instead of launching another destructive demo reset. Local/dev still exercises reset.
+
+Evidence:
+
+- `docs/initiation/evidence/2026-06-11-m13-verify-after-prod-e2e-test-adjustment.txt`
+- `docs/initiation/evidence/2026-06-11-m13-e2e-production.txt`
+- `docs/initiation/evidence/2026-06-11-m13-e2e-production-failed-specs-rerun.txt`
+- `docs/initiation/evidence/2026-06-11-m13-e2e-production-three-specs-rerun.txt`
+- `docs/initiation/evidence/2026-06-11-m13-e2e-production-core-rerun-after-test-adjustment.txt`
+- `docs/initiation/evidence/2026-06-11-m13-e2e-production-final.txt`
+- `docs/initiation/evidence/2026-06-11-m13-e2e-local-final.txt`
+- `docs/initiation/evidence/2026-06-11-m13-prod-seed-log-filter.txt`
+- `docs/initiation/evidence/2026-06-11-m13-prod-seed-log-filter-final.txt`
+- `docs/initiation/evidence/2026-06-11-m13-convex-deploy-after-focused-fixes.txt`
+- `docs/initiation/evidence/2026-06-11-m13-vercel-deploy-after-focused-fixes.txt`
+
+Verification:
+
+- `pnpm verify` green after M13 fixes: typecheck, lint, Next.js production build, and 12 unit files / 40 unit tests.
+- Focused production reruns:
+  - auth random-email rejection passed after the invite-only message fix;
+  - AI chat spec passed after the rule insert fix;
+  - ledger locked-period spec passed after the UI pre-check;
+  - core dashboard/inbox/transactions spec passed when production verified existing seeded data instead of triggering another seed reset.
+- Full production `pnpm test:e2e` final run red: 11 passed, 4 failed. Failures were AI final setting assertion, core seeded-export readiness, live-sandbox seed fallback, and Plaid recent transactions after repeated seed-state churn.
+- Full local/dev `pnpm test:e2e` final run red: 12 passed, 3 failed. Failures were AI entity context, demo reset, and Plaid recent transactions, all tied back to unsettled seeded entity state after repeated reset conflicts.
+
+PASS/PARTIAL table:
+
+| Item | Status | Notes |
+|---|---:|---|
+| `pnpm verify` | PASS | Green after all M13 fixes. |
+| Production URL | PASS | Live and deployed after M13 fixes. |
+| Production focused specs | PASS | Auth, AI, core, and ledger focused reruns all passed at least once after fixes. |
+| Full `pnpm test:e2e` | PARTIAL | Not green. Final local/dev: 12/15 passed. Final production: 11/15 passed. |
+| Seed reset reliability | BLOCKED | Requires a durable seed job lock or chunked background workflow before full e2e can be stable. |
+| Acceptance report | PASS | Table is filled with evidence and named gaps. |
+
+Next:
+
+- Implement seed reset as a real job: lock per workspace/entity, clear in chunks, route in chunks, expose status, and make Playwright wait on status. Then rerun full `pnpm test:e2e` from a clean state.
+- Add authenticated full seeded categorization eval, Bedrock receipt OCR, embedding memory/matching, durable Plaid access-token sync, and Stripe webhook HTTP route before claiming final v1 complete.

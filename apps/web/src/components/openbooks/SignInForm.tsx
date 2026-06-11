@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 
 type State = "idle" | "submitting" | "error";
 
+const INVITE_ONLY_MESSAGE = "OpenBooks is invite-only. Request access from the landing page.";
+
 export function SignInForm() {
   const router = useRouter();
   const { signIn } = useAuthActions();
@@ -44,11 +46,8 @@ export function SignInForm() {
         });
         router.push("/dashboard");
       } catch (caught) {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "This account is not invited yet. Request access from the landing page.",
-        );
+        const message = caught instanceof Error ? caught.message : "";
+        setError(message.includes("OpenBooks is invite-only") ? message : INVITE_ONLY_MESSAGE);
         setState("error");
       }
     }

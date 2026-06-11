@@ -1,0 +1,60 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test -- tests/e2e/ai-chat.spec.ts tests/e2e/core-screens.spec.ts tests/e2e/ledger.spec.ts
+
+
+Running 3 tests using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/ai-chat.spec.ts:39:5 › M10 AI chat answers read questions and keeps actions confirm-first (9.0s)
+  ✘  2 [chromium] › tests/e2e/core-screens.spec.ts:39:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop (3.0m)
+  ✓  3 [chromium] › tests/e2e/ledger.spec.ts:37:5 › manual journal entry appears in GL and locked periods reject backdating (5.0s)
+
+
+  1) [chromium] › tests/e2e/core-screens.spec.ts:39:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: getByTestId('demo-seed-message')
+    Timeout: 180000ms
+    [32m- Expected substring  - 1[39m
+    [31m+ Received string     + 2[39m
+
+    [32m- Demo seed complete.[39m
+    [31m+ [CONVEX A(seedDemo:resetAndSeed)] [Request ID: 2969a08c2b6339ca] Server Error[39m
+    [31m+   Called by client[39m
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 180000ms[22m
+    [2m  - waiting for getByTestId('demo-seed-message')[22m
+    [2m    343 × locator resolved to <div data-testid="demo-seed-message" class="mx-4 mt-4 rounded-lg border p-3 text-sm border-destructive/30 bg-destructive/5 text-destructive">[CONVEX A(seedDemo:resetAndSeed)] [Request ID: 29…</div>[22m
+    [2m        - unexpected value "[CONVEX A(seedDemo:resetAndSeed)] [Request ID: 2969a08c2b6339ca] Server Error[22m
+    [2m  Called by client"[22m
+
+
+      43 |   await page.goto("/settings");
+      44 |   await page.getByRole("button", { name: "Reset demo data" }).click();
+    > 45 |   await expect(page.getByTestId("demo-seed-message")).toContainText("Demo seed complete.", {
+         |                                                       ^
+      46 |     timeout: 180_000,
+      47 |   });
+      48 |
+        at /Users/ansarullahanas/Documents/OpenBooks/tests/e2e/core-screens.spec.ts:45:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    docs/initiation/evidence/playwright-results/core-screens-owner-can-run-7524b-sactions-split-and-CSV-loop-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: docs/initiation/evidence/playwright-results/core-screens-owner-can-run-7524b-sactions-split-and-CSV-loop-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    docs/initiation/evidence/playwright-results/core-screens-owner-can-run-7524b-sactions-split-and-CSV-loop-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace docs/initiation/evidence/playwright-results/core-screens-owner-can-run-7524b-sactions-split-and-CSV-loop-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests/e2e/core-screens.spec.ts:39:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop
+  2 passed (3.3m)
+ ELIFECYCLE  Command failed with exit code 1.

@@ -1,0 +1,22 @@
+{
+  "status": "ok",
+  "deployment": {
+    "id": "dpl_8f5Z3FyDxF6d1jxeTf61EJVJKYWY",
+    "url": "https://openbooks-oj9ns3t6a-ansar-ullah-anas-projects.vercel.app",
+    "inspectorUrl": "https://vercel.com/ansar-ullah-anas-projects/openbooks/8f5Z3FyDxF6d1jxeTf61EJVJKYWY",
+    "readyState": "READY",
+    "target": "production",
+    "deploymentApiUrl": "https://api.vercel.com/v13/deployments/dpl_8f5Z3FyDxF6d1jxeTf61EJVJKYWY"
+  },
+  "message": "Deployment openbooks-oj9ns3t6a-ansar-ullah-anas-projects.vercel.app ready.",
+  "next": [
+    {
+      "command": "vercel inspect openbooks-oj9ns3t6a-ansar-ullah-anas-projects.vercel.app --scope ansar-ullah-anas-projects",
+      "when": "Inspect deployment"
+    },
+    {
+      "command": "vercel deploy --prod --scope ansar-ullah-anas-projects",
+      "when": "Promote to production"
+    }
+  ]
+}

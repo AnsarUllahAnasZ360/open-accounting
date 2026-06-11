@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -74,7 +74,7 @@ function configAutonomy(config: Doc<"aiConfigs"> | null): AIAutonomy {
 async function requireEntityAccess(ctx: MutationCtx, entityId: Id<"entities">) {
   const entity = await ctx.db.get(entityId);
   if (!entity) {
-    throw new Error("OpenBooks entity not found.");
+    throw new ConvexError("OpenBooks entity not found.");
   }
   await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
   return entity;
@@ -89,7 +89,7 @@ async function pickRuleCategory(
   if (categoryAccountId) {
     const account = await ctx.db.get(categoryAccountId);
     if (!account || account.entityId !== entityId || account.archived || account.type !== "expense") {
-      throw new Error("Choose an active expense category for the AI rule.");
+      throw new ConvexError("Choose an active expense category for the AI rule.");
     }
     return account;
   }
@@ -109,7 +109,7 @@ async function pickRuleCategory(
     accounts.find((candidate) => candidate.type === "expense" && candidate.subtype === preferredSubtype && !candidate.archived) ??
     accounts.find((candidate) => candidate.type === "expense" && !candidate.archived);
   if (!account) {
-    throw new Error("No active expense account is available for this AI rule.");
+    throw new ConvexError("No active expense account is available for this AI rule.");
   }
   return account;
 }
@@ -256,7 +256,7 @@ export const createConfirmedRule = mutation({
     const entity = await requireEntityAccess(ctx, args.entityId);
     const merchant = args.merchantContains.trim();
     if (merchant.length < 2) {
-      throw new Error("Enter a merchant name for the AI rule.");
+      throw new ConvexError("Enter a merchant name for the AI rule.");
     }
     const account = await pickRuleCategory(ctx, entity._id, args.categoryAccountId, merchant);
     const now = Date.now();
@@ -285,7 +285,6 @@ export const createConfirmedRule = mutation({
       order: Math.max(0, ...rules.map((rule) => rule.order)) + 1,
       name: `AI confirmed: ${merchant}`,
       merchantContains: merchant,
-      descriptionContains: undefined,
       direction: "outflow",
       categoryAccountId: account._id,
       autoPost: Boolean(args.autoPost),

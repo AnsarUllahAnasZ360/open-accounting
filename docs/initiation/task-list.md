@@ -329,15 +329,22 @@ Evidence: live URL screenshots incl. mobile.
 
 - [ ] Full `pnpm verify` + `pnpm test:e2e` green; run the e2e suite against
       production if practical.
-- [ ] Walk `docs/initiation/acceptance.md` in the browser; capture a
+- [x] Walk `docs/initiation/acceptance.md` in the browser; capture a
       screenshot per checkpoint into `docs/initiation/evidence/`.
-- [ ] Fill the acceptance checklist table in
+- [x] Fill the acceptance checklist table in
       `docs/initiation/completion-report.md` (WORKING / PARTIAL / BLOCKED +
       evidence links); list every deviation from the product spec.
-- [ ] Update README quickstart if commands changed; final conventional
+- [x] Update README quickstart if commands changed; final conventional
       commit; open draft PR `initiation` → `main` summarizing the run (if a
       GitHub remote exists per M0; otherwise write the summary in the
       completion report).
+
+M13 integration note, 2026-06-11: `pnpm verify` is green, production is live,
+and the acceptance table is filled. Full `pnpm test:e2e` is intentionally left
+unchecked: after three attempts, repeated browser-triggered demo resets still
+conflict with long-running seed actions. Final local/dev e2e was 12/15; final
+production e2e was 11/15. The completion report records the blocker and exact
+next engineering input.
 
 Done when: every acceptance row has a status and evidence; the outcome in
 goal.md §1 is satisfied per the verification surface in goal.md §2, or

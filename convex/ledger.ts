@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -309,7 +309,7 @@ export const postEntry = mutation({
       .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
       .unique();
     if (lock && args.date <= lock.lockedThroughDate) {
-      throw new Error(`Period is locked through ${lock.lockedThroughDate}.`);
+      throw new ConvexError(`Period is locked through ${lock.lockedThroughDate}.`);
     }
 
     let debitTotal = 0;

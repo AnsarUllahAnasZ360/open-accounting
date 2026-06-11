@@ -1,0 +1,10 @@
+
+> openbooks@0.0.0 test:e2e /Users/ansarullahanas/Documents/OpenBooks
+> playwright test -- tests/e2e/core-screens.spec.ts
+
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/core-screens.spec.ts:44:5 › owner can run the M5 dashboard, inbox, transactions, split, and CSV loop (22.7s)
+
+  1 passed (23.2s)

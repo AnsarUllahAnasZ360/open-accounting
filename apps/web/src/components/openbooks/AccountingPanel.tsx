@@ -104,6 +104,12 @@ export function AccountingPanel() {
     const debit = selectedDebitAccountId;
     const credit = selectedCreditAccountId;
     const amountMinor = Math.round(Number(amount) * 100);
+    const activeLockDate = snapshot.lock?.lockedThroughDate;
+    if (activeLockDate && date <= activeLockDate) {
+      setFormState("error");
+      setMessage(`Period is locked through ${activeLockDate}.`);
+      return;
+    }
     setFormState("submitting");
     setMessage("");
     try {

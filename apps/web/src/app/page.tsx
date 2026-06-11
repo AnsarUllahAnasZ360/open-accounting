@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowRight,
   Building2,
-  Code2,
   Heart,
   Inbox,
   LineChart,
@@ -13,6 +12,7 @@ import {
   UsersRound,
 } from "lucide-react";
 
+import { LandingPrototypeFaq, LandingPrototypeTour } from "@/components/openbooks/LandingPrototypeInteractions";
 import { RequestAccessForm } from "@/components/openbooks/RequestAccessForm";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,45 +23,17 @@ const loopSteps = [
   {
     number: "01",
     title: "Connect your accounts",
-    body: "Banks via Plaid, payments via Stripe, or a plain CSV. Every transaction syncs in on its own - up to 24 months of history.",
+    body: "Banks via Plaid, payments via Stripe, or a plain CSV. Every transaction syncs in on its own — up to 24 months of history.",
   },
   {
     number: "02",
     title: "AI categorizes everything",
-    body: "Rules, memory of your corrections, then your own AI model - cheapest signal first. Confident calls post automatically. Uncertain ones wait in your Inbox.",
+    body: "Rules, memory of your corrections, then your own AI model — cheapest signal first. Confident calls post automatically. Uncertain ones wait in your Inbox.",
   },
   {
     number: "03",
     title: "Real statements fall out",
-    body: "A true double-entry ledger underneath means the Profit & Loss, Balance Sheet and Cash Flow are correct - the kind your CPA accepts.",
-  },
-];
-
-const tourTabs = [
-  {
-    label: "Transactions",
-    image: "app-transactions",
-    body: "Every account in one register. Rules, matches and high-confidence AI post automatically; the rest wait for one-click approval - with the AI's confidence shown on every line.",
-  },
-  {
-    label: "Income",
-    image: "app-income",
-    body: "Payments, invoices and receivables in one place. Stripe payouts arrive as one deposit - OpenBooks splits them back into gross revenue by customer, minus fees, reconciled to the penny.",
-  },
-  {
-    label: "Expenses",
-    image: "app-expenses",
-    body: "Where money goes, by category and vendor - with recurring spend detected from history and the biggest movement flagged. Anthropic usage 3x usual? It's already in your Inbox.",
-  },
-  {
-    label: "Bills",
-    image: "app-bills",
-    body: "What you owe and when it's due. Amounts extracted from PDF invoices, recurring charges found automatically and offered as bills - nothing sneaks up on you.",
-  },
-  {
-    label: "Payroll",
-    image: "app-payroll",
-    body: "A register, not a processor - for teams paid in USD, PKR, INR, any currency. Run, review, approve; FX differences post themselves.",
+    body: "A true double-entry ledger underneath means the Profit & Loss, Balance Sheet and Cash Flow are correct — the kind your CPA accepts.",
   },
 ];
 
@@ -69,7 +41,7 @@ const roadmap = [
   {
     icon: LineChart,
     title: "13-week cash forecast",
-    body: "A look ahead built from your recurring bills, payroll dates and invoice due dates - so you see the dip before it happens.",
+    body: "A look ahead built from your recurring bills, payroll dates and invoice due dates — so you see the dip before it happens.",
   },
   {
     icon: Heart,
@@ -79,17 +51,17 @@ const roadmap = [
   {
     icon: AlertTriangle,
     title: "Anomaly alerts",
-    body: "Duplicate charges, silent price hikes, a vendor billing twice in a month - flagged in your Inbox before they compound.",
+    body: "Duplicate charges, silent price hikes, a vendor billing twice in a month — flagged in your Inbox before they compound.",
   },
   {
     icon: UsersRound,
     title: "Accountant seat",
-    body: "A read-only login for your CPA plus a year-end pack - statements, general ledger and journal - exported in one click.",
+    body: "A read-only login for your CPA plus a year-end pack — statements, general ledger and journal — exported in one click.",
   },
   {
     icon: Mail,
     title: "Invoice nudges",
-    body: "Polite, automatic reminders for overdue invoices - drafted by the AI, sent only with your approval, escalating on your schedule.",
+    body: "Polite, automatic reminders for overdue invoices — drafted by the AI, sent only with your approval, escalating on your schedule.",
   },
   {
     icon: Building2,
@@ -103,32 +75,9 @@ const compareRows = [
   ["Bank sync", "BYO Plaid", "yes", "yes", "no"],
   ["AI categorization + inbox", "BYO model", "yes", "yes", "no"],
   ["Stripe payout reconciliation", "yes", "partial", "yes", "no"],
-  ["Open source", "AGPL", "no", "no", "AGPL"],
+  ["Open source", "MIT", "no", "no", "AGPL"],
   ["Self-hosted, you own the data", "yes", "no", "no", "yes"],
-  ["Price per month", "$0", "$38-275", "$0-200", "$0"],
-];
-
-const faqs = [
-  {
-    question: "Is it really free? What's the catch?",
-    answer:
-      "The software is free and AGPL-licensed, forever. Your only costs are the keys you bring: AI usage, typically a few dollars a month for categorization, and Plaid if you outgrow its free tier. CSV import always works without it.",
-  },
-  {
-    question: "What do I need to run it?",
-    answer:
-      "A machine that runs Docker - a $5 VPS, a home server, or your laptop. One docker compose up starts the app and the database. Connect a bank or upload a CSV, paste an AI key or skip it, and the dashboard lights up in about 15 minutes.",
-  },
-  {
-    question: "Will my accountant accept the books?",
-    answer:
-      "That's the design test. Underneath the plain-English UI is a strict double-entry ledger: every transaction posts balanced journal entries, posted entries are immutable, and there are General Ledger, Trial Balance and Journal exports plus a month-end close.",
-  },
-  {
-    question: "What happens if the project dies?",
-    answer:
-      "Nothing happens to your books. They live in your own database, with full CSV, JSON and general-ledger export at all times. The code is AGPL-licensed in the prototype copy, so anyone can fork it and keep it alive.",
-  },
+  ["Price per month", "$0", "$38–275", "$0–200", "$0"],
 ];
 
 function SectionLabel({ children, dark = false }: { children: string; dark?: boolean }) {
@@ -178,6 +127,14 @@ function ProductCard({
   );
 }
 
+function GitHubMark() {
+  return (
+    <svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.17c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.78 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.35.77 1.05.77 2.12v3.15c0 .3.21.66.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+    </svg>
+  );
+}
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -222,7 +179,7 @@ export default function Home() {
         </h1>
         <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
           OpenBooks connects your banks and Stripe, and an AI bookkeeper running on your own model key keeps a real
-          double-entry ledger - asking you only when it isn't sure.
+          double-entry ledger — asking you only when it isn't sure.
         </p>
         <div className="mt-7 flex flex-col justify-center gap-2 sm:flex-row">
           <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]">
@@ -230,7 +187,7 @@ export default function Home() {
           </Button>
           <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]" variant="outline">
             <a href="https://github.com/AnsarUllahAnasZ360/open-accounting" rel="noreferrer" target="_blank">
-              <Code2 className="size-4" />
+              <GitHubMark />
               Star on GitHub
             </a>
           </Button>
@@ -243,7 +200,7 @@ export default function Home() {
             <span className="money-figures font-semibold text-foreground">15 min</span> to first dashboard
           </span>
           <span>
-            <span className="money-figures font-semibold text-foreground">AGPL</span> licensed
+            <span className="money-figures font-semibold text-foreground">MIT</span> licensed
           </span>
         </div>
 
@@ -259,7 +216,7 @@ export default function Home() {
             <span className="flex-1" />
           </div>
           <img
-            alt="OpenBooks dashboard - cash position, P&L, where money went, inbox, aging and payroll at a glance"
+            alt="OpenBooks dashboard — cash position, P&L, where money went, inbox, aging and payroll at a glance"
             className="block h-auto w-full"
             src={shot("app-dashboard")}
           />
@@ -284,7 +241,7 @@ export default function Home() {
           <div className="mt-6 flex flex-col gap-2 rounded-xl border bg-background px-4 py-3 text-[13px] md:flex-row md:items-center">
             <span className="money-figures font-semibold text-[#17540f]">"AI proposes. The ledger engine posts."</span>
             <span className="text-muted-foreground">
-              - accounting correctness comes before automation. Posted entries are never edited; corrections are new,
+              — accounting correctness comes before automation. Posted entries are never edited; corrections are new,
               linked entries.
             </span>
           </div>
@@ -297,13 +254,13 @@ export default function Home() {
           <h2 className="mt-2 text-[28px] font-semibold tracking-normal">Five minutes, not five hours.</h2>
           <p className="mt-3 text-[14.5px] leading-relaxed text-muted-foreground">
             The only mandatory workflow in OpenBooks. The AI posts everything it's sure about; the handful of calls it
-            won't make alone queue here - categories, receipt matches, transfers, payout mismatches, even its own
+            won't make alone queue here — categories, receipt matches, transfers, payout mismatches, even its own
             questions.
           </p>
           <div className="mt-5 flex flex-col gap-2 text-[13.5px] text-[#3d3d3d]">
             <div className="flex gap-2">
               <span className="font-semibold text-[#248716]">→</span>
-              <span>Confirm, change, split or exclude - one keystroke each</span>
+              <span>Confirm, change, split or exclude — one keystroke each</span>
             </div>
             <div className="flex gap-2">
               <span className="font-semibold text-[#248716]">→</span>
@@ -311,12 +268,12 @@ export default function Home() {
             </div>
             <div className="flex gap-2">
               <span className="font-semibold text-[#248716]">→</span>
-              <span>Every answer becomes memory - the same question never comes back</span>
+              <span>Every answer becomes memory — the same question never comes back</span>
             </div>
           </div>
         </div>
         <Screenshot
-          alt="OpenBooks Inbox - AI suggestion with confidence, confirm, split, and exclude actions"
+          alt="OpenBooks Inbox — AI suggestion with confidence, confirm / split / exclude actions"
           src={shot("app-inbox")}
         />
       </section>
@@ -330,7 +287,7 @@ export default function Home() {
           <SectionLabel>Ask AI</SectionLabel>
           <h2 className="mt-2 text-[28px] font-semibold tracking-normal">Ask your books anything.</h2>
           <p className="mt-3 text-[14.5px] leading-relaxed text-muted-foreground">
-            A side panel that lives next to every screen. Answers come straight from the ledger - and when the AI wants
+            A side panel that lives next to every screen. Answers come straight from the ledger — and when the AI wants
             to act, it proposes first and posts only after you say yes.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
@@ -355,29 +312,7 @@ export default function Home() {
           <p className="mt-2 max-w-xl text-[15px] text-muted-foreground">
             Two transaction concepts instead of five. About 30 categories instead of 154. No payments upsell anywhere.
           </p>
-          <div className="mt-7 flex flex-wrap gap-2">
-            {tourTabs.map((tab, index) => (
-              <span
-                key={tab.label}
-                className={cn(
-                  "inline-flex h-[34px] items-center rounded-full border px-4 text-[13.5px] font-medium",
-                  index === 0 ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground",
-                )}
-              >
-                {tab.label}
-              </span>
-            ))}
-          </div>
-          <div className="mt-5 grid gap-6 lg:grid-cols-2">
-            {tourTabs.map((tab) => (
-              <div key={tab.label}>
-                <Screenshot alt={`OpenBooks ${tab.label}`} src={shot(tab.image)} />
-                <p className="mt-3 text-[13.5px] leading-relaxed text-muted-foreground">
-                  <span className="font-semibold text-foreground">{tab.label}.</span> {tab.body}
-                </p>
-              </div>
-            ))}
-          </div>
+          <LandingPrototypeTour />
         </div>
       </section>
 
@@ -389,7 +324,7 @@ export default function Home() {
           locks the books.
         </p>
         <Screenshot
-          alt="Reports - Monthly Review, statements, money owed and insights, with month-end close"
+          alt="Reports — Monthly Review, statements, money owed and insights, with month-end close"
           className="mx-auto mt-9 max-w-[880px]"
           src={shot("app-reports")}
         />
@@ -425,7 +360,7 @@ export default function Home() {
             <SectionLabel>On your phone</SectionLabel>
             <h2 className="mt-2 text-[28px] font-semibold tracking-normal">The whole business, in your pocket.</h2>
             <p className="mt-3 text-[14.5px] leading-relaxed text-muted-foreground">
-              Every metric from the desktop dashboard lives on the mobile home - cash with trend, in/out by month,
+              Every metric from the desktop dashboard lives on the mobile home — cash with trend, in/out by month,
               aging, cushion, top expenses and what's coming up. Clear your inbox from the couch; the AI does the
               filing.
             </p>
@@ -436,13 +371,16 @@ export default function Home() {
               </div>
               <div className="flex gap-2">
                 <span className="font-semibold text-[#248716]">→</span>
-                <span>Ask AI anywhere - answers from the same ledger</span>
+                <span>Ask AI anywhere — answers from the same ledger</span>
               </div>
               <div className="flex gap-2">
                 <span className="font-semibold text-[#248716]">→</span>
-                <span>A web app - nothing to install, works on any phone</span>
+                <span>A web app — nothing to install, works on any phone</span>
               </div>
             </div>
+            <Button asChild className="mt-5 h-10 rounded-[10px] px-4 text-[13.5px]" variant="outline">
+              <Link href="/dashboard">Try the mobile demo →</Link>
+            </Button>
           </div>
           <div className="grid grid-cols-3 gap-3 sm:gap-5">
             {[
@@ -465,7 +403,7 @@ export default function Home() {
         <SectionLabel>Where it's going</SectionLabel>
         <h2 className="mt-2 max-w-2xl text-3xl font-semibold tracking-normal">The ledger makes harder things possible.</h2>
         <p className="mt-2 max-w-xl text-[15px] text-muted-foreground">
-          Because every number is a balanced journal entry, these aren't guesses - they're arithmetic. On the roadmap,
+          Because every number is a balanced journal entry, these aren't guesses — they're arithmetic. On the roadmap,
           shaped by GitHub votes.
         </p>
         <div className="mt-9 grid gap-4 md:grid-cols-3">
@@ -486,15 +424,15 @@ export default function Home() {
               {[
                 [
                   "Your own Plaid, Stripe and AI keys",
-                  "Intelligence costs API pennies when it runs on your model key - Anthropic, OpenAI, Google or local Ollama. No $500/month bookkeeping service in the middle.",
+                  "Intelligence costs API pennies when it runs on your model key — Anthropic, OpenAI, Google or local Ollama. No $500/month bookkeeping service in the middle.",
                 ],
                 [
                   "Self-hosted, one Docker command",
                   "Your books live on your machine as data you can always export. No vendor can shut down overnight and take your records with it.",
                 ],
                 [
-                  "Open source, AGPL licensed",
-                  "The ledger engine is public, auditable, and free to use anywhere - even inside your own products. No ads, no upsells, no payments funnel disguised as bookkeeping software.",
+                  "Open source, MIT licensed",
+                  "The ledger engine is public, auditable, and free to use anywhere — even inside your own products. No ads, no upsells, no payments funnel disguised as bookkeeping software.",
                 ],
               ].map(([title, body]) => (
                 <div key={title} className="flex gap-3.5">
@@ -511,11 +449,11 @@ export default function Home() {
               <div className="mt-5 flex flex-col gap-3.5">
                 <div className="flex justify-between gap-4 text-[13.5px] text-[#cdd5ce]">
                   <span>QuickBooks + a bookkeeper</span>
-                  <span className="money-figures">$4,000-7,200</span>
+                  <span className="money-figures">$4,000–7,200</span>
                 </div>
                 <div className="flex justify-between gap-4 text-[13.5px] text-[#cdd5ce]">
                   <span>Zeni, Digits, Puzzle tiers</span>
-                  <span className="money-figures">$1,200-6,000</span>
+                  <span className="money-figures">$1,200–6,000</span>
                 </div>
                 <div className="h-px bg-[#243126]" />
                 <div className="flex justify-between gap-4">
@@ -534,7 +472,7 @@ export default function Home() {
       <section id="compare" className="mx-auto max-w-[1080px] px-4 py-16 lg:px-6">
         <h2 className="text-3xl font-semibold tracking-normal">Nobody else combines all five.</h2>
         <p className="mt-2 text-[15px] text-muted-foreground">
-          A real ledger, bank sync, an AI inbox, open source, and self-hosting - pick any four elsewhere.
+          A real ledger, bank sync, an AI inbox, open source, and self-hosting — pick any four elsewhere.
         </p>
         <div className="mt-8 overflow-hidden rounded-[14px] border">
           <div className="grid grid-cols-[1.6fr_repeat(4,1fr)] bg-muted/55 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">
@@ -569,14 +507,7 @@ export default function Home() {
       <section id="faq" className="border-t bg-muted/35">
         <div className="mx-auto max-w-[760px] px-4 py-16 lg:px-6">
           <h2 className="mb-7 text-[26px] font-semibold tracking-normal">Honest answers</h2>
-          <div className="flex flex-col gap-2.5">
-            {faqs.map((faq, index) => (
-              <details key={faq.question} className="rounded-xl border bg-background p-5" open={index === 0}>
-                <summary className="cursor-pointer list-none text-[14.5px] font-semibold">{faq.question}</summary>
-                <p className="mt-3 text-[13.5px] leading-relaxed text-muted-foreground">{faq.answer}</p>
-              </details>
-            ))}
-          </div>
+          <LandingPrototypeFaq />
         </div>
       </section>
 
@@ -585,7 +516,7 @@ export default function Home() {
           <h2 className="text-[34px] font-semibold tracking-normal">
             Connect your accounts. Answer a few questions a week.
           </h2>
-          <p className="mt-3 text-base text-muted-foreground">Your books are always done - and they're yours.</p>
+          <p className="mt-3 text-base text-muted-foreground">Your books are always done — and they're yours.</p>
           <div className="mt-7 flex flex-col gap-2 sm:flex-row lg:justify-start">
             <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]">
               <Link href="/dashboard">
@@ -612,7 +543,7 @@ export default function Home() {
           open books
         </span>
         <span>·</span>
-        <span>AGPL licensed</span>
+        <span>MIT licensed</span>
         <span>·</span>
         <a className="hover:text-foreground" href="https://github.com/AnsarUllahAnasZ360/open-accounting" rel="noreferrer" target="_blank">
           GitHub

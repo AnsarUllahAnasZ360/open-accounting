@@ -977,5 +977,27 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   AI parity/import split, PDF raster vision, Plaid/Stripe external proof, and
   final H5 cross-check. Do not deploy unless Ansar reauthorizes it.
 
+### 2026-06-12 — Batch H2 partial: report export equality (lead)
+
+- **Changed:** added `tests/e2e/reports-export-h2.spec.ts`, a finishing-specific
+  report export proof that does not save downloaded CSVs into the repository.
+  The spec opens Profit & Loss, clicks the real Export CSV button, reads the
+  temporary browser download, parses the CSV, and deletes the download.
+- **Evidence / verification:**
+  - `pnpm test:e2e tests/e2e/reports-export-h2.spec.ts` -> **1/1 green**.
+  - The test verifies CSV metadata (`Profit and Loss`, Acme Studio LLC, USD,
+    accrual), checks that non-zero exported income/expense account labels are
+    visible in the report, and reconciles CSV-derived net profit to the rendered
+    Net profit band.
+  - Screenshot:
+    `docs/finishing/evidence/2026-06-12-H2-report-export-equality.png`.
+- **Status:** H2 row #10 Reports is now **WORKING/evidenced** for the P&L CSV
+  equality path. Exhaustive per-report CSV parity is a future hardening item,
+  not a blocker for this acceptance row.
+- **Next:** run both gates for this report-export batch, commit it, then
+  continue the remaining H2/H5 rows: Inbox keyboard/batch, AI parity/import
+  split, PDF raster vision, Plaid/Stripe external proof, and final H5
+  cross-check. Do not deploy unless Ansar reauthorizes it.
+
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

@@ -33,8 +33,8 @@ closeout.
   deployed route.
 - **Still open:** B6 real-Bedrock high/low import split proof · G4 true PDF
   raster-to-Bedrock proof · Plaid hosted-item proof · Stripe webhook delivery
-  proof · H2 remaining Inbox keyboard/batch, report export-equality, AI
-  parity/import split, and final evidence-index cross-check ·
+  proof · H2 remaining Inbox keyboard/batch, AI parity/import split, and final
+  evidence-index cross-check ·
   prod redeploy only if Ansar reauthorizes it.
 
 ---
@@ -207,9 +207,9 @@ dashboard reads 3,948/5,000 rows, report pack reads 3,920/5,000, register rows
 are bounded to 120, and no truncation flags are set. H2 now has a **partial
 evidence index** at
 `docs/finishing/evidence/2026-06-12-H2-acceptance-evidence-index.md`, and rows
-#8 Contacts, #11 Data export, #16 Mobile, and #17 Audit log are now
-WORKING/evidenced. H2 still needs Inbox keyboard/batch, report/export equality,
-AI parity / import split, true PDF raster vision, Plaid hosted item proof, Stripe
+#8 Contacts, #10 Reports export equality, #11 Data export, #16 Mobile, and #17
+Audit log are now WORKING/evidenced. H2 still needs Inbox keyboard/batch, AI
+parity / import split, true PDF raster vision, Plaid hosted item proof, Stripe
 webhook delivery, and a final H5 evidence-index cross-check before the whole
 acceptance pack can close. H5 docs refresh is **partially done/evidenced**: `README.md`,
 `docs/finishing/how-openbooks-works.md`, and `AGENTS.md` now match shipped

@@ -103,6 +103,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     [],
   );
   const reportPack = useQuery(api.reportViews.reportPack, sessionReady ? reportArgs : "skip") as ReportPack | undefined;
+  const businesses = useQuery(api.entities.list, sessionReady ? {} : "skip");
   const aiProviderStatus = useQuery(
     api.ai.providerStatus,
     sessionReady && viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
@@ -184,12 +185,20 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   const role = roleLabel(viewer?.role);
   const activeEntityName = reportPack?.entity.name ?? "Your business";
 
-  // Single active entity today; multi-entity data switching is a later backend
-  // batch (plan G5). The switcher therefore lists the one active entity plus the
-  // "Add a business" action; see the note in the report below.
   const entityOptions: EntityOption[] = useMemo(
-    () =>
-      reportPack
+    () => {
+      const activeId = reportPack?.entity.id;
+      const rows = businesses?.rows.filter((entity) => !entity.archived) ?? [];
+      if (rows.length) {
+        return rows.map((entity) => ({
+          id: entity.id,
+          name: entity.name,
+          currency: entity.currency,
+          isDemo: entity.isDemo,
+          active: entity.id === activeId,
+        }));
+      }
+      return reportPack
         ? [
             {
               id: reportPack.entity.id,
@@ -199,8 +208,9 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
               active: true,
             },
           ]
-        : [],
-    [reportPack],
+        : [];
+    },
+    [businesses, reportPack],
   );
 
   const activeEntityContext = useMemo(

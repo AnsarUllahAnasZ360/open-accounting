@@ -66,7 +66,7 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + 41 unit | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Partial: receipt-PDF bill intake (Epic G); seeded-bill auto-match e2e skips when no seeded candidate (unit-proven). |
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper. Partial: CSV==screen equality not yet automated (export button works); exhaustive compare-column coverage deferred to H. |
 | 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | PARTIAL (backend WORKING) | B1–B3 unit tests + live Bedrock smoke | Engine done + verified (durable threads, real streaming, 5 read tools, propose→confirm through the ledger). UI is B4 — no screenshot yet, so capability stays PARTIAL until the docked panel renders it. |
-| 9 | Settings: 10-section subnav, all real | PARTIAL (WIP) | compiles + builds; no E e2e/unit yet | Epic E core committed: all 10 sections + `entities.create`/archive, `rules`/`settings`/`team` backend, schema. Needs E verification (e2e all sections + Add-a-business→switcher→archive; unit entities.create CoA+authz, role matrix) + screenshots before WORKING. |
+| 9 | Settings: 10-section subnav, all real | WORKING | `tests/e2e/settings.spec.ts` 3/3 + `convex/settings.test.ts` 4/4 + 6 screenshots | 10 sections real-click verified; Add business creates an entity, appears in the switcher, archive hides it while preserving audit history; AI autonomy persists; rule reorder persists; audit filter verified. Named downstream partials: full entity data-switch is G5; invite email/acceptance flow is F3. |
 | 10 | Mobile genuinely usable at 390px | PARTIAL | inherited | Epic H asserts; today screenshots only. |
 
 ## Batch log (dated, append-only)
@@ -251,6 +251,42 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 - **Next (for the resuming session):** write the Epic E verification (see
   `docs/finishing/whats-left.md` §3.A and plan Epic E "Verify"), then mark #9
   WORKING. Handoff docs added: `whats-left.md` + `resume-prompt.md`.
+
+### 2026-06-12 — Batch E: Settings verification (lead)
+
+- **Changed:** added `convex/settings.test.ts` and `tests/e2e/settings.spec.ts`;
+  wired the app-shell entity switcher to `api.entities.list` so newly-created,
+  non-archived businesses show up without a seed-only report-pack dependency;
+  fixed an AI autonomy persistence race by disabling autonomy changes until a
+  workspace is loaded and rolling back failed optimistic state; created
+  `docs/finishing/execution-plan-2026-06-12.md` for the remaining batches.
+- **Evidence / verification:**
+  - `pnpm exec vitest run convex/settings.test.ts` -> **4/4 green**:
+    business create seeds the chart of accounts; archive preserves the entity and
+    CoA history; AI thresholds use the shared autonomy constant; rule ordering
+    changes first-match classification; staff/member roles are rejected from
+    privileged settings mutations.
+  - `tests/e2e/settings.spec.ts` -> **3/3 green real-click**: 10-section
+    settings subnav; Add-a-business -> switcher -> archive hidden from switcher;
+    audit filter; AI autonomy persists through reload; rule reorder persists
+    through reload.
+  - Screenshots:
+    `docs/finishing/evidence/2026-06-12-E1-settings-sections.png`,
+    `docs/finishing/evidence/2026-06-12-E2-add-business-switcher.png`,
+    `docs/finishing/evidence/2026-06-12-E2-archived-business-hidden.png`,
+    `docs/finishing/evidence/2026-06-12-E4-ai-autonomy.png`,
+    `docs/finishing/evidence/2026-06-12-E5-audit-filter.png`,
+    `docs/finishing/evidence/2026-06-12-E5-rules-reorder.png`.
+  - Batch gates: `pnpm verify` -> **green** (typecheck, lint, build, **125/125
+    unit**); `npx convex dev --once` -> **green** against cloud dev
+    `ceaseless-mandrill-524`.
+  - Browser plugin spot-check was attempted, but the in-app Browser security
+    policy blocked `http://127.0.0.1:3100/settings/businesses`; row status uses
+    the green Playwright real-click evidence above.
+- **Status:** acceptance row #9 **WORKING**. Named downstream partials remain
+  outside Epic E: G5 owns full entity-scoped data switching; F3 owns invite email
+  and acceptance flow.
+- **Next:** B4-B6 Ask AI panel UI.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

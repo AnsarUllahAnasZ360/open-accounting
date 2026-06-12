@@ -49,12 +49,17 @@ export function AiSection({
   const autonomy: AiAutonomyMode = autonomyOverride ?? providerStatus?.autonomy ?? "balanced";
 
   async function pickAutonomy(value: AiAutonomyMode) {
+    if (!workspaceId) {
+      setTestMessage("Workspace settings are still loading.");
+      return;
+    }
     setAutonomyOverride(value);
-    if (!workspaceId) return;
     try {
       await setConfig({ workspaceId, provider: "bedrock", autonomy: value });
-    } catch {
-      // surfaced via the test line if needed; keep optimistic UI
+      setTestMessage("");
+    } catch (err) {
+      setAutonomyOverride(null);
+      setTestMessage(err instanceof Error ? err.message : "Could not save AI autonomy.");
     }
   }
 
@@ -157,9 +162,10 @@ export function AiSection({
                 type="button"
                 data-testid={`ai-autonomy-${option.value}`}
                 data-active={on ? "true" : "false"}
+                disabled={!workspaceId}
                 onClick={() => pickAutonomy(option.value)}
                 className={cn(
-                  "flex flex-col gap-1.5 rounded-[12px] border-[1.5px] p-3.5 text-left transition-colors",
+                  "flex flex-col gap-1.5 rounded-[12px] border-[1.5px] p-3.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                   on ? "border-primary bg-[#fbfdf9]" : "border-border bg-card hover:border-muted-foreground/30",
                 )}
               >

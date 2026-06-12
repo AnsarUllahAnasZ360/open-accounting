@@ -1,15 +1,20 @@
 import { query } from "./_generated/server";
-import { requireAnyWorkspaceRole } from "./authz";
+import { requireUserId } from "./authz";
 import { profileSnapshot } from "./profile";
 
 export const viewer = query({
   args: {},
   handler: async (ctx) => {
-    const { userId, membership } = await requireAnyWorkspaceRole(ctx);
-    const [user, workspace] = await Promise.all([
+    const userId = await requireUserId(ctx);
+    const [user, memberships] = await Promise.all([
       ctx.db.get(userId),
-      ctx.db.get(membership.workspaceId),
+      ctx.db
+        .query("workspaceMembers")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect(),
     ]);
+    const membership = memberships.find((candidate) => candidate.status === "active") ?? null;
+    const activeWorkspace = membership ? await ctx.db.get(membership.workspaceId) : null;
 
     const profile = user ? await profileSnapshot(ctx, user, userId) : null;
 
@@ -22,14 +27,15 @@ export const viewer = query({
             profile,
           }
         : null,
-      workspace: workspace
+      workspace: activeWorkspace
         ? {
-            id: workspace._id,
-            name: workspace.name,
-            slug: workspace.slug,
+            id: activeWorkspace._id,
+            name: activeWorkspace.name,
+            slug: activeWorkspace.slug,
           }
         : null,
-      role: membership.role,
+      role: membership?.role ?? null,
+      status: membership && activeWorkspace ? ("ready" as const) : ("needs_onboarding" as const),
     };
   },
 });

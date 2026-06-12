@@ -11,8 +11,6 @@ import { Label } from "@/components/ui/label";
 
 type State = "idle" | "submitting" | "error";
 
-const INVITE_ONLY_MESSAGE = "OpenBooks is invite-only. Request access from the landing page.";
-
 export function SignInForm({
   devAuthBypass = false,
   defaultEmail = "",
@@ -57,7 +55,7 @@ export function SignInForm({
         router.push("/dashboard");
       } catch (caught) {
         const message = caught instanceof Error ? caught.message : "";
-        setError(message.includes("OpenBooks is invite-only") ? message : INVITE_ONLY_MESSAGE);
+        setError(message.includes("OpenBooks is invite-only") ? message : "Check your email and password, or create a new OpenBooks account.");
         setState("error");
       }
     }
@@ -72,7 +70,7 @@ export function SignInForm({
         <div>
           <h1 className="text-xl font-semibold">Sign in to OpenBooks</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Invite-only while the ledger core is being verified.
+            Start a workspace or join one with an invite.
           </p>
         </div>
       </div>

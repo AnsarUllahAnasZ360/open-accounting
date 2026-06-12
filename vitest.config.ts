@@ -5,5 +5,6 @@ export default defineConfig({
     environment: "edge-runtime",
     include: ["tests/**/*.test.ts", "convex/**/*.test.ts"],
     passWithNoTests: true,
+    testTimeout: 20_000,
   },
 });

@@ -34,6 +34,7 @@ import type * as invoices from "../invoices.js";
 import type * as ledger from "../ledger.js";
 import type * as moduleViews from "../moduleViews.js";
 import type * as money from "../money.js";
+import type * as onboarding from "../onboarding.js";
 import type * as payroll from "../payroll.js";
 import type * as payrollMath from "../payrollMath.js";
 import type * as pipeline from "../pipeline.js";
@@ -88,6 +89,7 @@ declare const fullApi: ApiFromModules<{
   ledger: typeof ledger;
   moduleViews: typeof moduleViews;
   money: typeof money;
+  onboarding: typeof onboarding;
   payroll: typeof payroll;
   payrollMath: typeof payrollMath;
   pipeline: typeof pipeline;

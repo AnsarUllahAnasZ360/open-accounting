@@ -28,6 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useActiveEntity } from "@/lib/openbooks/active-entity";
+import { cn } from "@/lib/utils";
 
 type ReviewFilter = "all" | "auto" | "confirmed" | "needs_review" | "excluded";
 
@@ -57,6 +58,10 @@ export function DashboardScreen() {
     ...entityArg(activeEntity.id),
     period: period ?? undefined,
   });
+  const onboardingChecklist = useQuery(
+    api.onboarding.checklist,
+    activeEntity.id ? {} : "skip",
+  );
 
   if (dashboard === undefined) return <LoadingBlock label="dashboard" />;
   if (!dashboard) {
@@ -91,6 +96,46 @@ export function DashboardScreen() {
           </Select>
         </div>
       </section>
+
+      {onboardingChecklist?.persisted ? (
+        <section className="rounded-lg border bg-card p-4 shadow-xs" data-testid="onboarding-checklist-card">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-base font-semibold">Finish setting up OpenBooks</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Your workspace is live. Complete the remaining setup work as real data arrives.
+              </p>
+            </div>
+            <CategoryChip
+              active
+              label={`${onboardingChecklist.items.filter((item) => item.complete).length}/${onboardingChecklist.items.length} done`}
+            />
+          </div>
+          <div className="mt-4 grid gap-2 lg:grid-cols-5">
+            {onboardingChecklist.items.map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                className="min-h-[104px] rounded-lg border p-3 text-sm transition-colors hover:bg-muted/50"
+                data-testid={`onboarding-checklist-${item.key}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-medium">{item.label}</span>
+                  <span
+                    className={cn(
+                      "flex size-5 shrink-0 items-center justify-center rounded-full border",
+                      item.complete ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground",
+                    )}
+                  >
+                    {item.complete ? <Check className="size-3" /> : null}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{item.detail}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {isFreshEntity ? (
         <section className="rounded-lg border border-dashed bg-card p-4 shadow-xs" data-testid="dashboard-empty-entity">

@@ -79,10 +79,6 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       const invite = invites.find((candidate) => candidate.status === "pending") ?? null;
       const isOwner = configuredOwner !== null && email === configuredOwner;
 
-      if (!args.existingUserId && !isOwner && invite?.status !== "pending") {
-        throw new ConvexError("OpenBooks is invite-only. Request access from the landing page.");
-      }
-
       const now = Date.now();
       let userId = args.existingUserId as GenericId<"users"> | null;
       const providedName =
@@ -106,14 +102,17 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         await ensureUserProfile(appCtx, { userId, email, name: providedName });
       }
 
-      const workspaceId = await ensureWorkspaceForUser(appCtx, {
-        userId,
-        email,
-        role: isOwner ? "owner" : (invite?.role ?? "member"),
-        inviteWorkspaceId: invite?.workspaceId,
-      });
+      const workspaceId =
+        isOwner || invite?.workspaceId ?
+          await ensureWorkspaceForUser(appCtx, {
+            userId,
+            email,
+            role: isOwner ? "owner" : (invite?.role ?? "member"),
+            inviteWorkspaceId: invite?.workspaceId,
+          })
+        : null;
 
-      if (invite && invite.status === "pending") {
+      if (invite && invite.status === "pending" && workspaceId) {
         await appCtx.db.patch(invite._id, {
           status: "accepted",
           workspaceId,
@@ -143,9 +142,8 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .collect();
 
-      if (!memberships.some((membership) => membership.status === "active")) {
-        throw new ConvexError("OpenBooks is invite-only. Request access from the landing page.");
-      }
+      // A brand-new owner may sign in before they have created a workspace.
+      // Product onboarding will create the first workspace and membership.
     },
   },
 });

@@ -40,13 +40,18 @@ test("owner can sign in and land on the dashboard", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^Ask AI/ })).toBeVisible();
 });
 
-test("random email cannot self-register", async ({ page }) => {
+test("brand-new owner self-registers into onboarding", async ({ page }) => {
+  test.skip(
+    process.env.NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS !== "0",
+    "Self-registration must run with the frontend dev-auth bypass disabled.",
+  );
   await page.goto("/sign-in");
-  await page.getByLabel("Work email").fill(`blocked-${Date.now()}@example.com`);
-  await page.getByLabel("Password").fill("blocked-password-123");
+  await page.getByLabel("Work email").fill(`owner-auth-${Date.now()}@example.com`);
+  await page.getByLabel("Password").fill(`OpenBooks-${Date.now()}!`);
+  await page.getByLabel("Name").fill("Auth Owner");
   await page.getByRole("button", { name: /Sign in/ }).click();
 
-  await expect(page.getByText("OpenBooks is invite-only")).toBeVisible({
+  await expect(page.getByTestId("onboarding-screen")).toBeVisible({
     timeout: 15000,
   });
 });

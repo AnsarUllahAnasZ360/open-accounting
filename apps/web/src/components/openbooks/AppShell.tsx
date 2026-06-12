@@ -23,6 +23,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { CommandPalette } from "@/components/openbooks/CommandPalette";
+import { OnboardingScreen } from "@/components/openbooks/OnboardingScreen";
 import { OpenBooksAIChat } from "@/components/openbooks/OpenBooksAIChat";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,7 +53,7 @@ function initials(name: string | null | undefined, fallback = "U") {
   return `${parts[0]![0]}${parts.at(-1)![0]}`.toUpperCase();
 }
 
-function roleLabel(role: string | undefined) {
+function roleLabel(role: string | null | undefined) {
   if (!role) return "Member";
   if (role === "owner") return "Owner";
   if (role === "admin") return "Accountant";
@@ -96,7 +97,8 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   const sessionReady = isAuthenticated || devAuthBypass;
   const { signOut } = useAuthActions();
   const viewer = useQuery(api.session.viewer, sessionReady ? {} : "skip");
-  const businesses = useQuery(api.entities.list, sessionReady ? {} : "skip");
+  const workspaceReady = viewer?.status === "ready" && Boolean(viewer.workspace?.id);
+  const businesses = useQuery(api.entities.list, sessionReady && workspaceReady ? {} : "skip");
   const [activeEntityId, setActiveEntityId] = useState<string | null>(null);
   const activeBusinessRows = useMemo(
     () => businesses?.rows.filter((entity) => !entity.archived) ?? [],
@@ -140,11 +142,11 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   );
   const reportPack = useQuery(
     api.reportViews.reportPack,
-    sessionReady && businesses !== undefined ? reportArgs : "skip",
+    sessionReady && workspaceReady && businesses !== undefined ? reportArgs : "skip",
   ) as ReportPack | undefined;
   const aiProviderStatus = useQuery(
     api.ai.providerStatus,
-    sessionReady && viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
+    sessionReady && workspaceReady && viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
   );
   const aiStatus = frontendAiStatus(aiProviderStatus);
 
@@ -335,6 +337,22 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
           </Button>
         </div>
       </div>
+    );
+  }
+
+  if (viewer === undefined) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm text-muted-foreground">
+        Loading your open books workspace...
+      </div>
+    );
+  }
+
+  if (viewer.status === "needs_onboarding") {
+    return (
+      <OnboardingScreen
+        userName={viewer.user?.profile?.displayName ?? viewer.user?.name ?? viewer.user?.email}
+      />
     );
   }
 

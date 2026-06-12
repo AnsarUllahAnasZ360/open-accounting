@@ -11,11 +11,11 @@ Read it with `docs/finishing/implementation-plan.md` (the full epic contract) an
 ## 0. TL;DR
 
 The accounting-integrity half and most product-shell work are **committed and
-green**. What remains is the first-run onboarding surface, the live money rails,
-and the final verification closeout.
+green**. What remains is the live money rails and the final verification
+closeout.
 
 - **Committed & verified:** app shell · Ask AI engine + docked panel (B1–B5) ·
-  Settings (E) · profile/invite/dev-full pieces of F · Reports · Payroll ·
+  Settings (E) · onboarding/profile/invite/dev-full pieces of F · Reports · Payroll ·
   Income/Expenses/Bills (incl. invoice-save & bill-mark-paid).
 - **Current G status:** Plaid G1a+G2 now have the real Link client surface,
   action-level exchange/persist proof, item-level cursor state, system actor,
@@ -30,9 +30,8 @@ and the final verification closeout.
   produces a real sandbox item and that item sync is proven end to end; row #4 is
   still **PARTIAL** until a real Stripe CLI/Dashboard test webhook is delivered
   to the deployed route.
-- **Still open:** F1 onboarding stepper · B6 post-import AI run history ·
-  remaining G4 receipt gaps · Plaid hosted-item proof · Stripe webhook delivery
-  proof · H
+- **Still open:** B6 post-import AI run history · remaining G4 receipt gaps ·
+  Plaid hosted-item proof · Stripe webhook delivery proof · H
   verification closeout · prod redeploy only if Ansar reauthorizes it.
 
 ---
@@ -104,7 +103,7 @@ e2e green.
 
 | # | Capability | State |
 |---|---|---|
-| 1 | Workspace + business creation via onboarding | ❌ Epic F1 (E2 adds `entities.create`) |
+| 1 | Workspace + business creation via onboarding | ✅ WORKING |
 | 2 | Shell: collapse rail, footer profile/settings/logout, ⌘K, switcher, Ask AI ⌘J | ✅ WORKING incl. active-entity data switching |
 | 3 | Plaid sandbox real Link → sync → ledger/inbox | ◑ PARTIAL → G1a UI/exchange + G2 server sync path done; needs hosted Plaid item proof |
 | 4 | Stripe test mode event-driven sync + payout reconcile | ◑ PARTIAL → G3 code verified; needs real Stripe CLI/Dashboard webhook delivery proof |
@@ -134,15 +133,18 @@ full-page `/ask-ai`, and mobile sheet. B6 post-import categorizer scheduling/run
 history is still **PARTIAL** and should be handled with Epic G import/pipeline
 work because it depends on Plaid/Stripe/CSV ingestion events.
 
-### C. Epic F — Identity (profile, invites, dev-mode) — PARTIAL
-F2-F4 are evidenced: `/profile` + `userProfiles`; team invite copy-link +
-`/invite/[token]` accept; Staff role hides/blocks Settings; `pnpm dev:full`
-cloud-Convex boot reaches ready state with owner bootstrap. Evidence:
-`convex/profileTeam.test.ts`, `convex/authz.test.ts`,
-`tests/e2e/profile-team.spec.ts`, and Batch F screenshots. Remaining F gaps:
-F1 first-run onboarding stepper is **NOT STARTED**; password reset from `/profile`
-is **PARTIAL** until Convex Auth reset email is configured; Plunk email delivery
-is optional/unconfigured, so invites use copy-link mode.
+### C. Epic F — Identity (onboarding, profile, invites, dev-mode) — MOSTLY DONE
+F1-F4 are evidenced: new owners can self-register into a full first-run
+onboarding stepper, create a workspace + first business + typed chart of
+accounts, and land on Dashboard with a persisted setup checklist; `/profile` +
+`userProfiles` works; team invite copy-link + `/invite/[token]` accept works;
+Staff role hides/blocks Settings; `pnpm dev:full` cloud-Convex boot reaches
+ready state with owner bootstrap. Evidence: `convex/onboarding.test.ts`,
+`tests/e2e/onboarding.spec.ts`, `convex/profileTeam.test.ts`,
+`convex/authz.test.ts`, `tests/e2e/profile-team.spec.ts`, and Batch F/F1
+screenshots. Remaining F gaps: password reset from `/profile` is **PARTIAL**
+until Convex Auth reset email is configured; Plunk email delivery is
+optional/unconfigured, so invites use copy-link mode.
 
 ### D. Epic G — Money rails  _(split into sub-batches; needs inputs — see §4)_
 G1a+G2 are **PARTIAL and committed/evidenced**: Settings prepares a Plaid

@@ -32,6 +32,16 @@ export default defineSchema({
     ),
     updatedAt: v.number(),
   }).index("by_workspace", ["workspaceId"]),
+  onboardingChecklists: defineTable({
+    workspaceId: v.id("workspaces"),
+    bankConnected: v.boolean(),
+    aiConnected: v.boolean(),
+    stripeConnected: v.boolean(),
+    firstInboxZero: v.boolean(),
+    firstReportViewed: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_workspace", ["workspaceId"]),
   entities: defineTable({
     workspaceId: v.id("workspaces"),
     name: v.string(),

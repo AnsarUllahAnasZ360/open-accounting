@@ -58,7 +58,7 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 
 | # | Capability | Status | Evidence | Notes |
 |---|---|---|---|---|
-| 1 | Workspace + business creation via onboarding | NOT STARTED | — | Epic F1. Today: owner still bootstraps into `ansar-workspace`; E2 creates businesses from Settings, but the first-run onboarding stepper is not built. |
+| 1 | Workspace + business creation via onboarding | WORKING | `convex/onboarding.test.ts` 2/2 + `tests/e2e/onboarding.spec.ts` 1/1 + screenshot | F1 now lets a brand-new owner self-register, create a workspace + first business + typed chart of accounts, and land on Dashboard with a persisted setup checklist. Existing owner workspace is preserved by an idempotency guard. |
 | 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots; B5 dock verified in `tests/e2e/ai-chat.spec.ts`; F2 profile verified in `tests/e2e/profile-team.spec.ts` + screenshot; G5 entity switching verified in `tests/e2e/entity-scope-g5.spec.ts` + screenshots | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Profile page now updates sidebar identity live. Entity switching now drives dashboard/register/reports/module reads for Live Sandbox and fresh businesses. Remaining follow-up: global ⌘K server search index. AI panel is docked on desktop and a bottom sheet on mobile. |
 | 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | PARTIAL | `convex/plaid.test.ts` 15/15 + `convex/plaidWebhook.test.ts` 2/2 + `tests/e2e/plaid-link.spec.ts` 3/3 + 3 screenshots | G1 mounts the Plaid Link client and persists exchanged access tokens server-side without leaking them. G2 adds item-level cursor state, `system:sync`, 4h cron, verified Plaid webhook signature handling, real `/transactions/sync`, server-side removal reversal, and a Settings `Sync now` control. Still not WORKING: no completed hosted Plaid Link session + real Plaid sandbox item sync has been proven end-to-end in the browser. |
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | `convex/stripe.test.ts` 6/6 + `convex/stripeWebhook.test.ts` 3/3 + `tests/e2e/stripe-g3.spec.ts` 1/1 + screenshot | G3 code is implemented: Stripe test-mode webhooks dedupe, trigger targeted invoice/charge/payout sync, post through `system:sync`, and persist `stripePayoutLines`; UI reads persisted child rows. Still not WORKING until a real Stripe CLI/Dashboard test webhook is delivered to `/stripe/webhook` on the cloud site and proves invoice/payout update end-to-end. |
@@ -386,8 +386,8 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   **PARTIAL** until reset-email is configured; F3 invite copy-link acceptance
   and Staff role UI/backend checks **WORKING**; Plunk email sending is still
   unconfigured so copy-link is the honest delivery path; F4 one-command local
-  boot **WORKING** with demo seed skipped in the verification run. F1 first-run
-  onboarding remains **NOT STARTED** and is not claimed by this batch.
+  boot **WORKING** with demo seed skipped in the verification run. F1 is not
+  claimed by this batch; it is completed in the dated F1 batch below.
 - **Next:** Epic G integrations, split into small batches (Plaid Link/crons,
   Stripe event sync/payout lines, receipt PDFs, entity-scoped read models).
 
@@ -617,8 +617,53 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   **WORKING and evidenced**. This does **not** upgrade Plaid row #3 to WORKING:
   the remaining Plaid gap is still a completed hosted Plaid Link session plus
   real sandbox item sync proof.
-- **Next:** F1 onboarding, B6 import-triggered AI run history, remaining G4
-  receipt gaps, real Stripe webhook delivery proof, then Epic H closeout.
+- **Next:** B6 import-triggered AI run history, remaining G4 receipt gaps, real
+  Plaid hosted-item proof, real Stripe webhook delivery proof, then Epic H
+  closeout.
+
+### 2026-06-12 — Batch F1: first-run onboarding + persisted setup checklist (lead)
+
+- **Changed:** OpenBooks now distinguishes three states: unauthenticated,
+  authenticated-without-workspace, and ready workspace member. Brand-new owners
+  can sign up without an invite, see the full-screen onboarding stepper, choose
+  business name/type/currency, skip AI/Plaid/Stripe honestly, and finish setup.
+  Invites remain the teammate join path.
+- **Backend:** added `convex/onboarding.ts` and `onboardingChecklists`. The
+  bootstrap mutation creates the workspace, owner membership, workspace
+  settings, first non-demo business, typed chart of accounts via the existing
+  ledger seeder, audit events, and a persisted setup checklist in one
+  server-owned path. Existing owner/member workspaces return idempotently and do
+  not create duplicate workspaces or entities.
+- **UI:** `AppShell` now routes authenticated users with no active workspace to
+  `OnboardingScreen` instead of firing workspace-only queries. Dashboard renders
+  a persisted "Finish setting up OpenBooks" checklist card after onboarding.
+  Sign-in copy now says "Start a workspace or join one with an invite" instead
+  of the old invite-only product state.
+- **Evidence / verification:**
+  - `convex/onboarding.test.ts` -> **2/2 green** inside `pnpm verify`. These
+    tests prove `api.session.viewer` returns `needs_onboarding` for an
+    authenticated user with no workspace, bootstrap creates one business +
+    checklist + chart accounts, repeated bootstrap is idempotent, and existing
+    owner workspace is untouched.
+  - `NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS=0 PORT=3101 pnpm test:e2e tests/e2e/onboarding.spec.ts`
+    -> **1/1 green real-click**. The spec signs up a brand-new owner, clicks
+    through every onboarding step, finishes setup, lands on Dashboard, and
+    verifies all five checklist items are visible.
+  - Screenshot:
+    `docs/finishing/evidence/2026-06-12-F1-onboarding-dashboard-checklist.png`.
+  - Browser plugin note: attempted the requested in-app Browser smoke against
+    `http://127.0.0.1:3102/sign-in`; the plugin listed the Browser but timed out
+    attaching a webview, then reported no active tab on retry. No product issue
+    was found there; Playwright real-click evidence above is the green proof.
+  - Batch gates: `pnpm verify` -> **green** (typecheck, lint, build,
+    **143/143 unit**); `npx convex dev --once` -> **green** against cloud dev
+    `ceaseless-mandrill-524`.
+- **Status:** acceptance row #1 is **WORKING and evidenced**. Remaining F gaps
+  are outside the F1 onboarding row: password reset email configuration and
+  optional Plunk invite email delivery.
+- **Next:** B6 import-triggered AI run history, remaining G4 receipt gaps, real
+  Plaid hosted-item proof, real Stripe webhook delivery proof, then Epic H
+  closeout.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

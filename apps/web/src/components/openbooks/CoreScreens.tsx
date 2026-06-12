@@ -43,8 +43,11 @@ function categoryLabel(kind: string) {
 }
 
 export function DashboardScreen() {
-  const dashboard = useQuery(api.coreViews.dashboard, {});
-  const [period, setPeriod] = useState("2026-06");
+  // The period selector drives the query so it scopes every period-sensitive
+  // widget (P&L snapshot, expense breakdown, income-by-customer, payroll) —
+  // not just decoration. `null` lets the server pick the latest month with data.
+  const [period, setPeriod] = useState<string | null>(null);
+  const dashboard = useQuery(api.coreViews.dashboard, { period: period ?? undefined });
 
   if (dashboard === undefined) return <LoadingBlock label="dashboard" />;
   if (!dashboard) {
@@ -60,8 +63,8 @@ export function DashboardScreen() {
         </div>
         <div className="grid gap-1.5 sm:w-48">
           <Label>Period</Label>
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger>
+          <Select value={period ?? dashboard.selectedMonth} onValueChange={setPeriod}>
+            <SelectTrigger data-testid="dashboard-period">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -90,11 +93,11 @@ export function DashboardScreen() {
         <StatCard
           label="Net income"
           value={
-            <Link className="hover:text-primary" href="/reports">
+            <Link className="hover:text-primary" href={`/reports?period=${dashboard.selectedMonth}`}>
               <Amount amountMinor={dashboard.profitAndLoss.netIncomeMinor} />
             </Link>
           }
-          detail="Latest month"
+          detail={dashboard.selectedMonth}
         />
         <StatCard
           label="Inbox"
@@ -141,27 +144,27 @@ export function DashboardScreen() {
         <div className="rounded-lg border bg-card p-4 shadow-xs">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold">Latest month P&L</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{dashboard.latestMonth}</p>
+              <h2 className="text-base font-semibold">Monthly P&L</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{dashboard.selectedMonth}</p>
             </div>
             <CategoryChip active label="Ledger lines" />
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div>
               <div className="text-xs text-muted-foreground">Income</div>
-              <Link className="hover:text-primary" href="/reports">
+              <Link className="hover:text-primary" href={`/reports?report=profit-and-loss&period=${dashboard.selectedMonth}`}>
                 <Amount amountMinor={dashboard.profitAndLoss.incomeMinor} tone="income" />
               </Link>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Expense</div>
-              <Link className="hover:text-primary" href="/transactions">
+              <Link className="hover:text-primary" href={`/expenses?period=${dashboard.selectedMonth}`}>
                 <Amount amountMinor={dashboard.profitAndLoss.expenseMinor} tone="expense" />
               </Link>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Net</div>
-              <Link className="hover:text-primary" href="/reports">
+              <Link className="hover:text-primary" href={`/reports?report=profit-and-loss&period=${dashboard.selectedMonth}`}>
                 <Amount amountMinor={dashboard.profitAndLoss.netIncomeMinor} />
               </Link>
             </div>
@@ -226,7 +229,7 @@ export function DashboardScreen() {
           </div>
           <div className="divide-y">
             {dashboard.incomeByCustomer.map((customer) => (
-              <Link key={customer.contactId} className="flex items-center justify-between px-4 py-3 text-sm hover:bg-muted/50" href="/contacts">
+              <Link key={customer.contactId} className="flex items-center justify-between px-4 py-3 text-sm hover:bg-muted/50" href={`/contacts?contact=${customer.contactId}`}>
                 <span className="font-medium">{customer.name}</span>
                 <Amount amountMinor={customer.amountMinor} />
               </Link>

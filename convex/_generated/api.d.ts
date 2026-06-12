@@ -27,6 +27,8 @@ import type * as http from "../http.js";
 import type * as ledger from "../ledger.js";
 import type * as moduleViews from "../moduleViews.js";
 import type * as money from "../money.js";
+import type * as payroll from "../payroll.js";
+import type * as payrollMath from "../payrollMath.js";
 import type * as pipeline from "../pipeline.js";
 import type * as plaid from "../plaid.js";
 import type * as proposals from "../proposals.js";
@@ -66,6 +68,8 @@ declare const fullApi: ApiFromModules<{
   ledger: typeof ledger;
   moduleViews: typeof moduleViews;
   money: typeof money;
+  payroll: typeof payroll;
+  payrollMath: typeof payrollMath;
   pipeline: typeof pipeline;
   plaid: typeof plaid;
   proposals: typeof proposals;

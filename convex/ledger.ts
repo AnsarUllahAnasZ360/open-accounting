@@ -76,7 +76,7 @@ function assertIsoDate(date: string) {
   }
 }
 
-async function getEntityForWrite(
+export async function getEntityForWrite(
   ctx: QueryCtx | MutationCtx,
   entityId: Id<"entities">,
   role: "member" | "admin" | "owner" = "admin",
@@ -280,6 +280,122 @@ export const ensureLiveSandboxEntity = mutation({
   },
 });
 
+export type LedgerLineInput = {
+  accountId: Id<"ledgerAccounts">;
+  debitMinor: number;
+  creditMinor: number;
+  currency?: string;
+};
+
+/**
+ * The single ledger posting path. Validates that every line is a clean
+ * debit-xor-credit, that the entry balances (Σdebits = Σcredits), that the
+ * period is not locked, and that every account is active on the same entity;
+ * inserts the entry + lines + an audit event; returns the new entry id.
+ *
+ * Callers must have already resolved + authorized the entity and the acting
+ * user (this helper does NOT re-derive the session, so it is safe to call
+ * inside other mutations that own their own authorization — e.g. payroll
+ * approve/settle). The public `postEntry` mutation is the session-bound
+ * wrapper around it.
+ *
+ * Keeping this as a shared in-transaction helper (rather than a cross-mutation
+ * `runMutation`) means payroll posting + run/line state changes commit
+ * atomically: a failed post cannot leave a run "approved" with no entry.
+ */
+export async function postLedgerEntryCore(
+  ctx: MutationCtx,
+  args: {
+    entity: Doc<"entities">;
+    userId: Id<"users">;
+    date: string;
+    memo: string;
+    source: Doc<"journalEntries">["source"];
+    sourceId?: string;
+    reversesEntryId?: Id<"journalEntries">;
+    lines: LedgerLineInput[];
+    auditAction?: string;
+  },
+): Promise<{ entryId: Id<"journalEntries">; debitTotal: number; creditTotal: number }> {
+  assertIsoDate(args.date);
+  if (args.lines.length < 2) {
+    throw new Error("A journal entry needs at least two lines.");
+  }
+
+  const lock = await ctx.db
+    .query("periodLocks")
+    .withIndex("by_entity", (q) => q.eq("entityId", args.entity._id))
+    .unique();
+  if (lock && args.date <= lock.lockedThroughDate) {
+    throw new ConvexError(`Period is locked through ${lock.lockedThroughDate}.`);
+  }
+
+  let debitTotal = 0;
+  let creditTotal = 0;
+  for (const line of args.lines) {
+    assertNonNegativeMinorUnit(line.debitMinor, "Debit");
+    assertNonNegativeMinorUnit(line.creditMinor, "Credit");
+    if ((line.debitMinor === 0 && line.creditMinor === 0) || (line.debitMinor > 0 && line.creditMinor > 0)) {
+      throw new Error("Each journal line must contain exactly one debit or one credit.");
+    }
+    const account = await ctx.db.get(line.accountId);
+    if (!account || account.entityId !== args.entity._id || account.archived) {
+      throw new Error("Every journal line must use an active account on the same entity.");
+    }
+    debitTotal += line.debitMinor;
+    creditTotal += line.creditMinor;
+  }
+  if (debitTotal !== creditTotal) {
+    throw new Error("Journal entry is not balanced: debits must equal credits.");
+  }
+
+  if (args.reversesEntryId) {
+    await assertReversalLines(ctx, {
+      entityId: args.entity._id,
+      reversesEntryId: args.reversesEntryId,
+      lines: args.lines,
+    });
+  }
+
+  const now = Date.now();
+  const memo = args.memo.trim() || "Manual journal entry";
+  const entryId = await ctx.db.insert("journalEntries", {
+    entityId: args.entity._id,
+    date: args.date,
+    memo,
+    source: args.source,
+    sourceId: args.sourceId?.trim() || undefined,
+    reversesEntryId: args.reversesEntryId,
+    postedByUserId: args.userId,
+    locked: true,
+    createdAt: now,
+  });
+
+  for (const line of args.lines) {
+    await ctx.db.insert("journalLines", {
+      entityId: args.entity._id,
+      entryId,
+      accountId: line.accountId,
+      debitMinor: line.debitMinor,
+      creditMinor: line.creditMinor,
+      currency: line.currency ?? args.entity.currency,
+      createdAt: now,
+    });
+  }
+
+  await ctx.db.insert("auditEvents", {
+    workspaceId: args.entity.workspaceId,
+    actorUserId: args.userId,
+    action: args.auditAction ?? (args.reversesEntryId ? "ledger.entry.reversed" : "ledger.entry.posted"),
+    entityType: "journalEntry",
+    entityId: entryId,
+    summary: `${memo} (${debitTotal} ${args.entity.currency})`,
+    createdAt: now,
+  });
+
+  return { entryId, debitTotal, creditTotal };
+}
+
 export const postEntry = mutation({
   args: {
     entityId: v.id("entities"),
@@ -298,84 +414,18 @@ export const postEntry = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    assertIsoDate(args.date);
-    if (args.lines.length < 2) {
-      throw new Error("A journal entry needs at least two lines.");
-    }
-
     const entity = await getEntityForWrite(ctx, args.entityId, "admin");
-    const lock = await ctx.db
-      .query("periodLocks")
-      .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
-      .unique();
-    if (lock && args.date <= lock.lockedThroughDate) {
-      throw new ConvexError(`Period is locked through ${lock.lockedThroughDate}.`);
-    }
-
-    let debitTotal = 0;
-    let creditTotal = 0;
-    for (const line of args.lines) {
-      assertNonNegativeMinorUnit(line.debitMinor, "Debit");
-      assertNonNegativeMinorUnit(line.creditMinor, "Credit");
-      if ((line.debitMinor === 0 && line.creditMinor === 0) || (line.debitMinor > 0 && line.creditMinor > 0)) {
-        throw new Error("Each journal line must contain exactly one debit or one credit.");
-      }
-      const account = await ctx.db.get(line.accountId);
-      if (!account || account.entityId !== args.entityId || account.archived) {
-        throw new Error("Every journal line must use an active account on the same entity.");
-      }
-      debitTotal += line.debitMinor;
-      creditTotal += line.creditMinor;
-    }
-    if (debitTotal !== creditTotal) {
-      throw new Error("Journal entry is not balanced: debits must equal credits.");
-    }
-
-    if (args.reversesEntryId) {
-      await assertReversalLines(ctx, {
-        entityId: args.entityId,
-        reversesEntryId: args.reversesEntryId,
-        lines: args.lines,
-      });
-    }
-
-    const now = Date.now();
     const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
-    const entryId = await ctx.db.insert("journalEntries", {
-      entityId: args.entityId,
+    return await postLedgerEntryCore(ctx, {
+      entity,
+      userId,
       date: args.date,
-      memo: args.memo.trim() || "Manual journal entry",
+      memo: args.memo,
       source: args.source,
-      sourceId: args.sourceId?.trim() || undefined,
+      sourceId: args.sourceId,
       reversesEntryId: args.reversesEntryId,
-      postedByUserId: userId,
-      locked: true,
-      createdAt: now,
+      lines: args.lines,
     });
-
-    for (const line of args.lines) {
-      await ctx.db.insert("journalLines", {
-        entityId: args.entityId,
-        entryId,
-        accountId: line.accountId,
-        debitMinor: line.debitMinor,
-        creditMinor: line.creditMinor,
-        currency: line.currency ?? entity.currency,
-        createdAt: now,
-      });
-    }
-
-    await ctx.db.insert("auditEvents", {
-      workspaceId: entity.workspaceId,
-      actorUserId: userId,
-      action: args.reversesEntryId ? "ledger.entry.reversed" : "ledger.entry.posted",
-      entityType: "journalEntry",
-      entityId: entryId,
-      summary: `${args.memo.trim() || "Manual journal entry"} (${debitTotal} ${entity.currency})`,
-      createdAt: now,
-    });
-
-    return { entryId, debitTotal, creditTotal };
   },
 });
 

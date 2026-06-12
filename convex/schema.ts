@@ -406,9 +406,48 @@ export default defineSchema({
     status: v.union(v.literal("draft"), v.literal("approved"), v.literal("paid")),
     totalBaseMinor: v.number(),
     entryIds: v.array(v.id("journalEntries")),
+    // Accounts + approval entry are filled when the run is approved through the
+    // ledger so settlement can find the payable to clear and link back.
+    expenseAccountId: v.optional(v.id("ledgerAccounts")),
+    payableAccountId: v.optional(v.id("ledgerAccounts")),
+    bankAccountId: v.optional(v.id("ledgerAccounts")),
+    approvalEntryId: v.optional(v.id("journalEntries")),
+    approvedAt: v.optional(v.number()),
+    paidAt: v.optional(v.number()),
+    // Period this run posts against (last day of the month). Defaults derived
+    // from `period` when absent so legacy seeded runs still read.
+    postingDate: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_entity", ["entityId"]),
+  // Per-employee payroll line. A child table (not an array on payrollRuns) so
+  // adjustments / FX / paid-state are individually editable and the parent
+  // document never grows unbounded (Convex schema guideline).
+  payrollRunLines: defineTable({
+    entityId: v.id("entities"),
+    runId: v.id("payrollRuns"),
+    employeeId: v.optional(v.id("employees")),
+    // Snapshot of employee identity at run time (employees can change later).
+    employeeName: v.string(),
+    country: v.string(),
+    currency: v.string(),
+    baseSalaryMinor: v.number(), // local minor units, before adjustment
+    adjustmentMinor: v.number(), // local minor units, signed (+ bonus / − deduction)
+    // FX expressed as integer micro-units of local currency per 1 base unit
+    // (e.g. 278 PKR/USD -> 278_000_000). Avoids storing a float rate.
+    fxRateMicros: v.number(),
+    finalLocalMinor: v.number(), // baseSalaryMinor + adjustmentMinor
+    baseEquivalentMinor: v.number(), // converted to entity base currency
+    paid: v.boolean(),
+    settlementEntryId: v.optional(v.id("journalEntries")),
+    settlementTxnId: v.optional(v.id("transactions")),
+    // Base equivalent actually settled (may differ from approval -> FX diff).
+    settledBaseMinor: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_entity", ["entityId"]),
   stripeAccounts: defineTable({
     entityId: v.id("entities"),
     clearingAccountId: v.id("ledgerAccounts"),

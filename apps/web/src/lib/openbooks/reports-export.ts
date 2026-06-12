@@ -70,7 +70,9 @@ export type ReportPack = {
     startDate: string;
     endDate: string;
     basis: string;
+    compare?: string;
     columnMode: string;
+    comparison?: { startDate: string; endDate: string } | null;
   };
   monthlyReview: {
     month: string;
@@ -88,6 +90,7 @@ export type ReportPack = {
     expenseMinor: number;
     netIncomeMinor: number;
     rows: StatementRow[];
+    sections?: Array<{ key: string; label: string; totalMinor: number; rows: StatementRow[] }>;
   };
   balanceSheet: {
     asOfDate: string;
@@ -98,6 +101,7 @@ export type ReportPack = {
     differenceMinor: number;
     balanced: boolean;
     rows: StatementRow[];
+    sections?: Array<{ key: string; label: string; totalMinor: number; rows: StatementRow[] }>;
   };
   cashFlow: {
     openingCashMinor: number;

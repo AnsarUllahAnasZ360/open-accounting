@@ -64,24 +64,31 @@ function monthLabel(month: string) {
   return month.slice(5);
 }
 
+const DASHBOARD_LIMIT = 5000;
+
 export const dashboard = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    // Period selector. "YYYY-MM" scopes the P&L snapshot, expense breakdown,
+    // income-by-customer, and payroll widgets so the selector drives EVERY
+    // period-sensitive widget instead of being decorative.
+    period: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
     const entity = await getActiveEntity(ctx);
     if (!entity) return null;
 
     const [accounts, bankAccounts, entries, lines, transactions, inboxItems, invoices, bills, payrollRuns, contacts] =
       await Promise.all([
-        ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-        ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-        ctx.db.query("journalEntries").withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id)).collect(),
-        ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-        ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-        ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-        ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-        ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-        ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-        ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
+        ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(DASHBOARD_LIMIT),
+        ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
+        ctx.db.query("journalEntries").withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id)).take(DASHBOARD_LIMIT),
+        ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(DASHBOARD_LIMIT),
+        ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(DASHBOARD_LIMIT),
+        ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
+        ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
+        ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
+        ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
+        ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
       ]);
 
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
@@ -91,18 +98,21 @@ export const dashboard = query({
     const monthlyBalances = new Map<Id<"ledgerAccounts">, Balance>();
     const latestMonth =
       entries.map((entry) => entry.date.slice(0, 7)).sort((a, b) => b.localeCompare(a))[0] ?? "2026-06";
+    // The selected period drives every period-scoped widget; default to the
+    // latest month with activity. Never trust it to point past the data.
+    const selectedMonth = args.period && /^\d{4}-\d{2}$/.test(args.period) ? args.period : latestMonth;
 
     for (const line of lines) {
       addBalance(balances, line);
       const entry = entriesById.get(line.entryId);
-      if (entry?.date.startsWith(latestMonth)) {
+      if (entry?.date.startsWith(selectedMonth)) {
         addBalance(monthlyBalances, line);
       }
     }
 
     let incomeMinor = 0;
     let expenseMinor = 0;
-    const expensesByCategory: Array<{ name: string; amountMinor: number }> = [];
+    const expensesByCategory: Array<{ name: string; amountMinor: number; categoryAccountId: Id<"ledgerAccounts"> }> = [];
     for (const [accountId, balance] of monthlyBalances.entries()) {
       const account = accountsById.get(accountId);
       if (!account) continue;
@@ -110,7 +120,7 @@ export const dashboard = query({
       if (account.type === "income") incomeMinor += amountMinor;
       if (account.type === "expense") {
         expenseMinor += amountMinor;
-        if (amountMinor > 0) expensesByCategory.push({ name: account.name, amountMinor });
+        if (amountMinor > 0) expensesByCategory.push({ name: account.name, amountMinor, categoryAccountId: accountId });
       }
     }
 
@@ -155,10 +165,32 @@ export const dashboard = query({
         netMinor: inflowMinor - outflowMinor,
       };
     });
+    // Income by customer scoped to the selected month (invoices issued that
+    // month), so the widget tracks the period selector.
     const incomeByCustomer = new Map<Id<"contacts">, number>();
     for (const invoice of invoices) {
-      incomeByCustomer.set(invoice.contactId, (incomeByCustomer.get(invoice.contactId) ?? 0) + invoice.amountPaidMinor);
+      if (!invoice.issueDate.startsWith(selectedMonth)) continue;
+      incomeByCustomer.set(invoice.contactId, (incomeByCustomer.get(invoice.contactId) ?? 0) + invoice.totalMinor);
     }
+    // If nothing was issued in the period, fall back to all-time paid so the
+    // widget is never empty on a quiet month.
+    if (incomeByCustomer.size === 0) {
+      for (const invoice of invoices) {
+        incomeByCustomer.set(invoice.contactId, (incomeByCustomer.get(invoice.contactId) ?? 0) + invoice.amountPaidMinor);
+      }
+    }
+
+    const selectedPayrollRun =
+      payrollRuns.find((run) => run.period === selectedMonth) ??
+      payrollRuns.sort((a, b) => b.period.localeCompare(a.period))[0] ??
+      null;
+
+    // Last calendar day of the selected month, clamped so a current-month
+    // selection carries a month-to-date end rather than a future date.
+    const [sy, sm] = selectedMonth.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(sy, sm, 0)).getUTCDate();
+    const periodStart = `${selectedMonth}-01`;
+    const periodEnd = `${selectedMonth}-${String(lastDay).padStart(2, "0")}`;
 
     return {
       entity: {
@@ -167,6 +199,9 @@ export const dashboard = query({
         currency: entity.currency,
       },
       latestMonth,
+      selectedMonth,
+      periodStart,
+      periodEnd,
       cashPositionMinor: bankBalances
         .filter((account) => account.kind !== "credit")
         .reduce((sum, account) => sum + account.amountMinor, 0),
@@ -208,7 +243,7 @@ export const dashboard = query({
         const previous = points.at(-1) ?? 0;
         return [...points, previous + row.netMinor];
       }, []),
-      payroll: payrollRuns.sort((a, b) => b.period.localeCompare(a.period))[0] ?? null,
+      payroll: selectedPayrollRun,
       recentActivity: entries
         .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt)
         .slice(0, 8)

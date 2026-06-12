@@ -64,7 +64,7 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | inherited | Epic G3. Webhook receiver real; events trigger nothing yet. |
 | 5 | Inbox: confirm / correct / rule / batch / keyboard | PARTIAL | inherited | Epic H rewrites assertions; batch + keyboard unverified. |
 | 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | NOT STARTED | — | Epics C, D4. Today: invoice save / bill mark-paid / payroll approve-pay absent. |
-| 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | NOT STARTED | — | Epic D1/D2. Today: one mega-page, future-dated periods. |
+| 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper. Partial: CSV==screen equality not yet automated (export button works); exhaustive compare-column coverage deferred to H. |
 | 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | PARTIAL (backend WORKING) | B1–B3 unit tests + live Bedrock smoke | Engine done + verified (durable threads, real streaming, 5 read tools, propose→confirm through the ledger). UI is B4 — no screenshot yet, so capability stays PARTIAL until the docked panel renders it. |
 | 9 | Settings: 10-section subnav, all real | NOT STARTED | — | Epic E. Today: one mega-scroll page. |
 | 10 | Mobile genuinely usable at 390px | PARTIAL | inherited | Epic H asserts; today screenshots only. |
@@ -156,6 +156,45 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   (`core-screens.spec.ts` et al.) still use the banned `dispatchEvent` — that is
   Epic H1's cleanup, tracked there.
 - **Next:** Wave 2 — Epic D (Reports, the "completely broken" complaint) first.
+
+### 2026-06-12 — Batch D: Reports & Payroll (subagent `reports-payroll`, finished by lead)
+
+- **What happened:** the Epic D subagent was **killed mid-task** (during D5) and
+  never reported. It had already built D1–D4 + most backend; the lead verified
+  the tree was sound (web typecheck green, `npx convex dev --once` green, 97/97
+  unit unchanged, ledger refactor + payroll authz reviewed safe), then **finished
+  D5 and wrote all of D's verification in the open.**
+- **Changed:** `ReportsScreen.tsx` (rebuilt home grid → shared viewer),
+  `report-periods.ts` (preset date math that never returns a future period),
+  `ModuleScreens.tsx` (payroll run detail/approve/pay/statement),
+  `payroll.ts` + `payrollMath.ts` (run lifecycle mutations; FX in minor units),
+  `ledger.ts` (extracted `postLedgerEntryCore` so payroll posts **atomically**
+  with run-state changes — invariants preserved verbatim), `coreViews.ts`
+  (dashboard `period` arg drives every widget; `.collect()`→`.take()`),
+  `CoreScreens.tsx` (lead's D5: period selector now drives the query; tiles
+  carry `?period=`/`?contact=`), `primitives.tsx` (lead fixed a real mobile bug:
+  the 12-month bar chart forced 223px of horizontal overflow at 390px), `schema.ts`
+  (+`payrollRunLines` + run fields).
+- **Evidence / verification:**
+  - `pnpm verify` green; **101/101 unit** (added 4 payroll lifecycle tests).
+  - `convex/payroll.test.ts` (lead, in-memory — does not touch shared books):
+    approveRun posts a **balanced** debit-expense/credit-payable entry;
+    markRunPaid settles and leaves the **trial balance at zero**; locked-period
+    rejected; double-approve rejected.
+  - `tests/e2e/reports-payroll.spec.ts` (lead) **5/5 real-click**: reports home →
+    P&L viewer with a non-future default period; cash⇄accrual toggle + number→
+    drill-down slide-over; Monthly Review one-pager + month stepper; **payroll
+    run row → detail grid** (Ansar's "can't click into a run" complaint —
+    fixed); dashboard period carries to the report viewer + no h-scroll at
+    390/1440. 5 screenshots in `docs/finishing/evidence/2026-06-11-D*.png`.
+  - Lead review: ledger refactor behavior-preserving (existing `ledger.test.ts`
+    still green); payroll writes the ledger **only** via `postLedgerEntryCore`
+    (no direct journal writes) with admin authz on every posting mutation.
+- **Status:** row #7 (Reports) **WORKING**; payroll detail/approve/pay
+  **WORKING** (row #6's payroll slice). Named partials: CSV==screen equality not
+  yet automated; per-widget dashboard drill coverage and the FX-settlement unit
+  case (USD path tested; FX path code-reviewed) deferred to Epic H.
+- **Next:** Epic C (Income/Expenses/Bills + invoice-save & bill-mark-paid).
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

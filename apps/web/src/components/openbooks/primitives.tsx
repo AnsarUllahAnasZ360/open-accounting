@@ -177,14 +177,14 @@ export function BarChart({
   return (
     <div className="flex h-36 items-end gap-2" aria-label="Bar chart">
       {data.map((item) => (
-        <div key={item.label} className="flex flex-1 flex-col items-center gap-2">
+        <div key={item.label} className="flex min-w-0 flex-1 flex-col items-center gap-2">
           <div className="flex h-28 w-full items-end border-b">
             <div
               className={cn("mx-auto w-5 rounded-t bg-primary", item.value < 0 && "bg-muted-foreground")}
               style={{ height: `${Math.max(6, (Math.abs(item.value) / max) * 112)}px` }}
             />
           </div>
-          <span className="text-xs text-muted-foreground">{item.label}</span>
+          <span className="w-full truncate text-center text-xs text-muted-foreground">{item.label}</span>
         </div>
       ))}
     </div>

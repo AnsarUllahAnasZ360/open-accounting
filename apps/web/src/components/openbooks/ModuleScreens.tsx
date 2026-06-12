@@ -1,10 +1,12 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import {
   Archive,
   Building2,
   CheckCircle2,
+  ChevronLeft,
   Download,
   FileUp,
   History,
@@ -762,18 +764,41 @@ export function BillsScreen() {
 
 export function PayrollScreen() {
   const data = useModuleOverview();
-  const [tab, setTab] = useState<"employees" | "runs" | "statement">("employees");
+  const [tab, setTab] = useState<"employees" | "runs" | "statement">("runs");
+  const [openRunId, setOpenRunId] = useState<Id<"payrollRuns"> | null>(null);
+  const startRun = useMutation(api.payroll.startRun);
+  const [starting, setStarting] = useState(false);
+  const [message, setMessage] = useState("");
 
   if (data === undefined) return <LoadingBlock label="payroll" />;
   if (!data.entity) return <NoEntityState />;
 
   const baseCurrency = data.entity.currency;
+  const entityId = data.entity.id as Id<"entities">;
+  const hasJuneRun = data.payroll.runs.some((run) => run.period === "2026-06");
+
+  async function runJune() {
+    setStarting(true);
+    setMessage("");
+    try {
+      const result = await startRun({ entityId, period: "2026-06" });
+      setOpenRunId(result.runId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not start the run.");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  if (openRunId) {
+    return <PayrollRunDetail runId={openRunId} onBack={() => setOpenRunId(null)} />;
+  }
 
   return (
     <div className="space-y-5" data-testid="m6-payroll-screen">
       <ModuleIntro
-        title="Payroll register"
-        description="The payroll register shows employees, monthly runs, FX/base conversion, approval and paid-state affordances, plus a printable three-currency statement."
+        title="Payroll"
+        description="A register, not a processor — you pay people your way, the books stay right. Open a run to review the editable grid, approve it, then mark people paid."
         action={
           <div className="flex flex-wrap gap-2">
             {(["employees", "runs", "statement"] as const).map((item) => (
@@ -791,7 +816,7 @@ export function PayrollScreen() {
             key={row.currency}
             label={`${row.currency} payroll`}
             value={<Amount amountMinor={row.localMinor} currency={row.currency} />}
-            detail={`${baseCurrency} base ${row.baseMinor}`}
+            detail={`${baseCurrency} base`}
           />
         ))}
         <StatCard
@@ -801,8 +826,18 @@ export function PayrollScreen() {
         />
       </section>
 
+      {message ? <p className="text-sm text-destructive">{message}</p> : null}
+
       {tab === "employees" ? <PayrollEmployees data={data} /> : null}
-      {tab === "runs" ? <PayrollRuns data={data} /> : null}
+      {tab === "runs" ? (
+        <PayrollRuns
+          data={data}
+          onOpenRun={setOpenRunId}
+          onRunJune={runJune}
+          canRunJune={!hasJuneRun}
+          starting={starting}
+        />
+      ) : null}
       {tab === "statement" ? <PayrollStatement data={data} /> : null}
     </div>
   );
@@ -853,30 +888,50 @@ function PayrollEmployees({ data }: { data: ModuleOverview }) {
   );
 }
 
-function PayrollRuns({ data }: { data: ModuleOverview }) {
+function PayrollRuns({
+  data,
+  onOpenRun,
+  onRunJune,
+  canRunJune,
+  starting,
+}: {
+  data: ModuleOverview;
+  onOpenRun: (id: Id<"payrollRuns">) => void;
+  onRunJune: () => void;
+  canRunJune: boolean;
+  starting: boolean;
+}) {
   return (
     <Card className="shadow-xs">
-      <CardHeader>
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <CardTitle className="text-base">Runs</CardTitle>
+        {canRunJune ? (
+          <Button size="sm" onClick={onRunJune} disabled={starting} data-testid="payroll-run-june">
+            {starting ? "Starting…" : "Run payroll · June"}
+          </Button>
+        ) : null}
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Period</TableHead>
-              <TableHead>Headcount</TableHead>
+              <TableHead>People</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Action</TableHead>
               <TableHead className="text-right">Base total</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.payroll.runs.map((run) => (
-              <TableRow key={run.id} data-testid="payroll-run-row">
+              <TableRow
+                key={run.id}
+                data-testid="payroll-run-row"
+                className="cursor-pointer"
+                onClick={() => onOpenRun(run.id as Id<"payrollRuns">)}
+              >
                 <TableCell className="money-figures font-medium">{run.period}</TableCell>
                 <TableCell className="money-figures">{run.headcount}</TableCell>
                 <TableCell>{statusChip(run.status)}</TableCell>
-                <TableCell className="capitalize text-muted-foreground">{statusLabel(run.actionState)}</TableCell>
                 <TableCell className="text-right">
                   <Amount amountMinor={run.totalBaseMinor} currency={data.entity?.currency} />
                 </TableCell>
@@ -889,13 +944,295 @@ function PayrollRuns({ data }: { data: ModuleOverview }) {
   );
 }
 
+function PayrollRunDetail({ runId, onBack }: { runId: Id<"payrollRuns">; onBack: () => void }) {
+  const detail = useQuery(api.payroll.runDetail, { runId });
+  const backfill = useMutation(api.payroll.backfillRunLines);
+  const updateLine = useMutation(api.payroll.updateRunLine);
+  const approveRun = useMutation(api.payroll.approveRun);
+  const markRunPaid = useMutation(api.payroll.markRunPaid);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [view, setView] = useState<"grid" | "statement">("grid");
+
+  if (detail === undefined) return <LoadingBlock label="payroll run" />;
+  if (detail === null) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          <ChevronLeft className="size-4" /> Runs
+        </Button>
+        <EmptyState title="Run not found" />
+      </div>
+    );
+  }
+
+  const baseCurrency = detail.entity.currency;
+  const isDraft = detail.run.status === "draft";
+  const isApproved = detail.run.status === "approved";
+
+  async function withBusy(action: () => Promise<unknown>) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4" data-testid="payroll-run-detail">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack} data-testid="payroll-back">
+          <ChevronLeft className="size-4" /> Runs
+        </Button>
+        <h2 className="text-lg font-semibold">{detail.run.periodLabel} run</h2>
+        {statusChip(detail.run.status)}
+        {detail.periodLocked ? <CategoryChip label="Period locked" /> : null}
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant={view === "grid" ? "default" : "outline"} size="sm" onClick={() => setView("grid")}>
+            Grid
+          </Button>
+          <Button variant={view === "statement" ? "default" : "outline"} size="sm" onClick={() => setView("statement")}>
+            Statement
+          </Button>
+          {isDraft && !detail.periodLocked ? (
+            <Button size="sm" onClick={() => withBusy(() => approveRun({ runId }))} disabled={busy} data-testid="payroll-approve">
+              Approve run
+            </Button>
+          ) : null}
+          {isApproved ? (
+            <Button size="sm" onClick={() => withBusy(() => markRunPaid({ runId }))} disabled={busy} data-testid="payroll-mark-paid">
+              Mark all paid
+            </Button>
+          ) : null}
+          {!detail.materialized && detail.run.status === "paid" ? (
+            <Button size="sm" variant="outline" onClick={() => withBusy(() => backfill({ runId }))} disabled={busy}>
+              Load lines
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {isApproved ? (
+        <div className="flex items-center gap-2 rounded-[11px] bg-primary/5 px-4 py-2.5 text-sm text-primary" data-testid="payroll-approved-banner">
+          <CheckCircle2 className="size-4" />
+          Approved — recorded {detail.currencyTotals.map((row) => `${row.currency} ${row.localMinor / 100}`).join(" + ")} as {detail.run.periodLabel} payroll
+          expense. Lines settle as the bank payments arrive.
+        </div>
+      ) : null}
+      {detail.run.status === "paid" ? (
+        <div className="flex items-center gap-2 rounded-[11px] bg-primary/5 px-4 py-2.5 text-sm text-primary">
+          <CheckCircle2 className="size-4" />
+          Settled. FX differences between approval and settlement post automatically as a small gain/loss line.
+        </div>
+      ) : null}
+      {error ? <p className="text-sm text-destructive" data-testid="payroll-error">{error}</p> : null}
+
+      {view === "statement" ? (
+        <PayrollRunStatement detail={detail} />
+      ) : (
+        <Card className="shadow-xs">
+          <CardContent className="px-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Employee</TableHead>
+                    <TableHead className="text-right">Base salary</TableHead>
+                    <TableHead className="text-right">Adjustment</TableHead>
+                    <TableHead className="text-right">Final</TableHead>
+                    <TableHead className="text-right">FX rate</TableHead>
+                    <TableHead className="text-right">{baseCurrency} equiv</TableHead>
+                    <TableHead className="text-center">Paid</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {detail.lines.map((line) => (
+                    <PayrollRunLineRow
+                      key={line.id}
+                      line={line}
+                      baseCurrency={baseCurrency}
+                      editable={detail.editable}
+                      onSave={(adjustmentMinor, fxRate) =>
+                        withBusy(() => updateLine({ lineId: line.id as Id<"payrollRunLines">, adjustmentMinor, fxRate }))
+                      }
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="flex flex-col gap-2 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <span className="money-figures text-muted-foreground" data-testid="payroll-currency-totals">
+                {detail.currencyTotals.map((row) => (
+                  <span key={row.currency} className="mr-3">
+                    <Amount amountMinor={row.localMinor} currency={row.currency} />
+                  </span>
+                ))}
+              </span>
+              <span>
+                Total in {baseCurrency}:{" "}
+                <span className="money-figures text-base font-semibold" data-testid="payroll-base-total">
+                  <Amount amountMinor={detail.baseTotalMinor} currency={baseCurrency} />
+                </span>
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+type RunDetail = NonNullable<FunctionReturnType<typeof api.payroll.runDetail>>;
+type RunLineView = RunDetail["lines"][number];
+
+function PayrollRunLineRow({
+  line,
+  baseCurrency,
+  editable,
+  onSave,
+}: {
+  line: RunLineView;
+  baseCurrency: string;
+  editable: boolean;
+  onSave: (adjustmentMinor: number, fxRate: string) => void;
+}) {
+  const [adjustment, setAdjustment] = useState(String(line.adjustmentMinor / 100));
+  const [fxRate, setFxRate] = useState(line.fxDisplay === "—" ? "1" : line.fxDisplay);
+
+  function commit() {
+    const adjMinor = Math.round((Number(adjustment.replace(/[,$]/g, "")) || 0) * 100);
+    onSave(adjMinor, fxRate);
+  }
+
+  return (
+    <TableRow data-testid="payroll-line-row">
+      <TableCell>
+        <div className="font-medium">{line.employeeName}</div>
+        <div className="text-xs text-muted-foreground">{line.country} · {line.currency}</div>
+      </TableCell>
+      <TableCell className="text-right">
+        <Amount amountMinor={line.baseSalaryMinor} currency={line.currency} />
+      </TableCell>
+      <TableCell className="text-right">
+        {editable ? (
+          <Input
+            value={adjustment}
+            onChange={(event) => setAdjustment(event.target.value)}
+            onBlur={commit}
+            inputMode="decimal"
+            className="ml-auto h-8 w-24 text-right"
+            data-testid="payroll-adjustment-input"
+          />
+        ) : (
+          <Amount amountMinor={line.adjustmentMinor} currency={line.currency} signed />
+        )}
+      </TableCell>
+      <TableCell className="text-right font-medium">
+        <Amount amountMinor={line.finalLocalMinor} currency={line.currency} />
+      </TableCell>
+      <TableCell className="text-right">
+        {editable && line.currency !== baseCurrency ? (
+          <Input
+            value={fxRate}
+            onChange={(event) => setFxRate(event.target.value)}
+            onBlur={commit}
+            inputMode="decimal"
+            className="ml-auto h-8 w-20 text-right"
+            data-testid="payroll-fx-input"
+          />
+        ) : (
+          <span className="money-figures text-muted-foreground">{line.fxDisplay}</span>
+        )}
+      </TableCell>
+      <TableCell className="text-right">
+        <Amount amountMinor={line.baseEquivalentMinor} currency={baseCurrency} />
+      </TableCell>
+      <TableCell className="text-center">
+        <input
+          type="checkbox"
+          checked={line.paid}
+          readOnly
+          className="size-4 align-middle accent-[#2ca01c]"
+          aria-label={`${line.employeeName} paid`}
+        />
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function PayrollRunStatement({ detail }: { detail: RunDetail }) {
+  const baseCurrency = detail.entity.currency;
+  function exportCsv() {
+    const rows = [
+      ["group", "employee", "currency", "local_minor", "base_currency", "base_minor"],
+      ...detail.statementGroups.flatMap((group) =>
+        group.lines.map((line) => [group.key, line.employeeName, line.currency, String(line.finalLocalMinor), baseCurrency, String(line.baseEquivalentMinor)]),
+      ),
+    ];
+    downloadCsv(
+      `payroll-statement-${detail.run.period}.csv`,
+      rows.map((row) => row.join(",")).join("\n"),
+    );
+  }
+  return (
+    <Card className="shadow-xs">
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <CardTitle className="text-base">Payroll statement · {detail.run.periodLabel}</CardTitle>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => window.print()}>
+            <Printer className="size-4" /> Print
+          </Button>
+          <Button size="sm" onClick={exportCsv} data-testid="payroll-statement-csv">
+            <Download className="size-4" /> CSV
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {detail.statementGroups.map((group) => (
+          <div key={group.key} className="rounded-lg border">
+            <div className="border-b bg-muted/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {group.key}
+            </div>
+            <div className="divide-y">
+              {group.lines.map((line) => (
+                <div key={line.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                  <span>{line.employeeName}</span>
+                  <span className="flex gap-6">
+                    <Amount amountMinor={line.finalLocalMinor} currency={line.currency} className="text-muted-foreground" />
+                    <Amount amountMinor={line.baseEquivalentMinor} currency={baseCurrency} />
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between border-t px-4 py-2 text-sm font-semibold">
+              <span>Subtotal</span>
+              <span className="flex gap-6">
+                <Amount amountMinor={group.localMinor} currency={group.currency} />
+                <Amount amountMinor={group.baseMinor} currency={baseCurrency} />
+              </span>
+            </div>
+          </div>
+        ))}
+        <div className="flex items-center justify-between rounded-lg bg-primary/5 px-4 py-3 text-sm font-semibold text-primary">
+          <span>{detail.run.periodLabel} total</span>
+          <Amount amountMinor={detail.baseTotalMinor} currency={baseCurrency} className="text-base" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function PayrollStatement({ data }: { data: ModuleOverview }) {
   return (
     <Card className="shadow-xs">
       <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <CardTitle className="text-base">Printable statement</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">Grouped by employee with local and base currency totals.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Grouped by employee with local and base currency totals. Open a run for its own statement.</p>
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => window.print()}>

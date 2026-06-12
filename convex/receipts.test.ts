@@ -13,6 +13,7 @@ import {
   extractPdfTextFromBytes,
   normalizeBedrockReceiptExtraction,
   normalizePdfReceiptTextExtraction,
+  renderPdfTextPageToPngBase64,
 } from "./receipts";
 import schema from "./schema";
 import { SEMANTIC_MEMORY_DIMENSIONS } from "./semanticMemory";
@@ -169,6 +170,20 @@ describe("M11 receipt extraction helpers", () => {
       confidence: 0.78,
       source: "pdf_text",
     });
+  });
+
+  it("renders extracted PDF first-page text into a PNG raster for vision models", () => {
+    const raster = renderPdfTextPageToPngBase64([
+      "Vendor: Office Depot",
+      "Date: 2026-04-14",
+      "Total: $87.19",
+    ].join("\n"));
+
+    expect(raster).toBeTruthy();
+    expect(raster!.width).toBeGreaterThan(300);
+    expect(raster!.height).toBeGreaterThan(100);
+    expect(raster!.lineCount).toBe(4);
+    expect(raster!.base64.startsWith("iVBORw0KGgo")).toBe(true);
   });
 
   it("keeps incomplete Bedrock extraction in degraded review", () => {

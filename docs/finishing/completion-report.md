@@ -63,7 +63,7 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | PARTIAL | `convex/plaid.test.ts` 15/15 + `convex/plaidWebhook.test.ts` 2/2 + `tests/e2e/plaid-link.spec.ts` 3/3 + 3 screenshots | G1 mounts the Plaid Link client and persists exchanged access tokens server-side without leaking them. G2 adds item-level cursor state, `system:sync`, 4h cron, verified Plaid webhook signature handling, real `/transactions/sync`, server-side removal reversal, and a Settings `Sync now` control. Still not WORKING: no completed hosted Plaid Link session + real Plaid sandbox item sync has been proven end-to-end in the browser. |
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | `convex/stripe.test.ts` 6/6 + `convex/stripeWebhook.test.ts` 3/3 + `tests/e2e/stripe-g3.spec.ts` 1/1 + screenshot | G3 code is implemented: Stripe test-mode webhooks dedupe, trigger targeted invoice/charge/payout sync, post through `system:sync`, and persist `stripePayoutLines`; UI reads persisted child rows. Still not WORKING until a real Stripe CLI/Dashboard test webhook is delivered to `/stripe/webhook` on the cloud site and proves invoice/payout update end-to-end. |
 | 5 | Inbox: confirm / correct / rule / batch / keyboard | WORKING | `tests/e2e/inbox-h2.spec.ts` 1/1 + 3 screenshots; `convex/ai.test.ts`, `convex/plaid.test.ts`, `tests/e2e/import-ai-b6.spec.ts` 1/1 + screenshot; H3 eval JSON + `tests/e2e/ai-eval-h3.spec.ts` screenshot | Disposable-business H2 coverage now proves keyboard J/K, category correction, rule save, single confirm/post, and batch confirm without mutating shared demo books. Import-triggered AI batch/run-history is evidenced for CSV and Plaid system sync. B6 real-Bedrock high/low import split remains row #14, not a blocker for this general Inbox row. |
-| 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + `tests/e2e/receipts-g4.spec.ts` 2/2 + `convex/receipts.test.ts` 13/13 | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Receipt PDF/text + image upload now creates reviewable evidence, transaction receipt chip, and Create expense → balanced manual-expense posting from an unmatched receipt. Remaining G4 proof gap: true first-page PDF raster-to-Bedrock vision. |
+| 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + `tests/e2e/receipts-g4.spec.ts` 2/2 + `convex/receipts.test.ts` 14/14 | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Receipt PDF/text + image upload now creates reviewable evidence, Bedrock text-PDF raster extraction, transaction receipt chip, and Create expense → balanced manual-expense posting from an unmatched receipt. Scanned/image-only PDF rendering is future hardening, not proven here. |
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots; `tests/e2e/reports-export-h2.spec.ts` + screenshot; G5 active-entity report proof in `tests/e2e/entity-scope-g5.spec.ts` | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper; reports now compute against the selected entity including Live Sandbox and a fresh empty business. P&L CSV export equality is automated against visible report totals; exhaustive per-report CSV parity is future hardening. |
 | 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | WORKING | B1–B3 unit tests + live Bedrock smoke + `tests/e2e/ai-chat.spec.ts` 4/4 + 5 screenshots; `tests/e2e/ask-ai-parity-h2.spec.ts` 1/1 + screenshot; B6 scheduling proof in `tests/e2e/import-ai-b6.spec.ts` | Live Bedrock answer renders markdown table and survives reload; New conversation resets thread; durable proposal card confirms through `api.proposals.confirmProposal` on a temporary business, then archives it; desktop dock and mobile sheet verified. H2 five-question Ask AI parity now proves the flagship prompts use read-tool traces and match independently queried ledger/report values. B6 import-trigger scheduling/run-history is implemented/evidenced; real-Bedrock high-confidence/low-confidence import split remains a named open proof. |
 | 9 | Settings: 10-section subnav, all real | WORKING | `tests/e2e/settings.spec.ts` 3/3 + `convex/settings.test.ts` 4/4 + 6 screenshots; F3 invite/staff role path in `tests/e2e/profile-team.spec.ts` + screenshots; G5 active-entity settings scope in `tests/e2e/entity-scope-g5.spec.ts`; H3 eval history in `tests/e2e/ai-eval-h3.spec.ts` | 10 sections real-click verified; Add business creates an entity, appears in the switcher, archive hides it while preserving audit history; AI autonomy persists; rule reorder persists; audit filter verified; Settings -> AI now shows the label-safe categorization eval history. Team invite copy-link acceptance works; Plunk email delivery remains optional/unconfigured. Entity-scoped settings reads now follow the selected business where applicable. |
@@ -1045,6 +1045,48 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   continue the remaining H2/H5 rows: B6 import split, PDF raster vision,
   Plaid/Stripe external proof, and final evidence-index cross-check. Do not
   deploy unless Ansar reauthorizes it.
+
+### 2026-06-12 — Batch G4 completion: PDF raster-to-Bedrock receipt proof (lead)
+
+- **Changed:** text-bearing PDF receipt uploads now run through a Bedrock vision
+  lane instead of stopping at local PDF text extraction. The action extracts the
+  first-page text, renders it into a deterministic PNG raster, sends that image
+  payload to the configured Bedrock vision model, and then applies the same
+  receipt matching/embedding/write path used by image uploads.
+- **Model payload:** the Bedrock request builder now supports both the existing
+  Anthropic image format and the OpenAI-style `image_url` content blocks required
+  by the configured Kimi model family. The implementation still stores no floats
+  for money and keeps the write path inside the existing receipt mutations.
+- **E2E repair:** `tests/e2e/receipts-g4.spec.ts` now uses a disposable business
+  for the PDF match proof. It imports one matching cash outflow, uploads a
+  generated PDF through the file chooser, verifies the Bedrock extraction/match
+  row in Bills, opens the matched transaction, and verifies the receipt preview
+  chip. The helper now treats an already-active disabled entity-switcher row as
+  success instead of timing out.
+- **Evidence / verification:**
+  - `pnpm test:unit convex/receipts.test.ts` -> **14/14 green**. The new unit
+    proof asserts extracted PDF text renders to a PNG payload with stable
+    dimensions and a valid PNG header.
+  - `pnpm test:e2e tests/e2e/receipts-g4.spec.ts` -> **2/2 green real-click**.
+    The first test proves text-PDF raster-to-Bedrock auto-match on a disposable
+    business; the second test keeps the unmatched-receipt Create expense posting
+    proof green.
+  - Screenshots:
+    `docs/finishing/evidence/2026-06-12-G4-pdf-raster-bedrock-row.png`,
+    `docs/finishing/evidence/2026-06-12-G4-pdf-raster-bedrock-chip.png`,
+    `docs/finishing/evidence/2026-06-12-G4-create-expense-receipt.png`.
+  - Batch gates: `git diff --check` -> **green**; e2e shortcut scan found no
+    `dispatchEvent` / `force: true`; `pnpm verify` -> **green** (typecheck,
+    lint, build, **151/151 unit**); `npx convex dev --once` -> **green** against
+    cloud dev `ceaseless-mandrill-524`.
+- **Status:** G4 receipt intake is now **WORKING/evidenced** for generated or
+  vendor PDFs with extractable first-page text, image uploads, transaction
+  receipt chips, and Create expense from an unmatched receipt. Honesty caveat:
+  this is not a full native PDF renderer/OCR pipeline for scanned or image-only
+  PDFs.
+- **Next:** continue the remaining H2/H5 rows: B6 real-Bedrock import high/low
+  split, Plaid hosted-item proof, Stripe webhook proof, and the final
+  evidence-index cross-check. Do not deploy unless Ansar reauthorizes it.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

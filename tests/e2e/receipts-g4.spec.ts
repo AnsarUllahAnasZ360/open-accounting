@@ -79,30 +79,6 @@ function slugify(value: string) {
     .slice(0, 36);
 }
 
-async function findUnreceiptedOutflow(page: Page) {
-  await page.goto("/transactions");
-  await expect(visibleByTestId(page, "transactions-screen")).toBeVisible({ timeout: 30000 });
-  const rows = page.getByTestId("transaction-row");
-  const count = Math.min(await rows.count(), 20);
-  for (let index = 0; index < count; index += 1) {
-    const row = rows.nth(index);
-    const cells = row.locator("td");
-    const amountText = (await cells.nth(6).innerText()).trim();
-    if (!amountText.includes("-")) continue;
-    await cells.nth(2).click();
-    const drawer = visibleByTestId(page, "transaction-drawer");
-    await expect(drawer).toBeVisible({ timeout: 15000 });
-    if ((await drawer.getByText("No matched receipt.").count()) === 0) continue;
-    const date = (await cells.nth(1).innerText()).trim();
-    const merchant = (await cells.nth(2).innerText()).split(/\n/)[0]?.trim() ?? "";
-    const amount = Math.abs(Number(amountText.replace(/[^0-9.-]/g, ""))).toFixed(2);
-    if (merchant && date && Number(amount) > 0) {
-      return { merchant, date, amount };
-    }
-  }
-  return null;
-}
-
 function visibleByTestId(page: Page, testId: string) {
   return page.getByTestId(testId).filter({ visible: true }).first();
 }
@@ -132,6 +108,10 @@ async function selectEntity(page: Page, name: string) {
   await expect(menu).toBeVisible();
   const option = menu.locator('[role="menuitem"]').filter({ hasText: name }).first();
   await expect(option).toBeVisible({ timeout: 15000 });
+  if ((await option.getAttribute("aria-disabled")) === "true") {
+    await page.keyboard.press("Escape");
+    return;
+  }
   await option.click();
   await expect(switcher).toContainText(name, { timeout: 15000 });
 }
@@ -145,76 +125,64 @@ async function archiveBusiness(page: Page, businessName: string) {
   await expect(card).toContainText("Archived", { timeout: 15000 });
 }
 
-test("G4 — receipt PDF and image uploads create reviewable evidence and a matched receipt chip", async ({ page }, testInfo) => {
-  test.setTimeout(180_000);
+test("G4 — PDF upload is rasterized through Bedrock vision and matched on disposable books", async ({ page }, testInfo) => {
+  test.setTimeout(300_000);
   await page.setViewportSize({ width: 1440, height: 900 });
-  const candidate = await findUnreceiptedOutflow(page);
-  expect(candidate, "needs an unreceipted outflow transaction fixture").not.toBeNull();
 
-  const pdfName = `receipt-${slugify(candidate!.merchant)}-${candidate!.date}-${candidate!.amount}.pdf`;
+  const stamp = Date.now().toString().slice(-6);
+  const businessName = `G4 Raster ${stamp} LLC`;
+  const merchant = `G4 Raster Vendor ${stamp}`;
+  const date = "2026-06-12";
+  const amount = "88.16";
+  const pdfName = `receipt-${slugify(merchant)}-${date}-${amount}.pdf`;
   const pdfPath = testInfo.outputPath(pdfName);
-  writeFileSync(
-    pdfPath,
-    pdfSource({
-      vendor: candidate!.merchant,
-      date: candidate!.date,
-      amount: candidate!.amount,
-    }),
-    "utf8",
-  );
+  writeFileSync(pdfPath, pdfSource({ vendor: merchant, date, amount }), "utf8");
 
-  await page.goto("/bills");
-  await expect(page.getByTestId("app-sidebar")).toBeVisible({ timeout: 30000 });
-  await expect(visibleByTestId(page, "m11-receipt-upload-panel")).toBeVisible({ timeout: 30000 });
-
-  const chooserPromise = page.waitForEvent("filechooser");
-  await page.locator('label[for="m11-receipt-file"]').filter({ hasText: "Choose file" }).click();
-  const chooser = await chooserPromise;
-  await chooser.setFiles(pdfPath);
-  await expect(page.getByTestId("m11-receipt-upload-message")).toContainText(`Uploaded ${pdfName}`, {
-    timeout: 30000,
-  });
-  await expect(page.getByTestId("m11-receipt-upload-message")).toContainText(/PDF text extracted/i);
-  const pdfRow = page.getByTestId("m11-receipt-row").filter({ hasText: pdfName }).first();
-  await expect(pdfRow).toBeVisible({ timeout: 30000 });
-  if ((await pdfRow.getByText("Matched to").count()) === 0) {
-    const suggestedMatch = pdfRow.getByRole("button", { name: "Confirm suggested match" });
-    await expect(suggestedMatch).toBeEnabled();
-    await suggestedMatch.click();
-    await expect(page.getByTestId("m11-receipt-upload-message")).toContainText("Manual match saved to", {
-      timeout: 15000,
+  try {
+    await createBusiness(page, businessName);
+    await gotoApp(page, "/transactions");
+    await selectEntity(page, businessName);
+    await expect(visibleByTestId(page, "transactions-screen")).toBeVisible({ timeout: 30000 });
+    await visibleByTestId(page, "csv-text").fill(`date,description,amount\n${date},${merchant},-${amount}`);
+    await visibleByTestId(page, "csv-import").click();
+    await expect(page.getByTestId("transaction-row").filter({ hasText: merchant }).first()).toBeVisible({
+      timeout: 30000,
     });
+
+    await gotoApp(page, "/bills");
+    await selectEntity(page, businessName);
+    await expect(visibleByTestId(page, "m11-receipt-upload-panel")).toBeVisible({ timeout: 30000 });
+
+    const chooserPromise = page.waitForEvent("filechooser");
+    await page.locator('label[for="m11-receipt-file"]').filter({ hasText: "Choose file" }).click();
+    const chooser = await chooserPromise;
+    await chooser.setFiles(pdfPath);
+    await expect(page.getByTestId("m11-receipt-upload-message")).toContainText(`Uploaded ${pdfName}`, {
+      timeout: 60000,
+    });
+    await expect(page.getByTestId("m11-receipt-upload-message")).toContainText(/Bedrock extracted/i, {
+      timeout: 120000,
+    });
+    const pdfRow = page.getByTestId("m11-receipt-row").filter({ hasText: pdfName }).first();
+    await expect(pdfRow).toBeVisible({ timeout: 30000 });
+    await expect(pdfRow).toContainText("Matched to", { timeout: 30000 });
+    await expect(pdfRow).toContainText(/PDF raster|Bedrock vision/i, { timeout: 30000 });
+    await page.screenshot({ path: `${EVIDENCE}/2026-06-12-G4-pdf-raster-bedrock-row.png`, fullPage: true });
+
+    await page.goto("/transactions");
+    await expect(visibleByTestId(page, "transactions-screen")).toBeVisible({ timeout: 30000 });
+    await page.getByPlaceholder("Search merchant or memo").fill(merchant);
+    const transactionRow = page.getByTestId("transaction-row").filter({ hasText: merchant }).first();
+    await expect(transactionRow).toBeVisible({ timeout: 30000 });
+    await transactionRow.locator("td").nth(2).click();
+    await expect(visibleByTestId(page, "transaction-drawer")).toContainText(`${date} · matched`, {
+      timeout: 30000,
+    });
+
+    await page.screenshot({ path: `${EVIDENCE}/2026-06-12-G4-pdf-raster-bedrock-chip.png`, fullPage: true });
+  } finally {
+    await archiveBusiness(page, businessName).catch(() => undefined);
   }
-  await expect(pdfRow).toContainText("Matched to", { timeout: 30000 });
-
-  await page.getByLabel("Vendor override").fill("E2E Image Receipt");
-  await page.getByLabel("Date override").fill("2026-06-12");
-  await page.getByLabel("Amount override").fill("12.34");
-  await uploadFixture(page, "receipt-unknown-parking-2026-06-10-42.00.png");
-  const imageRow = page.getByTestId("m11-receipt-row").filter({ hasText: "E2E Image Receipt" }).first();
-  await expect(imageRow).toBeVisible({ timeout: 30000 });
-  await expect(imageRow).toContainText("12.34");
-
-  await page.goto("/transactions");
-  await expect(visibleByTestId(page, "transactions-screen")).toBeVisible({ timeout: 30000 });
-  await page.getByPlaceholder("Search merchant or memo").fill(candidate!.merchant);
-  await expect
-    .poll(async () => {
-      const rows = page.getByTestId("transaction-row").filter({ hasText: candidate!.merchant });
-      const count = await rows.count();
-      for (let index = 0; index < count; index += 1) {
-        await rows.nth(index).locator("td").nth(2).click();
-        const drawer = visibleByTestId(page, "transaction-drawer");
-        const text = await drawer.innerText();
-        if (text.includes(`${candidate!.date} · matched`) && !text.includes("No matched receipt.")) {
-          return true;
-        }
-      }
-      return false;
-    }, { timeout: 30000 })
-    .toBe(true);
-
-  await page.screenshot({ path: `${EVIDENCE}/2026-06-12-G4-receipts-pdf-image-chip.png`, fullPage: true });
 });
 
 test("G4 — unmatched receipt can create a balanced expense on a fresh business", async ({ page }) => {

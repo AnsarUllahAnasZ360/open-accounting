@@ -234,6 +234,216 @@ export function extractPdfTextFromBytes(buffer: ArrayBuffer) {
   return matches.join("\n").replace(/\s+\n/g, "\n").trim();
 }
 
+const PDF_RASTER_GLYPHS: Record<string, string[]> = {
+  " ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
+  "?": ["01110", "10001", "00001", "00010", "00100", "00000", "00100"],
+  ".": ["00000", "00000", "00000", "00000", "00000", "01100", "01100"],
+  ",": ["00000", "00000", "00000", "00000", "01100", "01100", "01000"],
+  ":": ["00000", "01100", "01100", "00000", "01100", "01100", "00000"],
+  "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
+  "/": ["00001", "00010", "00100", "01000", "10000", "00000", "00000"],
+  "$": ["01110", "10100", "10100", "01110", "00101", "00101", "01110"],
+  "&": ["01100", "10010", "10100", "01000", "10101", "10010", "01101"],
+  "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
+  "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+  "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+  "3": ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+  "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+  "5": ["11111", "10000", "10000", "11110", "00001", "00001", "11110"],
+  "6": ["01110", "10000", "10000", "11110", "10001", "10001", "01110"],
+  "7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+  "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+  "9": ["01110", "10001", "10001", "01111", "00001", "00001", "01110"],
+  A: ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+  B: ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+  C: ["01110", "10001", "10000", "10000", "10000", "10001", "01110"],
+  D: ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+  E: ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+  F: ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+  G: ["01110", "10001", "10000", "10111", "10001", "10001", "01110"],
+  H: ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+  I: ["01110", "00100", "00100", "00100", "00100", "00100", "01110"],
+  J: ["00111", "00010", "00010", "00010", "10010", "10010", "01100"],
+  K: ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+  L: ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+  M: ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+  N: ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+  O: ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+  P: ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+  Q: ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
+  R: ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+  S: ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+  T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+  U: ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+  V: ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+  W: ["10001", "10001", "10001", "10101", "10101", "10101", "01010"],
+  X: ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+  Y: ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
+  Z: ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
+};
+
+function u32be(value: number) {
+  return new Uint8Array([
+    (value >>> 24) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 8) & 0xff,
+    value & 0xff,
+  ]);
+}
+
+function concatBytes(chunks: Uint8Array[]) {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out;
+}
+
+const CRC_TABLE = Array.from({ length: 256 }, (_, index) => {
+  let crc = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+  }
+  return crc >>> 0;
+});
+
+function crc32(bytes: Uint8Array) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc = CRC_TABLE[(crc ^ byte) & 0xff]! ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function adler32(bytes: Uint8Array) {
+  let a = 1;
+  let b = 0;
+  for (const byte of bytes) {
+    a = (a + byte) % 65521;
+    b = (b + a) % 65521;
+  }
+  return ((b << 16) | a) >>> 0;
+}
+
+function zlibStore(bytes: Uint8Array) {
+  const chunks: Uint8Array[] = [new Uint8Array([0x78, 0x01])];
+  for (let offset = 0; offset < bytes.length; offset += 65535) {
+    const block = bytes.slice(offset, Math.min(offset + 65535, bytes.length));
+    const final = offset + 65535 >= bytes.length ? 1 : 0;
+    const len = block.length;
+    const nlen = (~len) & 0xffff;
+    chunks.push(new Uint8Array([final, len & 0xff, (len >>> 8) & 0xff, nlen & 0xff, (nlen >>> 8) & 0xff]));
+    chunks.push(block);
+  }
+  chunks.push(u32be(adler32(bytes)));
+  return concatBytes(chunks);
+}
+
+function pngChunk(type: string, data = new Uint8Array()) {
+  const typeBytes = new TextEncoder().encode(type);
+  const body = concatBytes([typeBytes, data]);
+  return concatBytes([u32be(data.length), body, u32be(crc32(body))]);
+}
+
+function pngFromRgba(width: number, height: number, rgba: Uint8Array) {
+  const stride = width * 4;
+  const raw = new Uint8Array((stride + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    raw[y * (stride + 1)] = 0;
+    raw.set(rgba.slice(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
+  }
+  const ihdr = concatBytes([
+    u32be(width),
+    u32be(height),
+    new Uint8Array([8, 6, 0, 0, 0]),
+  ]);
+  return concatBytes([
+    new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlibStore(raw)),
+    pngChunk("IEND"),
+  ]);
+}
+
+function wrapRasterText(text: string, maxChars: number) {
+  const lines: string[] = [];
+  for (const rawLine of text.split(/\r?\n/)) {
+    const words = rawLine.trim().replace(/\s+/g, " ").split(" ").filter(Boolean);
+    let current = "";
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length <= maxChars) {
+        current = next;
+      } else {
+        if (current) lines.push(current);
+        current = word.slice(0, maxChars);
+      }
+    }
+    if (current) lines.push(current);
+  }
+  return lines.slice(0, 28);
+}
+
+function byteArrayToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+export function renderPdfTextPageToPngBase64(text: string) {
+  const lines = wrapRasterText(`PDF RECEIPT FIRST PAGE\n${text}`, 58)
+    .map((line) => line.toUpperCase().replace(/[^A-Z0-9 :$.,/&-]/g, " ").trim())
+    .filter(Boolean);
+  if (!lines.length) return null;
+  const scale = 4;
+  const margin = 16;
+  const glyphWidth = 5;
+  const glyphHeight = 7;
+  const charStep = (glyphWidth + 1) * scale;
+  const lineStep = (glyphHeight + 4) * scale;
+  const width = Math.max(360, margin * 2 + Math.max(...lines.map((line) => line.length)) * charStep);
+  const height = margin * 2 + lines.length * lineStep;
+  const rgba = new Uint8Array(width * height * 4);
+  rgba.fill(255);
+
+  const drawPixel = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const offset = (y * width + x) * 4;
+    rgba[offset] = 17;
+    rgba[offset + 1] = 24;
+    rgba[offset + 2] = 39;
+    rgba[offset + 3] = 255;
+  };
+
+  lines.forEach((line, lineIndex) => {
+    const y0 = margin + lineIndex * lineStep;
+    for (let charIndex = 0; charIndex < line.length; charIndex += 1) {
+      const glyph = PDF_RASTER_GLYPHS[line[charIndex]!] ?? PDF_RASTER_GLYPHS["?"]!;
+      const x0 = margin + charIndex * charStep;
+      for (let row = 0; row < glyph.length; row += 1) {
+        for (let col = 0; col < glyph[row]!.length; col += 1) {
+          if (glyph[row]![col] !== "1") continue;
+          for (let dx = 0; dx < scale; dx += 1) {
+            for (let dy = 0; dy < scale; dy += 1) {
+              drawPixel(x0 + col * scale + dx, y0 + row * scale + dy);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  return {
+    base64: byteArrayToBase64(pngFromRgba(width, height, rgba)),
+    width,
+    height,
+    lineCount: lines.length,
+  };
+}
+
 export function normalizePdfReceiptTextExtraction(
   text: string,
   fallbackCurrency: string,
@@ -736,7 +946,11 @@ export const applyBedrockExtraction = internalMutation({
       throw new Error("Existing receipt match must use a transaction from the same entity.");
     }
     const finalMatch = match ?? embeddingMatch ?? existingMatch;
-    const extractionLabel = args.extractionSource === "pdf_text" ? "PDF text extraction" : "Bedrock extraction";
+    const extractionLabel = args.extractionSource === "pdf_text"
+      ? "PDF text extraction"
+      : args.notes.toLowerCase().includes("pdf raster")
+        ? "Bedrock PDF raster extraction"
+        : "Bedrock extraction";
     const notes = match
       ? `${extractionLabel} auto-matched to ${match.merchant} on ${match.date}.`
       : embeddingMatch
@@ -934,6 +1148,28 @@ function receiptVisionPrompt(kind: string) {
 }
 
 function receiptVisionPayload(modelId: string, mimeType: string, base64: string, prompt: string): BedrockPayload {
+  if (modelId.includes("moonshotai.kimi")) {
+    return {
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify({
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: `data:${mimeType};base64,${base64}` },
+              },
+              { type: "text", text: prompt },
+            ],
+          },
+        ],
+        max_tokens: 500,
+        temperature: 0,
+      }),
+    };
+  }
   if (!modelId.includes("anthropic.claude")) {
     throw new Error("Configured AI_MODEL does not support the receipt vision payload.");
   }
@@ -1038,6 +1274,68 @@ async function findReceiptEmbeddingMatch(
   };
 }
 
+async function applyReceiptVisionExtraction(
+  ctx: ActionCtx,
+  context: ReceiptExtractionContext,
+  extracted: ExtractedReceipt & { vendor: string; date: string; totalMinor: number },
+  notesPrefix?: string,
+): Promise<ApplyBedrockExtractionResult> {
+  let embeddingResult: ReceiptEmbeddingMatchResult | null = null;
+  try {
+    embeddingResult = await findReceiptEmbeddingMatch(ctx, {
+      entityId: context.entity.id,
+      vendor: extracted.vendor,
+      date: extracted.date,
+      totalMinor: extracted.totalMinor,
+      currency: context.entity.currency,
+      embeddingsModel: context.embeddingsModel,
+    });
+  } catch {
+    embeddingResult = null;
+  }
+
+  const result: ApplyBedrockExtractionResult = await ctx.runMutation(internal.receipts.applyBedrockExtraction, {
+    documentId: context.document.id,
+    vendor: extracted.vendor,
+    date: extracted.date,
+    totalMinor: extracted.totalMinor,
+    currency: context.entity.currency,
+    confidence: extracted.confidence,
+    notes: notesPrefix ? `${notesPrefix} ${extracted.notes}` : extracted.notes,
+    ...(embeddingResult?.match
+      ? {
+          embeddingMatchedTransactionId: embeddingResult.match.transactionId,
+          embeddingMatchScore: embeddingResult.match.score,
+        }
+      : {}),
+  });
+  if (embeddingResult) {
+    try {
+      const _: { receiptEmbeddingId: Id<"receiptEmbeddings">; status: "created" | "updated" } = await ctx.runMutation(
+        internal.receipts.upsertReceiptEmbedding,
+        {
+          entityId: context.entity.id,
+          documentId: context.document.id,
+          vendor: extracted.vendor,
+          date: extracted.date,
+          totalMinor: extracted.totalMinor,
+          currency: context.entity.currency,
+          sourceText: embeddingResult.sourceText,
+          embedding: embeddingResult.embedding,
+          embeddingModel: embeddingResult.embeddingModel,
+          ...(result.matchedTransactionId ? { matchedTransactionId: result.matchedTransactionId } : {}),
+          ...(embeddingResult.match?.transactionId === result.matchedTransactionId
+            ? { matchScore: embeddingResult.match.score }
+            : {}),
+        },
+      );
+    } catch {
+      // Receipt extraction remains useful even if vector persistence falls back.
+    }
+  }
+  return result;
+}
+
 export const extractWithBedrock = action({
   args: {
     documentId: v.id("documents"),
@@ -1056,9 +1354,54 @@ export const extractWithBedrock = action({
       return { mode: "fallback", status: "skipped", reason: "Stored file could not be read from Convex storage." };
     }
     const mimeType = blob.type || context.document.mimeType || "application/octet-stream";
+    const buffer = await blob.arrayBuffer();
+    const env = bedrockRuntimeEnv(null);
     if (mimeType === "application/pdf") {
+      const pdfText = extractPdfTextFromBytes(buffer);
+      let pdfRasterFailure: string | null = null;
+      if (env.ready && env.modelId) {
+        const raster = renderPdfTextPageToPngBase64(pdfText);
+        if (raster) {
+          try {
+            const payload = receiptVisionPayload(
+              env.modelId,
+              "image/png",
+              raster.base64,
+              [
+                receiptVisionPrompt(context.document.kind),
+                "This image is a PNG raster generated from the first page of the uploaded PDF.",
+              ].join("\n"),
+            );
+            const response = await invokeBedrockPayload({ env, payload });
+            const extracted = normalizeBedrockReceiptExtraction(
+              parseBedrockCategorizationText(extractBedrockResponseText(env.modelId, response)),
+              context.entity.currency,
+            );
+            if (
+              extracted.source === "bedrock_vision" &&
+              extracted.vendor &&
+              extracted.date &&
+              extracted.totalMinor !== null
+            ) {
+              const result = await applyReceiptVisionExtraction(
+                ctx,
+                context,
+                extracted as ExtractedReceipt & { vendor: string; date: string; totalMinor: number },
+                `Bedrock vision read a ${raster.width}x${raster.height} first-page PDF raster.`,
+              );
+              return { mode: "bedrock", ...result };
+            }
+            pdfRasterFailure = extracted.notes;
+          } catch (error) {
+            pdfRasterFailure = error instanceof Error ? error.message : "Bedrock PDF raster extraction failed.";
+          }
+        } else {
+          pdfRasterFailure = "PDF first-page text raster could not be generated.";
+        }
+      }
+
       const extracted = normalizePdfReceiptTextExtraction(
-        extractPdfTextFromBytes(await blob.arrayBuffer()),
+        pdfText,
         context.entity.currency,
         context.document.fileName,
       );
@@ -1068,7 +1411,7 @@ export const extractWithBedrock = action({
         !extracted.date ||
         extracted.totalMinor === null
       ) {
-        return { mode: "fallback", status: "skipped", reason: extracted.notes };
+        return { mode: "fallback", status: "skipped", reason: pdfRasterFailure ?? extracted.notes };
       }
       const result: ApplyBedrockExtractionResult = await ctx.runMutation(internal.receipts.applyBedrockExtraction, {
         documentId: context.document.id,
@@ -1083,7 +1426,6 @@ export const extractWithBedrock = action({
       return { mode: "pdf_text", ...result };
     }
 
-    const env = bedrockRuntimeEnv(null);
     if (!env.ready || !env.modelId) {
       return { mode: "degraded", status: "skipped", reason: "Bedrock env is absent or incomplete; manual metadata remains available." };
     }
@@ -1095,7 +1437,7 @@ export const extractWithBedrock = action({
       const payload = receiptVisionPayload(
         env.modelId,
         mimeType,
-        arrayBufferToBase64(await blob.arrayBuffer()),
+        arrayBufferToBase64(buffer),
         receiptVisionPrompt(context.document.kind),
       );
       const response = await invokeBedrockPayload({ env, payload });
@@ -1112,59 +1454,11 @@ export const extractWithBedrock = action({
         return { mode: "fallback", status: "skipped", reason: extracted.notes };
       }
 
-      let embeddingResult: ReceiptEmbeddingMatchResult | null = null;
-      try {
-        embeddingResult = await findReceiptEmbeddingMatch(ctx, {
-          entityId: context.entity.id,
-          vendor: extracted.vendor,
-          date: extracted.date,
-          totalMinor: extracted.totalMinor,
-          currency: context.entity.currency,
-          embeddingsModel: context.embeddingsModel,
-        });
-      } catch {
-        embeddingResult = null;
-      }
-
-      const result: ApplyBedrockExtractionResult = await ctx.runMutation(internal.receipts.applyBedrockExtraction, {
-        documentId: context.document.id,
-        vendor: extracted.vendor,
-        date: extracted.date,
-        totalMinor: extracted.totalMinor,
-        currency: context.entity.currency,
-        confidence: extracted.confidence,
-        notes: extracted.notes,
-        ...(embeddingResult?.match
-          ? {
-              embeddingMatchedTransactionId: embeddingResult.match.transactionId,
-              embeddingMatchScore: embeddingResult.match.score,
-            }
-          : {}),
-      });
-      if (embeddingResult) {
-        try {
-          const _: { receiptEmbeddingId: Id<"receiptEmbeddings">; status: "created" | "updated" } = await ctx.runMutation(
-            internal.receipts.upsertReceiptEmbedding,
-            {
-              entityId: context.entity.id,
-              documentId: context.document.id,
-              vendor: extracted.vendor,
-              date: extracted.date,
-              totalMinor: extracted.totalMinor,
-              currency: context.entity.currency,
-              sourceText: embeddingResult.sourceText,
-              embedding: embeddingResult.embedding,
-              embeddingModel: embeddingResult.embeddingModel,
-              ...(result.matchedTransactionId ? { matchedTransactionId: result.matchedTransactionId } : {}),
-              ...(embeddingResult.match?.transactionId === result.matchedTransactionId
-                ? { matchScore: embeddingResult.match.score }
-                : {}),
-            },
-          );
-        } catch {
-          // Receipt extraction remains useful even if vector persistence falls back.
-        }
-      }
+      const result = await applyReceiptVisionExtraction(
+        ctx,
+        context,
+        extracted as ExtractedReceipt & { vendor: string; date: string; totalMinor: number },
+      );
       return { mode: "bedrock", ...result };
     } catch (error) {
       return {

@@ -12,6 +12,7 @@ import {
   type BedrockPayload,
 } from "./bedrockCategorizer";
 import { requireWorkspaceRole } from "./authz";
+import { ensureDefaultBankAccountForEntity } from "./defaultBankAccount";
 import { assertNonNegativeMinorUnit } from "./money";
 import { embedSemanticText, SEMANTIC_MEMORY_DIMENSIONS } from "./semanticMemory";
 
@@ -280,6 +281,33 @@ async function requireEntityForAdmin(ctx: MutationCtx, entityId: Id<"entities">)
   }
   await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
   return entity;
+}
+
+async function pickReceiptExpenseCategory(
+  ctx: MutationCtx,
+  args: {
+    entityId: Id<"entities">;
+    categoryAccountId?: Id<"ledgerAccounts">;
+  },
+) {
+  if (args.categoryAccountId) {
+    const account = await ctx.db.get(args.categoryAccountId);
+    if (!account || account.entityId !== args.entityId || account.type !== "expense" || account.archived) {
+      throw new Error("Choose an active expense category for this receipt.");
+    }
+    return account;
+  }
+
+  const accounts = await ctx.db
+    .query("ledgerAccounts")
+    .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+    .take(200);
+  const account = accounts.find((candidate) => candidate.type === "expense" && candidate.subtype === "office" && !candidate.archived) ??
+    accounts.find((candidate) => candidate.type === "expense" && !candidate.archived);
+  if (!account) {
+    throw new Error("Create an expense category before posting this receipt.");
+  }
+  return account;
 }
 
 export const receiptExtractionContext = internalQuery({
@@ -1198,5 +1226,89 @@ export const manualMatch = mutation({
       transactionId: transaction._id,
     });
     return { status: "matched" as const, transactionId: transaction._id };
+  },
+});
+
+export const createExpenseFromReceipt = mutation({
+  args: {
+    documentId: v.id("documents"),
+    categoryAccountId: v.optional(v.id("ledgerAccounts")),
+  },
+  handler: async (ctx, args): Promise<{
+    status: "created" | "duplicate";
+    transactionId: Id<"transactions">;
+    entryId: Id<"journalEntries"> | null;
+    documentId: Id<"documents">;
+  }> => {
+    const document = await ctx.db.get(args.documentId);
+    if (!document) {
+      throw new Error("Receipt document not found.");
+    }
+    if (document.kind !== "receipt") {
+      throw new Error("Create expense is available for receipt uploads; bill creation stays in the Bills flow.");
+    }
+    const entity = await ctx.db.get(document.entityId);
+    if (!entity) {
+      throw new Error("OpenBooks entity not found.");
+    }
+    const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    assertNonNegativeMinorUnit(document.totalMinor, "Receipt total");
+    if (document.totalMinor <= 0) {
+      throw new Error("Receipt total must be greater than zero before creating an expense.");
+    }
+    if (document.matchedTransactionId) {
+      const matched = await ctx.db.get(document.matchedTransactionId);
+      if (matched && matched.entityId === entity._id) {
+        return {
+          status: "duplicate",
+          transactionId: matched._id,
+          entryId: matched.entryId ?? null,
+          documentId: document._id,
+        };
+      }
+    }
+
+    const bankAccountId = await ensureDefaultBankAccountForEntity(ctx, entity);
+    const categoryAccount = await pickReceiptExpenseCategory(ctx, {
+      entityId: entity._id,
+      ...(args.categoryAccountId ? { categoryAccountId: args.categoryAccountId } : {}),
+    });
+    const result: {
+      status: "posted" | "needs_review" | "duplicate";
+      transactionId: Id<"transactions">;
+      entryId: Id<"journalEntries"> | null;
+      stage: string;
+    } = await ctx.runMutation(internal.pipeline.routeTransactionInternal, {
+      entityId: entity._id,
+      bankAccountId,
+      date: document.date,
+      amountMinor: -document.totalMinor,
+      currency: document.currency,
+      merchant: document.vendor,
+      rawDescription: `Receipt expense${document.fileName ? ` from ${document.fileName}` : ""}`,
+      status: "posted",
+      source: "manual",
+      externalId: `receipt-expense:${document._id}`,
+      categoryAccountId: categoryAccount._id,
+      actorUserId: userId,
+    });
+
+    await ctx.db.patch(document._id, {
+      matchedTransactionId: result.transactionId,
+      status: "matched",
+      updatedAt: Date.now(),
+    });
+    await resolveReceiptInboxItems(ctx, {
+      entityId: entity._id,
+      documentId: document._id,
+      transactionId: result.transactionId,
+    });
+
+    return {
+      status: result.status === "duplicate" ? "duplicate" : "created",
+      transactionId: result.transactionId,
+      entryId: result.entryId,
+      documentId: document._id,
+    };
   },
 });

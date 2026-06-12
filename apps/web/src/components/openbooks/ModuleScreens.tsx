@@ -475,6 +475,7 @@ export function BillsScreen() {
   const generateReceiptUploadUrl = useMutation(api.receipts.generateUploadUrl);
   const recordReceiptUpload = useMutation(api.receipts.recordUpload);
   const manualMatchReceipt = useMutation(api.receipts.manualMatch);
+  const createExpenseFromReceipt = useMutation(api.receipts.createExpenseFromReceipt);
   const extractReceiptWithBedrock = useAction(api.receipts.extractWithBedrock);
   const [selectedBill, setSelectedBill] = useState<BillRow | null>(null);
   // C5 — mark-paid settlement: the bill whose match picker is open.
@@ -558,6 +559,25 @@ export function BillsScreen() {
       setUploadMessage(`Manual match saved to ${candidate.merchant}.`);
     } catch (error) {
       setUploadMessage(error instanceof Error ? error.message : "Manual match failed.");
+    }
+  }
+
+  async function createExpenseForReceipt(document: {
+    id: string;
+    vendor: string;
+  }) {
+    setUploadMessage("");
+    try {
+      const result = await createExpenseFromReceipt({
+        documentId: document.id as Id<"documents">,
+      });
+      setUploadMessage(
+        result.status === "duplicate"
+          ? `Expense already exists for ${document.vendor}.`
+          : `Expense created for ${document.vendor}.`,
+      );
+    } catch (error) {
+      setUploadMessage(error instanceof Error ? error.message : "Could not create expense from receipt.");
     }
   }
 
@@ -675,14 +695,26 @@ export function BillsScreen() {
                         </Button>
                       ) : null}
                       {document.status !== "matched" ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!document.candidateTransaction}
-                          onClick={() => void matchSuggestedCandidate(document)}
-                        >
-                          Confirm suggested match
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!document.candidateTransaction}
+                            onClick={() => void matchSuggestedCandidate(document)}
+                          >
+                            Confirm suggested match
+                          </Button>
+                          {document.kind === "receipt" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              data-testid="receipt-create-expense"
+                              onClick={() => void createExpenseForReceipt(document)}
+                            >
+                              Create expense
+                            </Button>
+                          ) : null}
+                        </>
                       ) : null}
                     </div>
                   </div>

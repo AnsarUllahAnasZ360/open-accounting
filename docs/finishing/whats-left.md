@@ -23,15 +23,16 @@ closeout.
   Settings `Sync now` control. Stripe G3 now has event dedupe, targeted
   invoice/charge/payout sync, `system:sync` ledger posting, and persisted
   `stripePayoutLines`. G4 now has receipt PDF text + image upload, linked
-  receipt Inbox cards, persisted candidate transaction embeddings, and a
-  transaction receipt-chip proof. G5 is now **WORKING**: Live Sandbox and fresh
-  businesses drive dashboard/register/reports/module reads with bounded
-  `take()` guards. Row #3 is still **PARTIAL** until a hosted Plaid Link session
-  produces a real sandbox item and that item sync is proven end to end; row #4 is
-  still **PARTIAL** until a real Stripe CLI/Dashboard test webhook is delivered
-  to the deployed route.
-- **Still open:** B6 real-Bedrock high/low import split proof · remaining G4
-  receipt gaps · Plaid hosted-item proof · Stripe webhook delivery proof · H
+  receipt Inbox cards, persisted candidate transaction embeddings, transaction
+  receipt-chip proof, and Create expense → balanced ledger posting from an
+  unmatched receipt. G5 is now **WORKING**: Live Sandbox and fresh businesses
+  drive dashboard/register/reports/module reads with bounded `take()` guards.
+  Row #3 is still **PARTIAL** until a hosted Plaid Link session produces a real
+  sandbox item and that item sync is proven end to end; row #4 is still
+  **PARTIAL** until a real Stripe CLI/Dashboard test webhook is delivered to the
+  deployed route.
+- **Still open:** B6 real-Bedrock high/low import split proof · G4 true PDF
+  raster-to-Bedrock proof · Plaid hosted-item proof · Stripe webhook delivery proof · H
   verification closeout · prod redeploy only if Ansar reauthorizes it.
 
 ---
@@ -108,7 +109,7 @@ e2e green.
 | 3 | Plaid sandbox real Link → sync → ledger/inbox | ◑ PARTIAL → G1a UI/exchange + G2 server sync path done; needs hosted Plaid item proof |
 | 4 | Stripe test mode event-driven sync + payout reconcile | ◑ PARTIAL → G3 code verified; needs real Stripe CLI/Dashboard webhook delivery proof |
 | 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → AI batch import trigger + receipt cards now have evidence; Epic H still rewrites general/keyboard assertions |
-| 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING; receipt upload/chip evidenced, full PDF raster + create-expense path still partial |
+| 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING; receipt upload/chip + create-expense posting evidenced, full PDF raster still partial |
 | 7 | Reports home→viewer, sane periods, drill-down, cash⇄accrual | ✅ WORKING incl. active-entity report reads |
 | 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B5; B6 import-trigger scheduling/run history evidenced, real-Bedrock split remains |
 | 9 | Settings: 10-section subnav | ✅ WORKING |
@@ -165,18 +166,18 @@ webhook events dedupe, targeted invoice/charge/payout sync, `system:sync`
 posting, invoice status update, and persisted `stripePayoutLines` are covered by
 unit tests + Settings e2e, but a real Stripe CLI/Dashboard test webhook has not
 yet been delivered to the cloud route. G4 receipt upload is now
-**partially implemented/evidenced**: PDF text extraction, image upload, linked
+**mostly implemented/evidenced**: PDF text extraction, image upload, linked
 Inbox cards, persisted candidate transaction embeddings, document-specific
-suggested match, and transaction receipt chip proof are green in
-`convex/receipts.test.ts` and `tests/e2e/receipts-g4.spec.ts`; remaining G4 gaps
-are true first-page PDF raster-to-Bedrock vision and the create-expense path that
-posts a balanced entry. G5 is **WORKING/evidenced** with
+suggested match, transaction receipt chip proof, and Create expense → balanced
+manual-expense posting are green in `convex/receipts.test.ts` and
+`tests/e2e/receipts-g4.spec.ts`; the remaining G4 gap is true first-page PDF
+raster-to-Bedrock vision. G5 is **WORKING/evidenced** with
 `convex/coreViews.test.ts`, `tests/e2e/entity-scope-g5.spec.ts`, and screenshots:
 Live Sandbox data now appears in the main dashboard/register/reports, fresh
 businesses render empty states, and core read models have bounded `take()` guards
-plus dashboard read-count stats. Next: decide whether to finish the remaining G4
-gaps before H closeout, and collect real Plaid/Stripe external proof if inputs
-are available.
+plus dashboard read-count stats. Next: decide whether to finish the remaining PDF
+raster proof before H closeout, and collect real Plaid/Stripe external proof if
+inputs are available.
 
 ### E. Epic H — Verification, honest eval, closeout  _(last)_
 Plan Epic H. H1 rewrite the legacy e2e specs to real clicks (remove the

@@ -1,7 +1,8 @@
 ## OpenBooks Agent Contract
 
-This repo is the OpenBooks initiation branch. Treat it as a product reset with a
-usable technical scaffold, not as a finished implementation.
+This repo is the OpenBooks `finishing` branch. Treat it as a nearly-complete
+product with evidence obligations, not as a blank scaffold and not as a finished
+launch.
 
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
@@ -96,14 +97,18 @@ Read these before feature work:
 
 ## Current Branch Objective
 
-The `finishing` branch closes the gap between the initiation run's strong
-accounting foundation and the finished product: prototype-faithful UI (shell,
-Income/Expenses, Reports, Settings, Ask AI rebuilt on Convex Agent + AI
-Elements), the missing mutations (invoice draft save, bill mark-paid, payroll
-approve/pay), real Plaid sandbox + event-driven Stripe, onboarding/workspace/
-profile/team, and a verification suite that asserts behavior, not text
-presence. The contract is `docs/finishing/implementation-plan.md`; done means
-its §0 north star, evidenced in `docs/finishing/completion-report.md`.
+The `finishing` branch has now verified most of the product: onboarding,
+prototype-faithful shell, Income/Expenses/Bills, Reports, Payroll, Settings,
+Ask AI, receipts/create-expense, entity-scoped reads, honest categorization
+eval, and performance/limits evidence. The contract remains
+`docs/finishing/implementation-plan.md`; the current truth lives in
+`docs/finishing/completion-report.md` and `docs/finishing/whats-left.md`.
+
+Remaining internal work is primarily H2/H5: finish the acceptance/mobile
+evidence pack and final documentation cross-check. Remaining external proof
+requires Ansar-side inputs: a completed hosted Plaid sandbox Link session and a
+real Stripe test webhook delivered to the cloud route. Do not deploy to Vercel
+or touch hosting accounts unless Ansar explicitly reauthorizes it.
 
 <!-- convex-ai-start -->
 

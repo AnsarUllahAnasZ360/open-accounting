@@ -858,5 +858,30 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 - **Next:** H2 acceptance/mobile evidence pack and H5 final docs cross-check,
   plus external Plaid/Stripe proof if Ansar provides the sessions/secrets.
 
+### 2026-06-12 — Batch H5 partial: docs refresh + claim cross-check (lead)
+
+- **Changed:** refreshed the public/operator docs against shipped reality:
+  `README.md`, `docs/finishing/how-openbooks-works.md`, and `AGENTS.md`.
+  The docs now describe first-run onboarding, cloud Convex dev, Bedrock/Kimi
+  AI, copy-link invites, the honest 75.0% categorization eval, H4 row-count
+  limits, and the exact remaining Plaid/Stripe/PDF/H2 gaps.
+- **Claim cleanup:** removed stale launch-era claims that the branch is only a
+  scaffold, that public sign-up is disabled, and that AI is still an
+  OpenAI-compatible adapter placeholder. The docs now preserve the no-deploy
+  instruction because the Vercel account context changed.
+- **Evidence / verification:**
+  - Stale-claim scan over `README.md`, `docs/finishing/how-openbooks-works.md`,
+    `AGENTS.md`, `docs/finishing/whats-left.md`, and this report found no live
+    stale product-status claims beyond historical batch-log context.
+  - Evidence-file existence check passed for the current H3/H4/B6/G4/H1 files:
+    H3 JSON, H3 Settings screenshot, H4 limits JSON, B6 batch-history
+    screenshot, G4 create-expense screenshot, and H1 dashboard screenshot.
+- **Status:** H5 documentation refresh is **PARTIAL/DONE for docs**, but final
+  H5 cannot be called fully closed until H2's acceptance evidence index exists
+  and every remaining WORKING claim is cross-linked row-by-row. No claim was
+  upgraded without evidence.
+- **Next:** H2 acceptance/mobile evidence pack, then final H5 evidence-index
+  cross-check; external Plaid/Stripe proof remains input-dependent.
+
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

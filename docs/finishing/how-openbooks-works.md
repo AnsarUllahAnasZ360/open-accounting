@@ -1,7 +1,6 @@
 # How OpenBooks Works — Owner's One-Pager
 
-For: Ansar · Updated: 2026-06-11 (written at handoff; the Opus run refreshes
-this against shipped reality as its final task)
+For: Ansar · Updated: 2026-06-12 (finishing branch reality check)
 
 OpenBooks keeps a real set of double-entry books for each of your businesses
 while you only ever deal with plain English. The one rule that governs
@@ -15,10 +14,12 @@ category math — which is why the reports always reconcile.
    Convex dev deployment, starts the local web app, seeds the demo books if
    needed, and prints the URL.
 2. Open the URL → click **"Continue as owner (dev)"** on the sign-in page.
-   That button only exists in local dev mode; on the internet, OpenBooks is
-   invite-only (visitors can only request access from the landing page).
+   That button only exists in localhost dev mode. In normal auth mode, a new
+   owner can start a first workspace through onboarding, and teammates join
+   through invite links.
 3. You land on the Dashboard of **Acme Studio LLC** — a demo business with
-   12 months of internally consistent books (922 transactions, invoices,
+   12 months of internally consistent books (currently 924 transactions after
+   the finishing verification flows, invoices,
    bills, payroll in USD/PKR/INR, Stripe-style payouts, receipts, open inbox
    items). The trial balance is exactly zero; a hand-computed May 2026 was
    verified to the cent. Use it to explore every feature with realistic data.
@@ -35,13 +36,15 @@ category math — which is why the reports always reconcile.
    **Suggest** (AI never posts anything itself), **Balanced** (auto-posts
    when ≥90% confident — recommended), **Autopilot** (≥75%). Skip it and
    everything still works manually — AI is an enhancer, not a dependency.
-3. **Connect a bank** — Settings → Connections → Connect bank. You use your
-   own free Plaid keys (dashboard.plaid.com → sandbox keys; the sandbox
-   gives you up to 100 fake accounts — log into the fake bank with
-   `user_good` / `pass_good`). Pick which accounts to include; each becomes
-   a real ledger account. No keys? Import a CSV instead — same pipeline.
-4. **Connect Stripe** — paste a restricted test-mode key. Customers, charges,
-   invoices, and payouts start syncing into the same pipeline.
+3. **Connect a bank** — Settings → Connections → Connect bank. The branch has
+   the real Plaid Link client, token exchange, item cursor state, webhooks,
+   4-hour sync cron, and manual **Sync now** path. A completed hosted sandbox
+   Link session still needs to be run to upgrade this from PARTIAL to WORKING.
+   No keys or no session? Import a CSV instead — same pipeline.
+4. **Connect Stripe** — the test-mode sync code handles webhooks, customers,
+   charges, invoices, payouts, fees, and payout-line drill-downs. It still
+   needs a real Stripe CLI/Dashboard test webhook delivered to the cloud route
+   before the Stripe acceptance row can be called WORKING.
 
 ## How money flows in (what happens without you)
 
@@ -52,7 +55,10 @@ made claim it? does **memory** recognize it (the AI remembers every correction
 you've ever made via embeddings)? finally, the **LLM** categorizes it with a
 confidence score and reasoning. Confident results post to the ledger
 automatically and show up attributed ("Categorized by AI · 96%"); everything
-else becomes an **Inbox** card.
+else becomes an **Inbox** card. The honest H3 eval is now 45/60 correct
+(75.0%) on a label-safe holdout, below the 80% target; the safe behavior is
+that uncertain income rows go to review rather than pretending to be posted
+correctly.
 
 The Inbox is your only mandatory job: a few cards a week — confirm a category
 (Enter), correct it (which teaches the memory, and after three identical
@@ -82,9 +88,10 @@ the math doesn't add up, you get an Inbox card with the itemized difference.
   month-over-month movement, plus detected **recurring** spend (your
   subscriptions, with next expected dates). Adding a category here creates a
   real account in the books.
-- **Bills** — money you owe: add manually or upload a PDF for AI extraction;
-  due-window groups; "mark paid" matches the bill to the actual bank
-  transaction.
+- **Bills** — money you owe: add manually or upload PDF/text/image receipts;
+  due-window groups; "mark paid" settles bills; unmatched receipts can create a
+  balanced manual expense. True first-page PDF raster-to-Bedrock vision remains
+  a named gap.
 - **Contacts** — customers and vendors, auto-created from Stripe and from
   AI vendor-normalization, with full per-contact history and balances.
 - **Payroll** — employees in any currency (USD/PKR/INR/…); monthly runs:
@@ -99,7 +106,7 @@ the math doesn't add up, you get an Inbox card with the itemized difference.
   Balance, Journal). Any date range, compare to prior period/year, cash ⇄
   accrual toggle, CSV export that matches the screen, and click any number
   to see the transactions behind it.
-- **Ask AI** (⌘J) — a docked panel (or full page) over your books. Ask
+- **Ask AI** (⌘J) — a docked panel, mobile sheet, or full page over your books. Ask
   "How did we do last month vs before?", "Who owes me money?", "Top 5
   expenses this quarter?" — it reads the same ledger the reports do and
   answers with formatted tables and links into the real reports.
@@ -109,7 +116,8 @@ the math doesn't add up, you get an Inbox card with the itemized difference.
   click confirm, and the audit log records that the AI proposed it and you
   approved it.
 - **Settings** — ten sections: Businesses (add/archive entities), Tax &
-  fiscal year, Connections, AI (provider, models, autonomy, spend), 
+  fiscal year, Connections, AI (provider, models, autonomy, spend, batch/eval
+  history),
   Categories, Rules (ordered, testable against your last 90 days),
   Notifications, Team (invite by email: Owner / Staff / Accountant
   read-only), Data (full export — your books are a file you own), and the
@@ -119,19 +127,21 @@ the math doesn't add up, you get an Inbox card with the itemized difference.
 
 1. Dev sign-in → Dashboard numbers → click three tiles, confirm each lands
    on the right filtered view with matching totals.
-2. Inbox: confirm one, correct one (accept the rule offer), batch-confirm
-   the rest. Watch the count fall and the books update.
-3. Transactions: recategorize one (check the activity history shows
-   reverse + repost), split one, exclude one.
-4. Income: create an invoice → send via Stripe (test mode) → open the
-   hosted link. Bills: mark one paid against its bank match.
+2. Inbox: use existing evidence for receipt cards and import-triggered AI
+   batches today; general keyboard/batch acceptance still needs the H2 pack.
+3. Transactions: use the disposable-business H1 flow for recategorize,
+   reverse + repost evidence, split, CSV import, and mobile no-scroll proof.
+4. Income: create an invoice draft and finalize it in unit/e2e evidence. Bills:
+   mark one paid in the verified bill flow; live Stripe-hosted invoice proof is
+   still pending external Stripe webhook/setup proof.
 5. Payroll: open a run → approve → mark paid → print the statement.
 6. Reports: Monthly Review for May 2026 → P&L → toggle cash/accrual →
-   export CSV and eyeball totals.
+   drill into source lines. CSV==screen equality is still an H2 follow-up.
 7. Ask AI the five flagship questions; then ask it to categorize something
    and confirm the card; check Settings → Audit log attributes it to AI.
-8. Settings → Businesses → add a test business → switch to it → connect
-   Plaid sandbox → watch transactions flow in and the pipeline sort them.
+8. Settings → Businesses → add a test business → switch to it. For Plaid,
+   complete a hosted sandbox Link session and then run Sync now; until that
+   outside proof lands, Plaid remains PARTIAL even though the code path exists.
 9. Repeat the core four (Dashboard, Inbox, Transactions, Ask AI) on your
    phone.
 

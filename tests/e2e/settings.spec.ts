@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Epic E — Settings. REAL pointer clicks only (no dispatchEvent / force:true).
+// Epic E — Settings. REAL pointer clicks only; no synthetic events or forced clicks.
 // The Next.js dev-tools overlay is dev-only chrome that can intercept footer
 // clicks; remove it without bypassing product hit-testing.
 test.beforeEach(async ({ page }) => {

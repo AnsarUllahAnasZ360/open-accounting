@@ -32,8 +32,9 @@ closeout.
   **PARTIAL** until a real Stripe CLI/Dashboard test webhook is delivered to the
   deployed route.
 - **Still open:** B6 real-Bedrock high/low import split proof · G4 true PDF
-  raster-to-Bedrock proof · Plaid hosted-item proof · Stripe webhook delivery proof · H
-  verification closeout · prod redeploy only if Ansar reauthorizes it.
+  raster-to-Bedrock proof · Plaid hosted-item proof · Stripe webhook delivery
+  proof · remaining H acceptance evidence/eval/perf/docs closeout · prod
+  redeploy only if Ansar reauthorizes it.
 
 ---
 
@@ -113,7 +114,7 @@ e2e green.
 | 7 | Reports home→viewer, sane periods, drill-down, cash⇄accrual | ✅ WORKING incl. active-entity report reads |
 | 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B5; B6 import-trigger scheduling/run history evidenced, real-Bedrock split remains |
 | 9 | Settings: 10-section subnav | ✅ WORKING |
-| 10 | Mobile usable at 390px | ◑ PARTIAL → asserted per-screen + Epic H |
+| 10 | Mobile usable at 390px | ◑ PARTIAL → H1 core mobile dashboard now evidenced; full four-surface mobile pack still H2 |
 
 ---
 
@@ -180,14 +181,19 @@ raster proof before H closeout, and collect real Plaid/Stripe external proof if
 inputs are available.
 
 ### E. Epic H — Verification, honest eval, closeout  _(last)_
-Plan Epic H. H1 rewrite the legacy e2e specs to real clicks (remove the
-`dispatchEvent` ones the shell agent flagged in `core-screens.spec.ts` et al.).
-H2 acceptance evidence pack (18 rows, desktop+mobile). H3 **honest categorization
-eval** (the old "100%" compared the seed to itself — strip labels, run the
-pipeline + live Bedrock, report real accuracy). H4 perf/limits pass. H5
-completion-report v2 + refresh `how-openbooks-works.md` + README quickstart +
-`AGENTS.md`. Do **not** deploy to Vercel in this run unless Ansar reauthorizes it;
-the account context changed.
+H1 first integrity pass is **done/committed in progress**: `tests/e2e` now has
+zero `dispatchEvent` / `force:true` code hits, shared helpers exist in
+`tests/e2e/helpers.ts`, and `core-screens.spec.ts` no longer resets or mutates
+shared demo books. It creates a disposable business, proves dashboard/register
+manual import/recategorize/split/CSV/mobile with real clicks, screenshots the
+flow, then archives the throwaway business. Remaining H1/H2: rewrite the rest of
+the acceptance pack to mirror `docs/initiation/acceptance.md` rows 1-18,
+including Inbox keyboard/batch, CSV equals screen, report export equality, and
+all four mobile surfaces. H3 **honest categorization eval** (the old "100%"
+compared the seed to itself — strip labels, run the pipeline + live Bedrock,
+report real accuracy). H4 perf/limits pass. H5 completion-report v2 + refresh
+`how-openbooks-works.md` + README quickstart + `AGENTS.md`. Do **not** deploy to
+Vercel in this run unless Ansar reauthorizes it; the account context changed.
 
 ---
 

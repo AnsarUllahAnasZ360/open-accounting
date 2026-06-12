@@ -67,7 +67,7 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots; G5 active-entity report proof in `tests/e2e/entity-scope-g5.spec.ts` | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper; reports now compute against the selected entity including Live Sandbox and a fresh empty business. Partial: CSV==screen equality not yet automated (export button works); exhaustive compare-column coverage deferred to H. |
 | 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | WORKING | B1–B3 unit tests + live Bedrock smoke + `tests/e2e/ai-chat.spec.ts` 4/4 + 5 screenshots; B6 scheduling proof in `tests/e2e/import-ai-b6.spec.ts` | Live Bedrock answer renders markdown table and survives reload; New conversation resets thread; durable proposal card confirms through `api.proposals.confirmProposal` on a temporary business, then archives it; desktop dock and mobile sheet verified. B6 import-trigger scheduling/run-history is now implemented and evidenced; real-Bedrock high-confidence/low-confidence import split remains a named open proof. |
 | 9 | Settings: 10-section subnav, all real | WORKING | `tests/e2e/settings.spec.ts` 3/3 + `convex/settings.test.ts` 4/4 + 6 screenshots; F3 invite/staff role path in `tests/e2e/profile-team.spec.ts` + screenshots; G5 active-entity settings scope in `tests/e2e/entity-scope-g5.spec.ts` | 10 sections real-click verified; Add business creates an entity, appears in the switcher, archive hides it while preserving audit history; AI autonomy persists; rule reorder persists; audit filter verified. Team invite copy-link acceptance works; Plunk email delivery remains optional/unconfigured. Entity-scoped settings reads now follow the selected business where applicable. |
-| 10 | Mobile genuinely usable at 390px | PARTIAL | inherited | Epic H asserts; today screenshots only. |
+| 10 | Mobile genuinely usable at 390px | PARTIAL | `tests/e2e/core-screens.spec.ts` H1 mobile dashboard screenshot + inherited per-screen shots | H1 now proves the dashboard surface at 390px in a disposable business with no horizontal scroll. Still partial until H2 captures dashboard, Inbox, Transactions, and Ask AI mobile surfaces as one acceptance pack. |
 
 ## Batch log (dated, append-only)
 
@@ -752,6 +752,37 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   vision; email-in remains out of scope per the implementation plan.
 - **Next:** hosted Plaid Link item proof, real Stripe webhook delivery proof,
   B6 real-Bedrock high/low import split proof, and Epic H closeout.
+
+### 2026-06-12 — Batch H1 partial: e2e real-click integrity + disposable core workflow (lead)
+
+- **Changed:** replaced the legacy `tests/e2e/core-screens.spec.ts` initiation
+  flow. The old spec signed in manually, reset shared demo data, mutated Acme's
+  shared ledger, and used synthetic click dispatches for the hard register
+  actions. The new spec runs in the standard dev-auth harness, creates a
+  disposable business, proves dashboard/register behavior there, then archives
+  the throwaway business.
+- **Test helpers:** added `tests/e2e/helpers.ts` with shared `gotoApp`,
+  `visibleByTestId`, `expectNoHorizontalScroll`, and `expectClickable`. The
+  clickability helper checks that an exposed point inside the locator is owned by
+  the locator before clicking, so overlay regressions fail without using forced
+  clicks.
+- **Workflow covered:** real pointer clicks now cover create business, select
+  entity, dashboard no-horizontal-scroll, manual transaction import, drawer
+  accounting lines, recategorize with reversal evidence, split posting, CSV
+  import, and a 390px mobile dashboard no-horizontal-scroll pass.
+- **Evidence / verification:**
+  - `rg -n "dispatchEvent|force:\\s*true" tests/e2e -S` -> **no matches**.
+  - `pnpm test:e2e tests/e2e/core-screens.spec.ts` -> **1/1 green real-click**.
+  - Screenshots:
+    `docs/finishing/evidence/2026-06-12-H1-core-dashboard-disposable.png`,
+    `docs/finishing/evidence/2026-06-12-H1-core-register-real-clicks.png`,
+    `docs/finishing/evidence/2026-06-12-H1-core-mobile-dashboard.png`.
+- **Status:** H1's banned-interaction cleanup and core disposable-business
+  workflow are **WORKING and evidenced**. H1/H2 as a whole remain **PARTIAL**
+  until the acceptance pack covers rows 1-18, Inbox keyboard/batch behavior, CSV
+  equals screen, report export equality, and all four mobile surfaces.
+- **Next:** run final gates for this batch, then continue H2/H3/H4/H5 or collect
+  external Plaid/Stripe proof if Ansar provides the sessions/secrets.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

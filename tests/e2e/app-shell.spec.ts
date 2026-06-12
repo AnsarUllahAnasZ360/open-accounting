@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
 // Epic A — App shell & navigation fidelity.
-// These specs use REAL pointer clicks only (no dispatchEvent / force:true).
+// These specs use REAL pointer clicks only; no synthetic events or forced clicks.
 // The app runs in dev-auth-bypass mode locally (NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS=1),
 // so navigating to an app route renders the authenticated shell directly.
 
@@ -56,8 +56,8 @@ test.describe.configure({ mode: "serial" });
 // bottom-left corner — the same corner as the collapsed-rail footer avatar — and
 // captures pointer events there. It is dev-only chrome that does NOT exist in a
 // production build, so removing it in the test environment is not masking a
-// product overlap (real product clicks stay real). This is distinct from the
-// banned force:true — we still click product elements normally. A MutationObserver
+// product overlap (real product clicks stay real). We still click product
+// elements normally. A MutationObserver
 // keeps it removed because Next re-mounts it on every client navigation.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Epic C — Income, Expenses, Bills. REAL pointer clicks only (no dispatchEvent /
-// force:true). The Next.js dev-tools overlay (`nextjs-portal`) is a dev-only
+// Epic C — Income, Expenses, Bills. REAL pointer clicks only; no synthetic
+// events or forced clicks. The Next.js dev-tools overlay (`nextjs-portal`) is a dev-only
 // shadow-DOM artifact in the same corner as the rail footer; strip it so it
 // cannot intercept real product clicks. This is NOT masking a product overlap.
 test.beforeEach(async ({ page }) => {

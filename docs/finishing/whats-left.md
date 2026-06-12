@@ -30,8 +30,8 @@ closeout.
   produces a real sandbox item and that item sync is proven end to end; row #4 is
   still **PARTIAL** until a real Stripe CLI/Dashboard test webhook is delivered
   to the deployed route.
-- **Still open:** B6 post-import AI run history · remaining G4 receipt gaps ·
-  Plaid hosted-item proof · Stripe webhook delivery proof · H
+- **Still open:** B6 real-Bedrock high/low import split proof · remaining G4
+  receipt gaps · Plaid hosted-item proof · Stripe webhook delivery proof · H
   verification closeout · prod redeploy only if Ansar reauthorizes it.
 
 ---
@@ -107,10 +107,10 @@ e2e green.
 | 2 | Shell: collapse rail, footer profile/settings/logout, ⌘K, switcher, Ask AI ⌘J | ✅ WORKING incl. active-entity data switching |
 | 3 | Plaid sandbox real Link → sync → ledger/inbox | ◑ PARTIAL → G1a UI/exchange + G2 server sync path done; needs hosted Plaid item proof |
 | 4 | Stripe test mode event-driven sync + payout reconcile | ◑ PARTIAL → G3 code verified; needs real Stripe CLI/Dashboard webhook delivery proof |
-| 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → receipt cards now have G4 evidence; Epic H still rewrites general assertions |
+| 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → AI batch import trigger + receipt cards now have evidence; Epic H still rewrites general/keyboard assertions |
 | 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING; receipt upload/chip evidenced, full PDF raster + create-expense path still partial |
 | 7 | Reports home→viewer, sane periods, drill-down, cash⇄accrual | ✅ WORKING incl. active-entity report reads |
-| 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B5; B6 import-trigger scheduling remains |
+| 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B5; B6 import-trigger scheduling/run history evidenced, real-Bedrock split remains |
 | 9 | Settings: 10-section subnav | ✅ WORKING |
 | 10 | Mobile usable at 390px | ◑ PARTIAL → asserted per-screen + Epic H |
 
@@ -126,12 +126,17 @@ Row #9 is **WORKING** with `tests/e2e/settings.spec.ts` 3/3,
 `convex/settings.test.ts` 4/4, screenshots, and gates. Remaining
 settings-adjacent active-entity read switching is now covered by G5.
 
-### B. Ask AI panel UI — B4-B5 DONE; B6 remains with imports/pipeline
+### B. Ask AI panel UI — B4-B5 DONE; B6 scheduling/run-history DONE, live split remains
 B4-B5 are **WORKING** with `tests/e2e/ai-chat.spec.ts` 4/4 and screenshots:
 durable threads, markdown, proposal confirmation cards, docked desktop panel,
-full-page `/ask-ai`, and mobile sheet. B6 post-import categorizer scheduling/run
-history is still **PARTIAL** and should be handled with Epic G import/pipeline
-work because it depends on Plaid/Stripe/CSV ingestion events.
+full-page `/ask-ai`, and mobile sheet. B6 now schedules/import-invokes
+categorization for CSV and Plaid paths, records Settings-visible run history,
+and uses the `system:sync` actor for background Plaid jobs. Evidence:
+`convex/ai.test.ts`, `convex/plaid.test.ts`, and
+`tests/e2e/import-ai-b6.spec.ts` with
+`docs/finishing/evidence/2026-06-12-B6-csv-ai-batch-history.png`. Remaining
+B6 gap: a real-Bedrock import split with high-confidence rows posting as
+`decidedBy: ai` and low-confidence rows staying in Inbox with AI reasoning.
 
 ### C. Epic F — Identity (onboarding, profile, invites, dev-mode) — MOSTLY DONE
 F1-F4 are evidenced: new owners can self-register into a full first-run

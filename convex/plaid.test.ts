@@ -301,6 +301,7 @@ function authed(t: TestConvex<typeof schema>, userId: Id<"users">) {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -838,6 +839,105 @@ describe("Plaid Convex primitives", () => {
         .withIndex("by_actor", (q) => q.eq("actorUserId", systemActor!.userId))
         .first();
       expect(audit?.action).toBe("system.sync.ledger_entry.posted");
+    });
+  });
+
+  it("schedules AI categorization after Plaid sync creates review rows", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("PLAID_CLIENT_ID", "client-id-test");
+    vi.stubEnv("PLAID_SECRET", "sandbox-secret-test");
+    vi.stubEnv("PLAID_ENV", "sandbox");
+    vi.stubEnv("AI_PROVIDER", "");
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "");
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
+    vi.stubEnv("AWS_REGION", "");
+    vi.stubEnv("AI_MODEL", "");
+    vi.stubEnv("AI_EMBEDDINGS_MODEL", "");
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const path = String(url);
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      expect(path).toContain("/transactions/sync");
+      expect(body.access_token).toBe("sandbox-access-token-ai-batch");
+      return new Response(JSON.stringify({
+        added: [
+          {
+            transaction_id: "plaid-ai-batch-1",
+            account_id: "acct-ai-batch",
+            date: "2026-06-12",
+            amount: 42.42,
+            name: "Mystery Vendor",
+            merchant_name: "Mystery Vendor",
+            pending: false,
+            iso_currency_code: "USD",
+            personal_finance_category: null,
+          },
+        ],
+        modified: [],
+        removed: [],
+        next_cursor: "cursor-ai-batch-1",
+        has_more: false,
+      }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.patch(ids.bankAccountId, {
+        plaidAccountId: "acct-ai-batch",
+        plaidItemId: "item-ai-batch",
+      });
+      await ctx.db.insert("plaidItems", {
+        entityId: ids.entityId,
+        plaidItemId: "item-ai-batch",
+        accessToken: "sandbox-access-token-ai-batch",
+        institutionName: "Plaid Sandbox Bank",
+        environment: "sandbox",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    const result = await t.action(syncItemByPlaidItemId, {
+      plaidItemId: "item-ai-batch",
+      trigger: "cron",
+    });
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+    expect(result).toMatchObject({
+      status: "synced",
+      stagedCount: 1,
+      postedCount: 0,
+      needsReviewCount: 1,
+      unmatchedAccountCount: 0,
+    });
+    await t.run(async (ctx) => {
+      const transaction = await ctx.db
+        .query("transactions")
+        .withIndex("by_external_id", (q) => q.eq("externalId", "plaid:plaid-ai-batch-1"))
+        .unique();
+      expect(transaction).toMatchObject({
+        review: "needs_review",
+        decidedBy: "needs_review",
+      });
+
+      const systemActor = await ctx.db
+        .query("systemActors")
+        .withIndex("by_workspace_and_kind", (q) => q.eq("workspaceId", ids.workspaceId).eq("kind", "sync"))
+        .unique();
+      const run = await ctx.db
+        .query("aiBatchRuns")
+        .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+        .unique();
+      expect(run).toMatchObject({
+        requestedByUserId: systemActor?.userId,
+        status: "degraded",
+        attemptedCount: 1,
+        skippedCount: 1,
+        degradedCount: 1,
+      });
     });
   });
 

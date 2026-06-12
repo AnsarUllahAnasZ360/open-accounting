@@ -731,6 +731,7 @@ export function TransactionsScreen() {
   const excludeTransaction = useMutation(api.pipeline.excludeTransaction);
   const splitTransaction = useMutation(api.pipeline.splitTransaction);
   const routeTransaction = useMutation(api.pipeline.routeTransaction);
+  const categorizePendingTransactions = useAction(api.bedrockCategorizer.categorizePendingTransactions);
   const [pending, setPending] = useState(false);
   const [transactionMessage, setTransactionMessage] = useState("");
   const [checkedTransactionIds, setCheckedTransactionIds] = useState<Set<string>>(new Set());
@@ -839,7 +840,7 @@ export function TransactionsScreen() {
   }
 
   async function importCsv() {
-    if (!data?.entity || !defaultBankAccountId || !defaultCategoryId) return;
+    if (!data?.entity || !defaultBankAccountId) return;
     setPending(true);
     setTransactionMessage("");
     let lastMerchant = "";
@@ -856,13 +857,19 @@ export function TransactionsScreen() {
           status: "posted",
           source: "bank",
           externalId: `csv:${date}:${description}:${amount}`,
-          categoryAccountId: defaultCategoryId as Id<"ledgerAccounts">,
         });
         selectTransaction(result.transactionId);
         lastMerchant = description;
       }
       if (lastMerchant) setSearch(lastMerchant);
-      setTransactionMessage(`${csvRows.length} CSV row${csvRows.length === 1 ? "" : "s"} sent through the pipeline.`);
+      const aiResult = await categorizePendingTransactions({
+        entityId: data.entity.id as Id<"entities">,
+        limit: Math.min(25, csvRows.length),
+      });
+      const status = aiResult.batchStatus ? ` ${aiResult.batchStatus}` : "";
+      setTransactionMessage(
+        `${csvRows.length} CSV row${csvRows.length === 1 ? "" : "s"} sent through the pipeline. AI batch${status}: ${aiResult.attemptedCount} checked, ${aiResult.postedCount} posted, ${aiResult.needsReviewCount} updated for review, ${aiResult.skippedCount} skipped.`,
+      );
     } catch (error) {
       setTransactionMessage(error instanceof Error ? error.message : "Could not import CSV rows.");
     } finally {
@@ -1216,7 +1223,7 @@ export function TransactionsScreen() {
               value={csvText}
               onChange={(event) => setCsvText(event.target.value)}
             />
-            <Button className="mt-3" data-testid="csv-import" variant="outline" onClick={importCsv} disabled={pending || !defaultBankAccountId || !defaultCategoryId}>
+            <Button className="mt-3" data-testid="csv-import" variant="outline" onClick={importCsv} disabled={pending || !defaultBankAccountId}>
               <Download className="size-4" />
               Import CSV
             </Button>

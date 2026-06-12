@@ -187,6 +187,11 @@ const syncItemTransactionsInternalRef = makeFunctionReference<
   SyncItemTransactionsInternalArgs,
   PlaidItemSyncResult
 >("plaid:syncItemTransactionsInternal");
+const categorizePendingTransactionsForImportInternalRef = makeFunctionReference<
+  "action",
+  { entityId: Id<"entities">; actorUserId: Id<"users">; limit?: number },
+  unknown
+>("bedrockCategorizer:categorizePendingTransactionsForImportInternal");
 const syncItemByPlaidItemIdRef = makeFunctionReference<
   "action",
   SyncItemByPlaidItemIdArgs,
@@ -1060,6 +1065,14 @@ export const syncItemTransactionsInternal = internalMutation({
       ...(args.webhookCode ? { lastWebhookCode: args.webhookCode } : {}),
       updatedAt: now,
     });
+
+    if (summary.needsReviewCount > 0) {
+      await ctx.scheduler.runAfter(0, categorizePendingTransactionsForImportInternalRef, {
+        entityId: entity._id,
+        actorUserId,
+        limit: Math.min(25, summary.needsReviewCount),
+      });
+    }
 
     return {
       status: "synced",

@@ -3,7 +3,7 @@ import { v } from "convex/values";
 
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { action, type ActionCtx } from "./_generated/server";
+import { action, internalAction, type ActionCtx } from "./_generated/server";
 
 const routeSourceValidator = v.union(v.literal("bank"), v.literal("stripe"), v.literal("manual"));
 const transactionStatusValidator = v.union(v.literal("pending"), v.literal("posted"));
@@ -104,6 +104,18 @@ type BatchItemResult = {
   route: ExistingRouteResult;
 };
 
+type CategorizationBatchResult = {
+  batchRunId: Id<"aiBatchRuns"> | null;
+  batchStatus: "completed" | "partial" | "degraded" | null;
+  attemptedCount: number;
+  postedCount: number;
+  needsReviewCount: number;
+  skippedCount: number;
+  degradedCount: number;
+  fallbackCount: number;
+  results: BatchItemResult[];
+};
+
 export type BedrockPayload = {
   contentType: string;
   accept: string;
@@ -123,6 +135,17 @@ const categorizationContextRef = makeFunctionReference<
   { entityId: Id<"entities">; bankAccountId: Id<"bankAccounts">; amountMinor: number },
   CategorizationContext
 >("ai:categorizationContext");
+
+const categorizationContextForImportInternalRef = makeFunctionReference<
+  "query",
+  {
+    entityId: Id<"entities">;
+    bankAccountId: Id<"bankAccounts">;
+    amountMinor: number;
+    actorUserId: Id<"users">;
+  },
+  CategorizationContext
+>("ai:categorizationContextForImportInternal");
 
 function present(value: string | undefined) {
   return Boolean(value && value.trim().length > 0);
@@ -538,12 +561,14 @@ async function applyProposalToExistingTransaction(
   ctx: ActionCtx,
   args: {
     transactionId: Id<"transactions">;
+    actorUserId?: Id<"users">;
     semanticMemoryProposal?: SemanticMemoryProposal | null;
     aiProposal?: PipelineProposal | null;
   },
 ): Promise<ExistingRouteResult> {
   return await ctx.runMutation(internal.pipeline.applyProposalToExistingTransactionInternal, {
     transactionId: args.transactionId,
+    ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
     ...(args.semanticMemoryProposal ? { semanticMemoryProposal: args.semanticMemoryProposal } : {}),
     ...(args.aiProposal ? { aiProposal: args.aiProposal } : {}),
   });
@@ -566,12 +591,20 @@ function skippedExistingRoute(
 async function categorizeExistingCandidate(
   ctx: ActionCtx,
   candidate: BatchCandidate,
+  options: { actorUserId?: Id<"users"> } = {},
 ): Promise<BatchItemResult> {
-  const context: CategorizationContext = await ctx.runQuery(categorizationContextRef, {
-    entityId: candidate.entityId,
-    bankAccountId: candidate.bankAccountId,
-    amountMinor: candidate.amountMinor,
-  });
+  const context: CategorizationContext = options.actorUserId
+    ? await ctx.runQuery(categorizationContextForImportInternalRef, {
+        entityId: candidate.entityId,
+        bankAccountId: candidate.bankAccountId,
+        amountMinor: candidate.amountMinor,
+        actorUserId: options.actorUserId,
+      })
+    : await ctx.runQuery(categorizationContextRef, {
+        entityId: candidate.entityId,
+        bankAccountId: candidate.bankAccountId,
+        amountMinor: candidate.amountMinor,
+      });
   const env = bedrockRuntimeEnv(context.provider.model);
   const skip = (
     mode: "degraded" | "fallback",
@@ -620,6 +653,7 @@ async function categorizeExistingCandidate(
         fallbackReason: null,
         route: await applyProposalToExistingTransaction(ctx, {
           transactionId: candidate.transactionId,
+          actorUserId: options.actorUserId,
           semanticMemoryProposal,
         }),
       };
@@ -652,6 +686,7 @@ async function categorizeExistingCandidate(
       fallbackReason: null,
       route: await applyProposalToExistingTransaction(ctx, {
         transactionId: candidate.transactionId,
+        actorUserId: options.actorUserId,
         aiProposal: normalized.aiProposal,
       }),
     };
@@ -798,24 +833,40 @@ export const categorizePendingTransactions = action({
     entityId: v.id("entities"),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<{
-    batchRunId: Id<"aiBatchRuns"> | null;
-    batchStatus: "completed" | "partial" | "degraded" | null;
-    attemptedCount: number;
-    postedCount: number;
-    needsReviewCount: number;
-    skippedCount: number;
-    degradedCount: number;
-    fallbackCount: number;
-    results: BatchItemResult[];
-  }> => {
+  handler: async (ctx, args): Promise<CategorizationBatchResult> => {
+    return await runCategorizationBatch(ctx, args);
+  },
+});
+
+export const categorizePendingTransactionsForImportInternal = internalAction({
+  args: {
+    entityId: v.id("entities"),
+    actorUserId: v.id("users"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<CategorizationBatchResult> => {
+    return await runCategorizationBatch(ctx, args);
+  },
+});
+
+async function runCategorizationBatch(
+  ctx: ActionCtx,
+  args: {
+    entityId: Id<"entities">;
+    actorUserId?: Id<"users">;
+    limit?: number;
+  },
+): Promise<CategorizationBatchResult> {
     const candidates: BatchCandidate[] = await ctx.runQuery(internal.ai.categorizationBatchCandidates, {
       entityId: args.entityId,
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
+      ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
     });
     const results: BatchItemResult[] = [];
     for (const candidate of candidates) {
-      results.push(await categorizeExistingCandidate(ctx, candidate));
+      results.push(await categorizeExistingCandidate(ctx, candidate, {
+        ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
+      }));
     }
     const counts = {
       attemptedCount: results.length,
@@ -829,6 +880,7 @@ export const categorizePendingTransactions = action({
       internal.ai.recordCategorizationBatchRun,
       {
         entityId: args.entityId,
+        ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
         ...counts,
       },
     );
@@ -838,5 +890,4 @@ export const categorizePendingTransactions = action({
       ...counts,
       results,
     };
-  },
-});
+}

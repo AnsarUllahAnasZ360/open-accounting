@@ -95,6 +95,7 @@ const applyProposalToExistingTransactionInternal = makeFunctionReference<
   "mutation",
   {
     transactionId: string;
+    actorUserId?: string;
     aiProposal?: {
       categoryAccountId: string;
       confidence: number;
@@ -144,6 +145,34 @@ const categorizePendingTransactions = makeFunctionReference<
     }>;
   }
 >("bedrockCategorizer:categorizePendingTransactions");
+
+const categorizePendingTransactionsForImportInternal = makeFunctionReference<
+  "action",
+  { entityId: string; actorUserId: string; limit?: number },
+  {
+    batchRunId: string | null;
+    batchStatus: "completed" | "partial" | "degraded" | null;
+    attemptedCount: number;
+    postedCount: number;
+    needsReviewCount: number;
+    skippedCount: number;
+    degradedCount: number;
+    fallbackCount: number;
+    results: Array<{
+      transactionId: string;
+      mode: "bedrock" | "degraded" | "fallback";
+      proposalSource: "semantic_memory" | "llm" | null;
+      fallbackReason: string | null;
+      route: {
+        status: "posted" | "needs_review" | "skipped";
+        transactionId: string;
+        entryId: string | null;
+        stage: string;
+        reason?: string;
+      };
+    }>;
+  }
+>("bedrockCategorizer:categorizePendingTransactionsForImportInternal");
 
 const latestCategorizationBatchRuns = makeFunctionReference<
   "query",
@@ -601,6 +630,53 @@ describe("M10 AI backend", () => {
     });
   });
 
+  it("applies an import AI proposal under the system actor audit trail", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const transactionId = await insertImportedNeedsReviewTransaction(t, ids, {
+      externalId: "batch-apply-system-existing",
+    });
+    const systemActorUserId = await t.run(async (ctx) => {
+      const now = Date.now();
+      const actorUserId = await ctx.db.insert("users", {
+        email: `system+sync-${ids.workspaceId}@openbooks.local`,
+        name: "OpenBooks Sync",
+      });
+      await ctx.db.insert("systemActors", {
+        workspaceId: ids.workspaceId,
+        userId: actorUserId,
+        kind: "sync",
+        label: "system:sync",
+        createdAt: now,
+        updatedAt: now,
+      });
+      return actorUserId;
+    });
+
+    const result = await t.mutation(applyProposalToExistingTransactionInternal, {
+      transactionId,
+      actorUserId: systemActorUserId,
+      aiProposal: {
+        categoryAccountId: ids.softwareAccountId,
+        confidence: 0.95,
+        reasoning: "Figma is recurring design software.",
+        needsHuman: false,
+      },
+    });
+
+    expect(result).toMatchObject({ status: "posted", transactionId, stage: "ai" });
+    await t.run(async (ctx) => {
+      const transaction = await ctx.db.get(transactionId);
+      expect(transaction).toMatchObject({
+        review: "auto",
+        categoryAccountId: ids.softwareAccountId,
+        decidedBy: "ai",
+      });
+      const entry = transaction?.entryId ? await ctx.db.get(transaction.entryId) : null;
+      expect(entry?.postedByUserId).toBe(systemActorUserId);
+    });
+  });
+
   it("degrades AI batch categorization without posting when Bedrock env is absent", async () => {
     vi.stubEnv("AI_PROVIDER", "");
     vi.stubEnv("AWS_ACCESS_KEY_ID", "");
@@ -658,6 +734,69 @@ describe("M10 AI backend", () => {
         review: "needs_review",
       });
       expect(transaction?.entryId).toBeUndefined();
+    });
+  });
+
+  it("runs import-triggered categorization under the system actor without admin identity", async () => {
+    vi.stubEnv("AI_PROVIDER", "");
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "");
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
+    vi.stubEnv("AWS_REGION", "");
+    vi.stubEnv("AI_MODEL", "");
+    vi.stubEnv("AI_EMBEDDINGS_MODEL", "");
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const transactionId = await insertImportedNeedsReviewTransaction(t, ids, {
+      externalId: "batch-system-import-1",
+    });
+    const systemActorUserId = await t.run(async (ctx) => {
+      const now = Date.now();
+      const actorUserId = await ctx.db.insert("users", {
+        email: `system+sync-${ids.workspaceId}@openbooks.local`,
+        name: "OpenBooks Sync",
+      });
+      await ctx.db.insert("systemActors", {
+        workspaceId: ids.workspaceId,
+        userId: actorUserId,
+        kind: "sync",
+        label: "system:sync",
+        createdAt: now,
+        updatedAt: now,
+      });
+      return actorUserId;
+    });
+
+    const result = await t.action(categorizePendingTransactionsForImportInternal, {
+      entityId: ids.entityId,
+      actorUserId: systemActorUserId,
+      limit: 5,
+    });
+
+    expect(result).toMatchObject({
+      batchStatus: "degraded",
+      attemptedCount: 1,
+      postedCount: 0,
+      skippedCount: 1,
+      degradedCount: 1,
+    });
+    expect(result.results[0]).toMatchObject({
+      transactionId,
+      mode: "degraded",
+      route: { status: "skipped", transactionId, entryId: null },
+    });
+    await t.run(async (ctx) => {
+      const transaction = await ctx.db.get(transactionId);
+      expect(transaction).toMatchObject({ review: "needs_review" });
+      expect(transaction?.entryId).toBeUndefined();
+      const run = await ctx.db
+        .query("aiBatchRuns")
+        .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+        .unique();
+      expect(run).toMatchObject({
+        requestedByUserId: systemActorUserId,
+        status: "degraded",
+        attemptedCount: 1,
+      });
     });
   });
 

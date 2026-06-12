@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import { ensureDefaultBankAccountForEntity } from "./defaultBankAccount";
 import { chartTemplatesForType, seedChartForEntity } from "./ledger";
 
 // Business types the "Add a business" modal offers (Epic E2). Each seeds a typed
@@ -155,6 +156,7 @@ export const create = mutation({
     });
     const entity = (await ctx.db.get(entityId))!;
     const accountsCreated = await seedChartForEntity(ctx, entity, chartTemplatesForType(args.businessType));
+    await ensureDefaultBankAccountForEntity(ctx, entity);
 
     await ctx.db.insert("auditEvents", {
       workspaceId: membership.workspaceId,

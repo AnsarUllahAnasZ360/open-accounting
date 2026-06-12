@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireUserId } from "./authz";
+import { ensureDefaultBankAccountForEntity } from "./defaultBankAccount";
 import { chartTemplatesForType, seedChartForEntity } from "./ledger";
 
 const businessTypeValidator = v.union(
@@ -242,6 +243,7 @@ export const bootstrapWorkspace = mutation({
       entity,
       chartTemplatesForType(args.businessType),
     );
+    await ensureDefaultBankAccountForEntity(ctx, entity);
     await ensureChecklist(ctx, workspaceId);
 
     await ctx.db.insert("auditEvents", {

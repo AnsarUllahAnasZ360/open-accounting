@@ -26,6 +26,7 @@ import type * as bills from "../bills.js";
 import type * as categories from "../categories.js";
 import type * as coreViews from "../coreViews.js";
 import type * as crons from "../crons.js";
+import type * as defaultBankAccount from "../defaultBankAccount.js";
 import type * as entities from "../entities.js";
 import type * as expensesViews from "../expensesViews.js";
 import type * as http from "../http.js";
@@ -81,6 +82,7 @@ declare const fullApi: ApiFromModules<{
   categories: typeof categories;
   coreViews: typeof coreViews;
   crons: typeof crons;
+  defaultBankAccount: typeof defaultBankAccount;
   entities: typeof entities;
   expensesViews: typeof expensesViews;
   http: typeof http;

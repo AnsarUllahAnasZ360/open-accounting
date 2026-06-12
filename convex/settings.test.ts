@@ -111,14 +111,19 @@ describe("Settings backend verification", () => {
     });
     expect(created.accountsCreated).toBeGreaterThan(5);
 
-    const accountCount = await t.run(async (ctx) => {
+    const { accountCount, bankAccountCount } = await t.run(async (ctx) => {
       const rows = await ctx.db
         .query("ledgerAccounts")
         .withIndex("by_entity", (q) => q.eq("entityId", created.entityId))
         .take(500);
-      return rows.length;
+      const bankAccounts = await ctx.db
+        .query("bankAccounts")
+        .withIndex("by_entity", (q) => q.eq("entityId", created.entityId))
+        .take(20);
+      return { accountCount: rows.length, bankAccountCount: bankAccounts.length };
     });
     expect(accountCount).toBe(created.accountsCreated);
+    expect(bankAccountCount).toBe(1);
 
     let list = await session.query(api.entities.list, {});
     const row = list.rows.find((candidate) => candidate.id === created.entityId);

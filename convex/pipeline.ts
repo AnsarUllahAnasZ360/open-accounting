@@ -122,6 +122,29 @@ async function requireTransactionForAdmin(ctx: MutationCtx, transactionId: Id<"t
   return { entity, transaction };
 }
 
+async function requireTransactionForSystemActor(
+  ctx: MutationCtx,
+  transactionId: Id<"transactions">,
+  actorUserId: Id<"users">,
+) {
+  const transaction = await ctx.db.get(transactionId);
+  if (!transaction) {
+    throw new Error("Transaction not found.");
+  }
+  const entity = await ctx.db.get(transaction.entityId);
+  if (!entity) {
+    throw new Error("OpenBooks entity not found.");
+  }
+  const actor = await ctx.db
+    .query("systemActors")
+    .withIndex("by_workspace_and_kind", (q) => q.eq("workspaceId", entity.workspaceId).eq("kind", "sync"))
+    .unique();
+  if (!actor || actor.userId !== actorUserId) {
+    throw new Error("Import categorization requires the OpenBooks sync system actor.");
+  }
+  return { entity, transaction };
+}
+
 async function resolveInboxItems(
   ctx: MutationCtx,
   entityId: Id<"entities">,
@@ -943,11 +966,14 @@ export const confirmTransactionInternal = internalMutation({
 export const applyProposalToExistingTransactionInternal = internalMutation({
   args: {
     transactionId: v.id("transactions"),
+    actorUserId: v.optional(v.id("users")),
     semanticMemoryProposal: v.optional(semanticMemoryProposalValidator),
     aiProposal: v.optional(aiProposalValidator),
   },
   handler: async (ctx, args) => {
-    const { entity, transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
+    const { entity, transaction } = args.actorUserId
+      ? await requireTransactionForSystemActor(ctx, args.transactionId, args.actorUserId)
+      : await requireTransactionForAdmin(ctx, args.transactionId);
     if (transaction.entryId) {
       return {
         status: "skipped" as const,
@@ -987,6 +1013,7 @@ export const applyProposalToExistingTransactionInternal = internalMutation({
         reasoning: args.semanticMemoryProposal.reasoning,
         stage: "memory",
         now,
+        actorUserId: args.actorUserId,
       });
     }
     if (args.aiProposal) {
@@ -1001,6 +1028,7 @@ export const applyProposalToExistingTransactionInternal = internalMutation({
         needsHuman: args.aiProposal.needsHuman,
         ...(args.aiProposal.question ? { question: args.aiProposal.question } : {}),
         now,
+        actorUserId: args.actorUserId,
       });
     }
     return {

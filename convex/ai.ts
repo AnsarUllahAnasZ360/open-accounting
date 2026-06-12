@@ -2,7 +2,7 @@ import { makeFunctionReference } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
-import { action, internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { resolveAIProviderRegistry } from "./aiProviderRegistry";
 import { requireWorkspaceRole } from "./authz";
 
@@ -82,6 +82,91 @@ async function requireEntityAccess(ctx: MutationCtx, entityId: Id<"entities">) {
   }
   const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
   return { entity, userId };
+}
+
+async function requireSystemSyncActor(
+  ctx: QueryCtx | MutationCtx,
+  workspaceId: Id<"workspaces">,
+  actorUserId: Id<"users">,
+) {
+  const actor = await ctx.db
+    .query("systemActors")
+    .withIndex("by_workspace_and_kind", (q) => q.eq("workspaceId", workspaceId).eq("kind", "sync"))
+    .unique();
+  if (!actor || actor.userId !== actorUserId) {
+    throw new ConvexError("Import categorization requires the OpenBooks sync system actor.");
+  }
+  return actor.userId;
+}
+
+async function authorizeCategorizationRead(
+  ctx: QueryCtx,
+  workspaceId: Id<"workspaces">,
+  actorUserId?: Id<"users">,
+) {
+  if (actorUserId) {
+    await requireSystemSyncActor(ctx, workspaceId, actorUserId);
+    return;
+  }
+  await requireWorkspaceRole(ctx, workspaceId, "admin");
+}
+
+async function buildCategorizationContext(
+  ctx: QueryCtx,
+  args: {
+    entityId: Id<"entities">;
+    bankAccountId: Id<"bankAccounts">;
+    amountMinor: number;
+  },
+) {
+  const entity = await ctx.db.get(args.entityId);
+  if (!entity) {
+    throw new ConvexError("OpenBooks entity not found.");
+  }
+
+  const bankAccount = await ctx.db.get(args.bankAccountId);
+  if (!bankAccount || bankAccount.entityId !== entity._id) {
+    throw new ConvexError("Transaction account does not belong to this entity.");
+  }
+
+  const config = await ctx.db
+    .query("aiConfigs")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId))
+    .unique();
+  const env = bedrockEnvironmentStatus();
+  const accountType = args.amountMinor >= 0 ? "income" : "expense";
+  const accounts = await ctx.db
+    .query("ledgerAccounts")
+    .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+    .take(200);
+
+  return {
+    entity: {
+      id: entity._id,
+      name: entity.name,
+      currency: entity.currency,
+    },
+    bankAccount: {
+      id: bankAccount._id,
+      name: bankAccount.name,
+    },
+    provider: {
+      mode: env.mode,
+      activeProvider: env.activeProvider,
+      model: config?.categorizeModel ?? env.model,
+      region: env.region,
+      autonomy: configAutonomy(config),
+    },
+    candidateAccounts: accounts
+      .filter((account) => account.type === accountType && !account.archived)
+      .map((account) => ({
+        id: account._id,
+        number: account.number,
+        name: account.name,
+        type: account.type,
+        subtype: account.subtype,
+      })),
+  };
 }
 
 async function pickRuleCategory(
@@ -208,50 +293,24 @@ export const categorizationContext = query({
       throw new ConvexError("OpenBooks entity not found.");
     }
     await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    return await buildCategorizationContext(ctx, args);
+  },
+});
 
-    const bankAccount = await ctx.db.get(args.bankAccountId);
-    if (!bankAccount || bankAccount.entityId !== entity._id) {
-      throw new ConvexError("Transaction account does not belong to this entity.");
+export const categorizationContextForImportInternal = internalQuery({
+  args: {
+    entityId: v.id("entities"),
+    bankAccountId: v.id("bankAccounts"),
+    amountMinor: v.number(),
+    actorUserId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new ConvexError("OpenBooks entity not found.");
     }
-
-    const config = await ctx.db
-      .query("aiConfigs")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId))
-      .unique();
-    const env = bedrockEnvironmentStatus();
-    const accountType = args.amountMinor >= 0 ? "income" : "expense";
-    const accounts = await ctx.db
-      .query("ledgerAccounts")
-      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-      .take(200);
-
-    return {
-      entity: {
-        id: entity._id,
-        name: entity.name,
-        currency: entity.currency,
-      },
-      bankAccount: {
-        id: bankAccount._id,
-        name: bankAccount.name,
-      },
-      provider: {
-        mode: env.mode,
-        activeProvider: env.activeProvider,
-        model: config?.categorizeModel ?? env.model,
-        region: env.region,
-        autonomy: configAutonomy(config),
-      },
-      candidateAccounts: accounts
-        .filter((account) => account.type === accountType && !account.archived)
-        .map((account) => ({
-          id: account._id,
-          number: account.number,
-          name: account.name,
-          type: account.type,
-          subtype: account.subtype,
-        })),
-    };
+    await requireSystemSyncActor(ctx, entity.workspaceId, args.actorUserId);
+    return await buildCategorizationContext(ctx, args);
   },
 });
 
@@ -259,13 +318,14 @@ export const categorizationBatchCandidates = internalQuery({
   args: {
     entityId: v.id("entities"),
     limit: v.optional(v.number()),
+    actorUserId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
     const entity = await ctx.db.get(args.entityId);
     if (!entity) {
       throw new ConvexError("OpenBooks entity not found.");
     }
-    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    await authorizeCategorizationRead(ctx, entity.workspaceId, args.actorUserId);
     const limit = Math.min(25, Math.max(1, Math.floor(args.limit ?? 10)));
     const transactions = await ctx.db
       .query("transactions")
@@ -300,6 +360,7 @@ export const categorizationBatchCandidates = internalQuery({
 export const recordCategorizationBatchRun = internalMutation({
   args: {
     entityId: v.id("entities"),
+    actorUserId: v.optional(v.id("users")),
     attemptedCount: v.number(),
     postedCount: v.number(),
     needsReviewCount: v.number(),
@@ -308,7 +369,18 @@ export const recordCategorizationBatchRun = internalMutation({
     fallbackCount: v.number(),
   },
   handler: async (ctx, args) => {
-    const { userId } = await requireEntityAccess(ctx, args.entityId);
+    const { entity, userId } = args.actorUserId
+      ? {
+          entity: await ctx.db.get(args.entityId),
+          userId: args.actorUserId,
+        }
+      : await requireEntityAccess(ctx, args.entityId);
+    if (!entity) {
+      throw new ConvexError("OpenBooks entity not found.");
+    }
+    if (args.actorUserId) {
+      await requireSystemSyncActor(ctx, entity.workspaceId, args.actorUserId);
+    }
     const status =
       args.degradedCount > 0 && args.degradedCount === args.attemptedCount
         ? "degraded" as const

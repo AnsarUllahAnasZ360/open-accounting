@@ -92,6 +92,22 @@ type PlaidApi = {
         nextCursor: string;
       }
     >;
+    syncItemNow: FunctionReference<
+      "action",
+      "public",
+      { entityId: string; plaidItemId: string },
+      {
+        status: string;
+        itemId: string;
+        trigger: "manual" | "cron" | "webhook";
+        stagedCount?: number;
+        postedCount?: number;
+        needsReviewCount?: number;
+        duplicateCount?: number;
+        unmatchedAccountCount?: number;
+        reason?: string;
+      }
+    >;
     handleItemLoginRequired: FunctionReference<
       "mutation",
       "public",
@@ -226,6 +242,7 @@ export function PlaidConnectionPanel({
   const exchangePublicToken = useAction(plaidApi.plaid.exchangePublicTokenAndPreviewAccounts);
   const selectAccounts = useMutation(plaidApi.plaid.selectSandboxFixtureAccounts);
   const syncTransactions = useMutation(plaidApi.plaid.syncFixtureTransactions);
+  const syncItemNow = useAction(plaidApi.plaid.syncItemNow);
   const createRelinkCard = useMutation(plaidApi.plaid.handleItemLoginRequired);
 
   const [state, setState] = useState<ActionState>("idle");
@@ -238,6 +255,7 @@ export function PlaidConnectionPanel({
   const activeBankAccountId = useMemo(() => {
     return createdBankAccountId ?? connectionState?.accounts[0]?.id ?? null;
   }, [connectionState?.accounts, createdBankAccountId]);
+  const activePlaidItemId = connectionState?.items.find((item) => item.status === "active")?.plaidItemId ?? null;
 
   async function runStep(label: string, operation: () => Promise<string>) {
     if (!entityId) {
@@ -346,8 +364,8 @@ export function PlaidConnectionPanel({
           <StepRow
             icon={RefreshCw}
             title="Pipeline sync"
-            detail="Fixture sync sends Plaid-shaped transactions to stages 1-3."
-            complete={Boolean(activeBankAccountId)}
+            detail={activePlaidItemId ? "Stored Plaid item can sync through Convex actions and cron." : "Fixture sync sends Plaid-shaped transactions to stages 1-3."}
+            complete={Boolean(activeBankAccountId || activePlaidItemId)}
           />
         </div>
 
@@ -502,30 +520,70 @@ export function PlaidConnectionPanel({
         <div className="rounded-lg border p-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <div className="text-sm font-medium">Transactions sync fixture</div>
+              <div className="text-sm font-medium">Transactions sync</div>
               <p className="text-xs text-muted-foreground">
-                Uses Plaid-shaped added transactions with personal finance category priors.
+                Real sync uses the stored Plaid item cursor; fixture sync stays available when sandbox keys are absent.
               </p>
             </div>
-            <Button
-              variant="outline"
-              disabled={!entityId || !activeBankAccountId || state === "working"}
-              onClick={() =>
-                runStep("Sync fixture transactions", async () => {
-                  const result = await syncTransactions({
-                    entityId: entityId!,
-                    bankAccountId: activeBankAccountId!,
-                    transactions: openBooksPlaidFixtureTransactions,
-                  });
-                  return `Synced ${result.stagedCount}; posted ${result.postedCount}; inbox ${result.needsReviewCount}; duplicates ${result.duplicateCount}; Plaid priors ${result.plaidPriorCount}.`;
-                })
-              }
-            >
-              <RefreshCw className={cn("size-4", state === "working" && "animate-spin")} />
-              Sync fixture
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={!entityId || !activePlaidItemId || state === "working"}
+                data-testid="plaid-sync-now"
+                onClick={() =>
+                  runStep("Sync Plaid item", async () => {
+                    const result = await syncItemNow({
+                      entityId: entityId!,
+                      plaidItemId: activePlaidItemId!,
+                    });
+                    if (result.status !== "synced") {
+                      return `Plaid sync ${result.status}${result.reason ? `: ${result.reason}` : ""}.`;
+                    }
+                    return `Plaid sync finished; staged ${result.stagedCount ?? 0}; posted ${result.postedCount ?? 0}; inbox ${result.needsReviewCount ?? 0}; duplicates ${result.duplicateCount ?? 0}; unmatched accounts ${result.unmatchedAccountCount ?? 0}.`;
+                  })
+                }
+              >
+                <RefreshCw className={cn("size-4", state === "working" && "animate-spin")} />
+                Sync now
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!entityId || !activeBankAccountId || state === "working"}
+                onClick={() =>
+                  runStep("Sync fixture transactions", async () => {
+                    const result = await syncTransactions({
+                      entityId: entityId!,
+                      bankAccountId: activeBankAccountId!,
+                      transactions: openBooksPlaidFixtureTransactions,
+                    });
+                    return `Synced ${result.stagedCount}; posted ${result.postedCount}; inbox ${result.needsReviewCount}; duplicates ${result.duplicateCount}; Plaid priors ${result.plaidPriorCount}.`;
+                  })
+                }
+              >
+                <RefreshCw className={cn("size-4", state === "working" && "animate-spin")} />
+                Sync fixture
+              </Button>
+            </div>
           </div>
         </div>
+
+        {connectionState?.items.length ? (
+          <div className="grid gap-2" data-testid="plaid-connected-items">
+            {connectionState.items.map((item) => (
+              <div key={item.plaidItemId} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
+                <div>
+                  <div className="font-medium">{item.institutionName ?? "Plaid item"}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {item.status.replace("_", " ")}
+                    {item.lastSyncedAt ? ` · last sync ${new Date(item.lastSyncedAt).toLocaleString()}` : " · not synced yet"}
+                    {item.lastSyncTrigger ? ` · ${item.lastSyncTrigger}` : ""}
+                  </div>
+                </div>
+                <Badge variant={item.status === "active" ? "outline" : "destructive"}>{item.status}</Badge>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {connectionState?.accounts.length ? (
           <div className="grid gap-2" data-testid="plaid-connected-accounts">

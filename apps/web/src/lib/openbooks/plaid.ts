@@ -36,6 +36,15 @@ export type PlaidConnectionState = {
     lastSyncCursor?: string | null;
     lastSyncedAt?: number | null;
   }>;
+  items: Array<{
+    plaidItemId: string;
+    institutionName?: string | null;
+    status: "active" | "relink_required";
+    lastSyncCursor?: string | null;
+    lastSyncedAt?: number | null;
+    lastSyncTrigger?: "cron" | "webhook" | "manual" | null;
+    lastWebhookCode?: string | null;
+  }>;
   recentTransactions: Array<{
     id: string;
     date: string;

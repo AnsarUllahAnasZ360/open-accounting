@@ -5,6 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, type MutationCtx } from "./_generated/server";
 import { type AIAutonomy, shouldAutoPostAI } from "./ai";
 import { requireWorkspaceRole } from "./authz";
+import { postLedgerEntryCore, type LedgerLineInput } from "./ledger";
 import { assertSignedMinorUnit } from "./money";
 
 const sourceValidator = v.union(v.literal("bank"), v.literal("stripe"), v.literal("manual"));
@@ -20,6 +21,62 @@ const semanticMemoryProposalValidator = v.object({
   confidence: v.number(),
   reasoning: v.string(),
 });
+
+const routeTransactionArgs = {
+  entityId: v.id("entities"),
+  bankAccountId: v.id("bankAccounts"),
+  date: v.string(),
+  amountMinor: v.number(),
+  currency: v.string(),
+  merchant: v.string(),
+  rawDescription: v.string(),
+  status: v.union(v.literal("pending"), v.literal("posted")),
+  source: sourceValidator,
+  externalId: v.string(),
+  contactId: v.optional(v.id("contacts")),
+  categoryAccountId: v.optional(v.id("ledgerAccounts")),
+  matchAccountId: v.optional(v.id("ledgerAccounts")),
+  transferAccountId: v.optional(v.id("ledgerAccounts")),
+  forceReview: v.optional(v.boolean()),
+  evalExpectedAccountId: v.optional(v.id("ledgerAccounts")),
+  evalSet: v.optional(v.boolean()),
+  plaidPriorAccountId: v.optional(v.id("ledgerAccounts")),
+  semanticMemoryProposal: v.optional(semanticMemoryProposalValidator),
+  aiProposal: v.optional(aiProposalValidator),
+};
+
+type RouteTransactionArgs = {
+  entityId: Id<"entities">;
+  bankAccountId: Id<"bankAccounts">;
+  date: string;
+  amountMinor: number;
+  currency: string;
+  merchant: string;
+  rawDescription: string;
+  status: "pending" | "posted";
+  source: "bank" | "stripe" | "manual";
+  externalId: string;
+  contactId?: Id<"contacts">;
+  categoryAccountId?: Id<"ledgerAccounts">;
+  matchAccountId?: Id<"ledgerAccounts">;
+  transferAccountId?: Id<"ledgerAccounts">;
+  forceReview?: boolean;
+  evalExpectedAccountId?: Id<"ledgerAccounts">;
+  evalSet?: boolean;
+  plaidPriorAccountId?: Id<"ledgerAccounts">;
+  semanticMemoryProposal?: {
+    categoryAccountId: Id<"ledgerAccounts">;
+    confidence: number;
+    reasoning: string;
+  };
+  aiProposal?: {
+    categoryAccountId: Id<"ledgerAccounts">;
+    confidence: number;
+    reasoning: string;
+    needsHuman: boolean;
+    question?: string;
+  };
+};
 
 function directionFor(amountMinor: number) {
   return amountMinor >= 0 ? "inflow" : "outflow";
@@ -186,6 +243,43 @@ async function findCorrectionMemory(
     .find((memory) => memory.status === "active" || memory.status === "rule_suggested") ?? null;
 }
 
+async function postPipelineLedgerEntry(
+  ctx: MutationCtx,
+  args: {
+    entity: Doc<"entities">;
+    actorUserId?: Id<"users">;
+    date: string;
+    memo: string;
+    source: "bank" | "stripe" | "manual";
+    sourceId: string;
+    lines: LedgerLineInput[];
+  },
+) {
+  if (args.actorUserId) {
+    const result = await postLedgerEntryCore(ctx, {
+      entity: args.entity,
+      userId: args.actorUserId,
+      date: args.date,
+      memo: args.memo,
+      source: args.source,
+      sourceId: args.sourceId,
+      lines: args.lines,
+      auditAction: "system.sync.ledger_entry.posted",
+    });
+    return result.entryId;
+  }
+
+  const result: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
+    entityId: args.entity._id,
+    date: args.date,
+    memo: args.memo,
+    source: args.source,
+    sourceId: args.sourceId,
+    lines: args.lines,
+  });
+  return result.entryId;
+}
+
 async function postTransactionEntry(
   ctx: MutationCtx,
   args: {
@@ -198,13 +292,15 @@ async function postTransactionEntry(
     sourceId: string;
     categoryAccountId: Id<"ledgerAccounts">;
     memoSuffix: string;
+    actorUserId?: Id<"users">;
   },
 ) {
   const amount = absoluteMinor(args.amountMinor);
   const debitAccountId = args.amountMinor >= 0 ? args.bankAccount.ledgerAccountId : args.categoryAccountId;
   const creditAccountId = args.amountMinor >= 0 ? args.categoryAccountId : args.bankAccount.ledgerAccountId;
-  const result: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
-    entityId: args.entity._id,
+  return await postPipelineLedgerEntry(ctx, {
+    entity: args.entity,
+    actorUserId: args.actorUserId,
     date: args.date,
     memo: `${args.merchant} - ${args.memoSuffix}`,
     source: args.source === "manual" ? "manual" : args.source,
@@ -224,7 +320,6 @@ async function postTransactionEntry(
       },
     ],
   });
-  return result.entryId;
 }
 
 async function routeProposedCategory(
@@ -245,6 +340,7 @@ async function routeProposedCategory(
     needsHuman?: boolean;
     question?: string;
     now: number;
+    actorUserId?: Id<"users">;
   },
 ) {
   await assertCategoryAccount(ctx, args.entity._id, args.categoryAccountId);
@@ -267,6 +363,7 @@ async function routeProposedCategory(
       sourceId: args.sourceId,
       categoryAccountId: args.categoryAccountId,
       memoSuffix: `pipeline ${args.stage}`,
+      actorUserId: args.actorUserId,
     });
     await ctx.db.patch(args.transactionId, {
       review: "auto",
@@ -355,6 +452,7 @@ async function routeExistingProposedCategory(
     needsHuman?: boolean;
     question?: string;
     now: number;
+    actorUserId?: Id<"users">;
   },
 ) {
   await assertCategoryAccount(ctx, args.entity._id, args.categoryAccountId);
@@ -377,6 +475,7 @@ async function routeExistingProposedCategory(
       sourceId: args.transaction.externalId,
       categoryAccountId: args.categoryAccountId,
       memoSuffix: `pipeline ${args.stage}`,
+      actorUserId: args.actorUserId,
     });
     await ctx.db.patch(args.transaction._id, {
       review: "auto",
@@ -491,37 +590,17 @@ async function recordCorrectionMemory(
   });
 }
 
-export const routeTransaction = mutation({
-  args: {
-    entityId: v.id("entities"),
-    bankAccountId: v.id("bankAccounts"),
-    date: v.string(),
-    amountMinor: v.number(),
-    currency: v.string(),
-    merchant: v.string(),
-    rawDescription: v.string(),
-    status: v.union(v.literal("pending"), v.literal("posted")),
-    source: sourceValidator,
-    externalId: v.string(),
-    contactId: v.optional(v.id("contacts")),
-    categoryAccountId: v.optional(v.id("ledgerAccounts")),
-    matchAccountId: v.optional(v.id("ledgerAccounts")),
-    transferAccountId: v.optional(v.id("ledgerAccounts")),
-    forceReview: v.optional(v.boolean()),
-    evalExpectedAccountId: v.optional(v.id("ledgerAccounts")),
-    evalSet: v.optional(v.boolean()),
-    plaidPriorAccountId: v.optional(v.id("ledgerAccounts")),
-    semanticMemoryProposal: v.optional(semanticMemoryProposalValidator),
-    aiProposal: v.optional(aiProposalValidator),
+async function routeTransactionCore(
+  ctx: MutationCtx,
+  args: RouteTransactionArgs,
+  options: {
+    entity: Doc<"entities">;
+    bankAccount: Doc<"bankAccounts">;
+    actorUserId?: Id<"users">;
   },
-  handler: async (ctx, args) => {
-    assertSignedMinorUnit(args.amountMinor, "Transaction amount");
-
-    const entity = await requireEntity(ctx, args.entityId);
-    const bankAccount = await ctx.db.get(args.bankAccountId);
-    if (!bankAccount || bankAccount.entityId !== args.entityId) {
-      throw new Error("Transaction account does not belong to this entity.");
-    }
+){
+  assertSignedMinorUnit(args.amountMinor, "Transaction amount");
+  const { entity, bankAccount, actorUserId } = options;
 
     const duplicate = await ctx.db
       .query("transactions")
@@ -558,8 +637,9 @@ export const routeTransaction = mutation({
 
     if (args.transferAccountId && !args.forceReview) {
       const amount = absoluteMinor(args.amountMinor);
-      const entryResult: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
-        entityId: args.entityId,
+      const entryId = await postPipelineLedgerEntry(ctx, {
+        entity,
+        actorUserId,
         date: args.date,
         memo: `${args.merchant} - transfer`,
         source: "bank",
@@ -576,14 +656,14 @@ export const routeTransaction = mutation({
       });
       await ctx.db.patch(transactionId, {
         review: "auto",
-        entryId: entryResult.entryId,
+        entryId,
         transferPairId: `${args.externalId}:transfer`,
         decidedBy: "transfer",
         confidence: 0.99,
         reasoning: "Pipeline stage 1 detected a transfer between ledger accounts.",
         updatedAt: now,
       });
-      return { status: "posted" as const, transactionId, entryId: entryResult.entryId, stage: "transfer" as const };
+      return { status: "posted" as const, transactionId, entryId, stage: "transfer" as const };
     }
 
     if (args.matchAccountId && !args.forceReview) {
@@ -597,6 +677,7 @@ export const routeTransaction = mutation({
         sourceId: args.externalId,
         categoryAccountId: args.matchAccountId,
         memoSuffix: "matched record",
+        actorUserId,
       });
       await ctx.db.patch(transactionId, {
         review: "auto",
@@ -631,6 +712,7 @@ export const routeTransaction = mutation({
         sourceId: args.externalId,
         categoryAccountId,
         memoSuffix: matchingRule ? `rule: ${matchingRule.name}` : "seeded category",
+        actorUserId,
       });
       await ctx.db.patch(transactionId, {
         review: "auto",
@@ -666,6 +748,7 @@ export const routeTransaction = mutation({
         reasoning: `Pipeline stage 4 matched correction memory for ${correctionMemory.merchantDisplayName}.`,
         stage: "memory",
         now,
+        actorUserId,
       });
     }
 
@@ -684,6 +767,7 @@ export const routeTransaction = mutation({
         reasoning: args.semanticMemoryProposal.reasoning,
         stage: "memory",
         now,
+        actorUserId,
       });
     }
 
@@ -702,6 +786,7 @@ export const routeTransaction = mutation({
         reasoning: "Pipeline stage 5 used Plaid personal finance category as a weak prior.",
         stage: "plaid_prior",
         now,
+        actorUserId,
       });
     }
 
@@ -722,6 +807,7 @@ export const routeTransaction = mutation({
         needsHuman: args.aiProposal.needsHuman,
         question: args.aiProposal.question,
         now,
+        actorUserId,
       });
     }
 
@@ -744,6 +830,39 @@ export const routeTransaction = mutation({
       updatedAt: now,
     });
     return { status: "needs_review" as const, transactionId, entryId: null, stage: "needs_review" as const };
+}
+
+export const routeTransaction = mutation({
+  args: routeTransactionArgs,
+  handler: async (ctx, args) => {
+    const entity = await requireEntity(ctx, args.entityId);
+    const bankAccount = await ctx.db.get(args.bankAccountId);
+    if (!bankAccount || bankAccount.entityId !== args.entityId) {
+      throw new Error("Transaction account does not belong to this entity.");
+    }
+    return await routeTransactionCore(ctx, args, { entity, bankAccount });
+  },
+});
+
+export const routeTransactionInternal = internalMutation({
+  args: {
+    ...routeTransactionArgs,
+    actorUserId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new Error("OpenBooks entity not found.");
+    }
+    const bankAccount = await ctx.db.get(args.bankAccountId);
+    if (!bankAccount || bankAccount.entityId !== args.entityId) {
+      throw new Error("Transaction account does not belong to this entity.");
+    }
+    return await routeTransactionCore(ctx, args, {
+      entity,
+      bankAccount,
+      actorUserId: args.actorUserId,
+    });
   },
 });
 

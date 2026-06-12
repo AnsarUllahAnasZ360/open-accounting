@@ -17,12 +17,14 @@ and the final verification closeout.
 - **Committed & verified:** app shell · Ask AI engine + docked panel (B1–B5) ·
   Settings (E) · profile/invite/dev-full pieces of F · Reports · Payroll ·
   Income/Expenses/Bills (incl. invoice-save & bill-mark-paid).
-- **Current G status:** Plaid G1a now has the real Link client surface and
-  action-level exchange/persist proof, but row #3 is still **PARTIAL** until
-  fresh Plaid sandbox keys complete a hosted Link session and G2 moves sync to
-  crons/webhooks/system actor.
-- **Still open:** F1 onboarding stepper · B6 post-import AI run history · G2-G5
-  Plaid/Stripe/Receipts/entity read models · H verification closeout · prod
+- **Current G status:** Plaid G1a+G2 now have the real Link client surface,
+  action-level exchange/persist proof, item-level cursor state, system actor,
+  4-hour cron, verified webhook receiver, real `/transactions/sync` action, and
+  Settings `Sync now` control. Row #3 is still **PARTIAL** until a hosted Plaid
+  Link session produces a real sandbox item and that item sync is proven end to
+  end.
+- **Still open:** F1 onboarding stepper · B6 post-import AI run history · G3-G5
+  Stripe/Receipts/entity read models · H verification closeout · prod
   redeploy only if Ansar reauthorizes it.
 
 ---
@@ -96,7 +98,7 @@ e2e green.
 |---|---|---|
 | 1 | Workspace + business creation via onboarding | ❌ Epic F1 (E2 adds `entities.create`) |
 | 2 | Shell: collapse rail, footer profile/settings/logout, ⌘K, switcher, Ask AI ⌘J | ✅ WORKING |
-| 3 | Plaid sandbox real Link → sync → ledger/inbox | ◑ PARTIAL → G1a UI/exchange proof done; G2 sync still |
+| 3 | Plaid sandbox real Link → sync → ledger/inbox | ◑ PARTIAL → G1a UI/exchange + G2 server sync path done; needs hosted Plaid item proof |
 | 4 | Stripe test mode event-driven sync + payout reconcile | ◑ PARTIAL → Epic G3 |
 | 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → Epic H rewrites assertions |
 | 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING |
@@ -136,15 +138,18 @@ is **PARTIAL** until Convex Auth reset email is configured; Plunk email delivery
 is optional/unconfigured, so invites use copy-link mode.
 
 ### D. Epic G — Money rails  _(split into sub-batches; needs inputs — see §4)_
-G1a is **PARTIAL and committed/evidenced**: Settings now prepares a Plaid sandbox
-Link token, mounts the official `react-plaid-link` client only after that token
-exists, keeps fixture fallback, and unit-proves exchange/persist without leaking
-the access token. It is **not WORKING** yet because no hosted Plaid Link session
-was completed with fresh sandbox keys. Next: G2 crons + Plaid webhook +
-**system actor** and real `/transactions/sync` action. Then G3 Stripe
-event-driven sync + persist `stripePayoutLines` (needs `STRIPE_WEBHOOK_SECRET` on
-the deployment for live webhooks), G4 receipts PDF + persisted vectors + inbox
-card, and G5 entity-scoped read models + pagination/`take()` guards.
+G1a+G2 are **PARTIAL and committed/evidenced**: Settings prepares a Plaid
+sandbox Link token, mounts the official `react-plaid-link` client only after that
+token exists, keeps fixture fallback, unit-proves exchange/persist without
+leaking the access token, and now has server-owned Plaid sync: item cursor state,
+short sync lock, `system:sync` actor, 4-hour cron, verified
+`/plaid/webhook`, real `/transactions/sync`, removal reversals, and a Settings
+`Sync now` control. It is **not WORKING** yet because no hosted Plaid Link
+session has been completed and then synced from a real sandbox item in the
+browser. Next: G3 Stripe event-driven sync + persist `stripePayoutLines` (needs
+`STRIPE_WEBHOOK_SECRET` on the deployment for live webhooks), G4 receipts PDF +
+persisted vectors + inbox card, and G5 entity-scoped read models +
+pagination/`take()` guards.
 
 ### E. Epic H — Verification, honest eval, closeout  _(last)_
 Plan Epic H. H1 rewrite the legacy e2e specs to real clicks (remove the
@@ -160,9 +165,11 @@ the account context changed.
 
 ## 4. Inputs needed from Ansar (otherwise build + degrade gracefully)
 
-- **Fresh Plaid *sandbox* `client_id` + `secret`** in `.env.local` and on the
-  Convex deployment (`npx convex env set`) — for G1 real Link. Sandbox only,
-  never live. Runbook: `docs/initiation/access-and-questions.md` §3.
+- **A completed Plaid hosted sandbox Link session** against the cloud dev backend,
+  then `Sync now`/webhook proof on the resulting real sandbox item. If sandbox
+  keys have changed, refresh `PLAID_CLIENT_ID` + `PLAID_SECRET` in `.env.local`
+  and on the Convex deployment first (`npx convex env set`). Sandbox only, never
+  live. Runbook: `docs/initiation/access-and-questions.md` §3.
 - **`STRIPE_WEBHOOK_SECRET`** on the Convex dev deployment — for G3 live webhook
   verification (test mode). Stripe test keys only.
 - **Plunk** (`PLUNK_SECRET_KEY`, `PLUNK_FROM_EMAIL`) — optional, for F3 invite

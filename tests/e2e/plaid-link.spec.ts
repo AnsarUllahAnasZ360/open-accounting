@@ -64,3 +64,18 @@ test("G1 — Plaid connection panel stays usable on mobile", async ({ page }) =>
   await expect(panel.getByText("Sandbox ready").or(panel.getByText("Fixture mode")).or(panel.getByText("Sandbox required"))).toBeVisible();
   await page.screenshot({ path: `${EVIDENCE}/2026-06-12-G1-plaid-mobile.png`, fullPage: true });
 });
+
+test("G2 — Plaid sync controls expose the cron/manual path without syncing books", async ({ page }) => {
+  test.setTimeout(120_000);
+  await openConnections(page, 1440);
+
+  const panel = visibleByTestId(page, "plaid-connection-panel");
+  await expect(panel).toBeVisible({ timeout: 30000 });
+  await panel.getByRole("button", { name: "Prepare Link" }).click();
+  await expect(page.getByTestId("plaid-panel-message")).toContainText(/Open Plaid Link|Fixture Link token/i, {
+    timeout: 30000,
+  });
+  await expect(visibleByTestId(page, "plaid-sync-now")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Sync fixture" })).toBeVisible();
+  await page.screenshot({ path: `${EVIDENCE}/2026-06-12-G2-plaid-sync-controls.png`, fullPage: true });
+});

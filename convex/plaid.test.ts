@@ -43,6 +43,12 @@ const exchangePublicTokenAndPreviewAccounts = makeFunctionReference<
   ExchangePublicTokenArgs,
   ExchangePublicTokenResult
 >("plaid:exchangePublicTokenAndPreviewAccounts");
+const syncItemByPlaidItemId = makeFunctionReference<"action", SyncItemActionArgs, SyncItemActionResult>(
+  "plaid:syncItemByPlaidItemId",
+);
+const routeTransaction = makeFunctionReference<"mutation", RouteTransactionArgs, unknown>(
+  "pipeline:routeTransaction",
+);
 
 type PlaidEnvState = {
   environment: "sandbox" | "missing" | "unsupported";
@@ -56,6 +62,10 @@ type PlaidConnectionState = {
   accounts: Array<{
     name: string;
     plaidItemId?: string | null;
+  }>;
+  items: Array<{
+    plaidItemId: string;
+    status: "active" | "relink_required";
   }>;
   recentTransactions: Array<{
     merchant: string;
@@ -164,6 +174,39 @@ type SelectAccountsResult = {
   accounts: Array<{ bankAccountId: string; ledgerAccountId: string; plaidAccountId: string }>;
 };
 
+type SyncItemActionArgs = {
+  plaidItemId: string;
+  trigger: "cron" | "webhook" | "manual";
+  entityId?: Id<"entities">;
+  webhookCode?: string;
+};
+
+type SyncItemActionResult = {
+  status: string;
+  itemId: string;
+  trigger: "cron" | "webhook" | "manual";
+  stagedCount?: number;
+  postedCount?: number;
+  needsReviewCount?: number;
+  duplicateCount?: number;
+  unmatchedAccountCount?: number;
+  reason?: string;
+};
+
+type RouteTransactionArgs = {
+  entityId: string;
+  bankAccountId: string;
+  date: string;
+  amountMinor: number;
+  currency: string;
+  merchant: string;
+  rawDescription: string;
+  status: "pending" | "posted";
+  source: "bank" | "stripe" | "manual";
+  externalId: string;
+  actorUserId?: string;
+};
+
 async function setupPlaidTest(t: TestConvex<typeof schema>) {
   return await t.run(async (ctx) => {
     const now = Date.now();
@@ -244,7 +287,7 @@ async function setupPlaidTest(t: TestConvex<typeof schema>) {
       createdAt: now,
       updatedAt: now,
     });
-    return { userId, entityId, bankAccountId };
+    return { userId, workspaceId, entityId, bankAccountId };
   });
 }
 
@@ -693,6 +736,131 @@ describe("Plaid Convex primitives", () => {
       removedReversalCount: 1,
       nextCursor: "cursor-2",
     });
+  });
+
+  it("runs scheduled item sync through the pipeline with a system actor audit trail", async () => {
+    vi.stubEnv("PLAID_CLIENT_ID", "client-id-test");
+    vi.stubEnv("PLAID_SECRET", "sandbox-secret-test");
+    vi.stubEnv("PLAID_ENV", "sandbox");
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const path = String(url);
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      expect(path).toContain("/transactions/sync");
+      expect(body.access_token).toBe("sandbox-access-token-system");
+      return new Response(JSON.stringify({
+        added: [
+          {
+            transaction_id: "plaid-system-sync-1",
+            account_id: "acct-system",
+            date: "2026-06-12",
+            amount: 49.99,
+            name: "Notion subscription",
+            merchant_name: "Notion",
+            pending: false,
+            iso_currency_code: "USD",
+            personal_finance_category: {
+              primary: "GENERAL_SERVICES",
+              detailed: "GENERAL_SERVICES_OTHER_GENERAL_SERVICES",
+              confidence_level: "HIGH",
+            },
+          },
+        ],
+        modified: [],
+        removed: [],
+        next_cursor: "cursor-system-1",
+        has_more: false,
+      }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.patch(ids.bankAccountId, {
+        plaidAccountId: "acct-system",
+        plaidItemId: "item-system-sync",
+      });
+      await ctx.db.insert("plaidItems", {
+        entityId: ids.entityId,
+        plaidItemId: "item-system-sync",
+        accessToken: "sandbox-access-token-system",
+        institutionName: "Plaid Sandbox Bank",
+        environment: "sandbox",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    const result = await t.action(syncItemByPlaidItemId, {
+      plaidItemId: "item-system-sync",
+      trigger: "cron",
+    });
+
+    expect(result).toMatchObject({
+      status: "synced",
+      stagedCount: 1,
+      postedCount: 1,
+      needsReviewCount: 0,
+      unmatchedAccountCount: 0,
+    });
+    await t.run(async (ctx) => {
+      const item = await ctx.db
+        .query("plaidItems")
+        .withIndex("by_item", (q) => q.eq("plaidItemId", "item-system-sync"))
+        .unique();
+      expect(item).toMatchObject({
+        lastSyncCursor: "cursor-system-1",
+        lastSyncTrigger: "cron",
+      });
+
+      const systemActor = await ctx.db
+        .query("systemActors")
+        .withIndex("by_workspace_and_kind", (q) => q.eq("workspaceId", ids.workspaceId).eq("kind", "sync"))
+        .unique();
+      expect(systemActor?.label).toBe("system:sync");
+
+      const transaction = await ctx.db
+        .query("transactions")
+        .withIndex("by_external_id", (q) => q.eq("externalId", "plaid:plaid-system-sync-1"))
+        .unique();
+      expect(transaction).toMatchObject({
+        review: "auto",
+        decidedBy: "rule",
+      });
+
+      const entry = transaction?.entryId ? await ctx.db.get(transaction.entryId) : null;
+      expect(entry?.postedByUserId).toBe(systemActor?.userId);
+
+      const audit = await ctx.db
+        .query("auditEvents")
+        .withIndex("by_actor", (q) => q.eq("actorUserId", systemActor!.userId))
+        .first();
+      expect(audit?.action).toBe("system.sync.ledger_entry.posted");
+    });
+  });
+
+  it("rejects attempts to pass a system actor through the public transaction route", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+
+    await expect(
+      session.mutation(routeTransaction, {
+        entityId: ids.entityId,
+        bankAccountId: ids.bankAccountId,
+        date: "2026-06-12",
+        amountMinor: -4999,
+        currency: "USD",
+        merchant: "Notion",
+        rawDescription: "Notion subscription",
+        status: "posted",
+        source: "bank",
+        externalId: "public-spoof-attempt",
+        actorUserId: ids.userId,
+      }),
+    ).rejects.toThrow(/actorUserId|Object contains extra field/i);
   });
 
   it("creates a relink-needed inbox card for ITEM_LOGIN_REQUIRED", async () => {

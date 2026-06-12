@@ -78,6 +78,10 @@ function auditActorLabel(event: Doc<"auditEvents">, entry?: Doc<"journalEntries"
   const action = event.action.toLowerCase();
   const summary = event.summary.toLowerCase();
 
+  if (action.startsWith("system.")) {
+    return "system";
+  }
+
   if (
     action.startsWith("ai.") ||
     entry?.source === "ai" ||

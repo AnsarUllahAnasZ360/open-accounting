@@ -25,6 +25,7 @@ import type * as bedrockCategorizer from "../bedrockCategorizer.js";
 import type * as bills from "../bills.js";
 import type * as categories from "../categories.js";
 import type * as coreViews from "../coreViews.js";
+import type * as crons from "../crons.js";
 import type * as entities from "../entities.js";
 import type * as expensesViews from "../expensesViews.js";
 import type * as http from "../http.js";
@@ -37,6 +38,7 @@ import type * as payroll from "../payroll.js";
 import type * as payrollMath from "../payrollMath.js";
 import type * as pipeline from "../pipeline.js";
 import type * as plaid from "../plaid.js";
+import type * as plaidWebhook from "../plaidWebhook.js";
 import type * as profile from "../profile.js";
 import type * as proposals from "../proposals.js";
 import type * as receipts from "../receipts.js";
@@ -50,6 +52,7 @@ import type * as session from "../session.js";
 import type * as settings from "../settings.js";
 import type * as stripe from "../stripe.js";
 import type * as stripeWebhook from "../stripeWebhook.js";
+import type * as systemActors from "../systemActors.js";
 import type * as team from "../team.js";
 
 import type {
@@ -76,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   bills: typeof bills;
   categories: typeof categories;
   coreViews: typeof coreViews;
+  crons: typeof crons;
   entities: typeof entities;
   expensesViews: typeof expensesViews;
   http: typeof http;
@@ -88,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   payrollMath: typeof payrollMath;
   pipeline: typeof pipeline;
   plaid: typeof plaid;
+  plaidWebhook: typeof plaidWebhook;
   profile: typeof profile;
   proposals: typeof proposals;
   receipts: typeof receipts;
@@ -101,6 +106,7 @@ declare const fullApi: ApiFromModules<{
   settings: typeof settings;
   stripe: typeof stripe;
   stripeWebhook: typeof stripeWebhook;
+  systemActors: typeof systemActors;
   team: typeof team;
 }>;
 

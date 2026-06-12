@@ -59,8 +59,8 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | # | Capability | Status | Evidence | Notes |
 |---|---|---|---|---|
 | 1 | Workspace + business creation via onboarding | NOT STARTED | — | Epic F1. Today: owner still bootstraps into `ansar-workspace`; E2 creates businesses from Settings, but the first-run onboarding stepper is not built. |
-| 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots; B5 dock verified in `tests/e2e/ai-chat.spec.ts`; F2 profile verified in `tests/e2e/profile-team.spec.ts` + screenshot | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Profile page now updates sidebar identity live. Partials downstream: multi-entity data-switch (G5), sync-now action (G2), ⌘K server search index (follow-up). AI panel is docked on desktop and a bottom sheet on mobile. |
-| 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | PARTIAL | `convex/plaid.test.ts` 13/13 + `tests/e2e/plaid-link.spec.ts` 2/2 + 2 screenshots | G1 now mounts the Plaid Link client surface, prepares a sandbox link token, keeps fixture fallback, and unit-proves public-token exchange stores the access token server-side without returning it. Still not WORKING: no completed hosted Plaid Link session with fresh sandbox keys; transaction sync remains fixture/client-driven until G2 system actor + crons/webhook. |
+| 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots; B5 dock verified in `tests/e2e/ai-chat.spec.ts`; F2 profile verified in `tests/e2e/profile-team.spec.ts` + screenshot | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Profile page now updates sidebar identity live. Partials downstream: multi-entity data-switch (G5), global ⌘K server search index (follow-up). AI panel is docked on desktop and a bottom sheet on mobile. |
+| 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | PARTIAL | `convex/plaid.test.ts` 15/15 + `convex/plaidWebhook.test.ts` 2/2 + `tests/e2e/plaid-link.spec.ts` 3/3 + 3 screenshots | G1 mounts the Plaid Link client and persists exchanged access tokens server-side without leaking them. G2 adds item-level cursor state, `system:sync`, 4h cron, verified Plaid webhook signature handling, real `/transactions/sync`, server-side removal reversal, and a Settings `Sync now` control. Still not WORKING: no completed hosted Plaid Link session + real Plaid sandbox item sync has been proven end-to-end in the browser. |
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | inherited | Epic G3. Webhook receiver real; events trigger nothing yet. |
 | 5 | Inbox: confirm / correct / rule / batch / keyboard | PARTIAL | inherited | Epic H rewrites assertions; batch + keyboard unverified. |
 | 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + 41 unit | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Partial: receipt-PDF bill intake (Epic G); seeded-bill auto-match e2e skips when no seeded candidate (unit-proven). |
@@ -432,6 +432,55 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   still required before row #3 can become WORKING.
 - **Next:** G2 system actor + Plaid cron/webhook sync, then G3 Stripe webhooks
   and payout lines.
+
+### 2026-06-12 — Batch G2: Plaid cron/webhook sync + system actor (lead)
+
+- **Changed:** added item-level Plaid sync state on `plaidItems` (`lastSyncCursor`,
+  `lastSyncedAt`, trigger/webhook metadata, short lock window) and an internal
+  `systemActors` table. `ensureSystemSyncActor` creates/reuses a `system:sync`
+  user per workspace for scheduled ledger postings without granting that actor a
+  normal signed-in workspace session.
+- **Pipeline/ledger:** split `api.pipeline.routeTransaction` into the existing
+  public admin-checked wrapper plus `internal.pipeline.routeTransactionInternal`,
+  both sharing the same routing core. Public calls still cannot pass an actor id.
+  Internal Plaid sync posts through `postLedgerEntryCore` with
+  `system.sync.ledger_entry.posted` / `.reversed` audit actions, preserving the one
+  balanced-ledger posting path.
+- **Plaid sync:** added `convex/crons.ts` with a 4-hour
+  `internal.plaid.syncAllActiveItems` job; `syncItemByPlaidItemId` claims a cursor
+  lock, calls Plaid `/transactions/sync`, groups rows by stored Plaid account, and
+  routes them through the pipeline. `ITEM_LOGIN_REQUIRED` releases the lock, marks
+  the item `relink_required`, and creates the existing connection inbox card. The
+  Settings Plaid panel now exposes a safe `Sync now` control for stored Plaid
+  items while keeping fixture sync available.
+- **Webhook:** added `/plaid/webhook` on Convex HTTP. It verifies the
+  `Plaid-Verification` JWT using Plaid's fetched JWK and the signed
+  `request_body_sha256`, normalizes `TRANSACTIONS/SYNC_UPDATES_AVAILABLE`, and
+  runs the same internal item-sync action.
+- **Evidence / verification:**
+  - `pnpm exec vitest run convex/plaid.test.ts convex/plaidWebhook.test.ts` ->
+    **17/17 green**. New assertions prove a mocked cron `/transactions/sync`
+    posts through the pipeline with a `system:sync` ledger audit trail, stores the
+    item cursor, and rejects public `actorUserId` spoofing; webhook verifier
+    verifies an ES256 signed body hash against a fetched JWK.
+  - `pnpm exec playwright test tests/e2e/plaid-link.spec.ts --project=chromium`
+    -> **3/3 green real-click**. The new G2 test clicks `Prepare Link`, verifies
+    `Sync now` + `Sync fixture` controls, and intentionally does not sync/mutate
+    shared books.
+  - Screenshots:
+    `docs/finishing/evidence/2026-06-12-G1-plaid-link-surface.png`,
+    `docs/finishing/evidence/2026-06-12-G1-plaid-mobile.png`,
+    `docs/finishing/evidence/2026-06-12-G2-plaid-sync-controls.png`.
+  - Batch gates: `pnpm verify` -> **green** (typecheck, lint, build,
+    **133/133 unit**); `npx convex dev --once` -> **green** against cloud dev
+    `ceaseless-mandrill-524`.
+- **Status:** G2 backend/control surface is **implemented and verified**, but
+  acceptance row #3 remains **PARTIAL**. The missing proof is a completed hosted
+  Plaid Link session producing a real sandbox item, followed by `Sync now` or the
+  webhook/cron path importing that real item through the pipeline into ledger/inbox.
+  Fixture and mocked-Plaid tests are green; real Plaid item sync is not overclaimed.
+- **Next:** G3 Stripe event-driven sync + payout lines, then G4 receipt PDF intake
+  and G5 entity-scoped read models/pagination.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

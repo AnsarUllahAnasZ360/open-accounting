@@ -100,6 +100,16 @@ export default defineSchema({
   })
     .index("by_workspace", ["workspaceId"])
     .index("by_actor", ["actorUserId"]),
+  systemActors: defineTable({
+    workspaceId: v.id("workspaces"),
+    userId: v.id("users"),
+    kind: v.literal("sync"),
+    label: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_workspace_and_kind", ["workspaceId", "kind"])
+    .index("by_user", ["userId"]),
   accessLeads: defineTable({
     email: v.string(),
     name: v.optional(v.string()),
@@ -196,6 +206,12 @@ export default defineSchema({
     institutionName: v.optional(v.string()),
     environment: v.literal("sandbox"),
     status: v.union(v.literal("active"), v.literal("relink_required")),
+    lastSyncCursor: v.optional(v.string()),
+    lastSyncedAt: v.optional(v.number()),
+    lastSyncStartedAt: v.optional(v.number()),
+    syncLockUntil: v.optional(v.number()),
+    lastSyncTrigger: v.optional(v.union(v.literal("cron"), v.literal("webhook"), v.literal("manual"))),
+    lastWebhookCode: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

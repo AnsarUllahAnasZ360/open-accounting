@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { auth } from "./auth";
 import { isDevAuthBypassEnabled } from "./authz";
+import { normalizePlaidWebhookEvent, verifyPlaidWebhookSignature } from "./plaidWebhook";
 import { normalizeStripeWebhookEvent, verifyStripeWebhookSignature } from "./stripeWebhook";
 
 const http = httpRouter();
@@ -168,6 +169,48 @@ http.route({
         type: event.type,
         livemode: event.livemode,
       },
+    });
+  }),
+});
+
+http.route({
+  path: "/plaid/webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const payload = await request.text();
+    const verified = await verifyPlaidWebhookSignature({
+      payload,
+      verificationHeader: request.headers.get("Plaid-Verification"),
+    });
+    if (!verified.ok) {
+      return jsonResponse({ ok: false, error: verified.error }, { status: 400 });
+    }
+
+    let event;
+    try {
+      event = normalizePlaidWebhookEvent(JSON.parse(payload));
+    } catch {
+      return jsonResponse({ ok: false, error: "invalid_plaid_payload" }, { status: 400 });
+    }
+
+    if (event.kind !== "sync_updates_available") {
+      return jsonResponse({
+        ok: true,
+        status: "ignored",
+        event,
+      });
+    }
+
+    const result = await ctx.runAction(internal.plaid.syncItemByPlaidItemId, {
+      plaidItemId: event.itemId,
+      trigger: "webhook",
+      webhookCode: event.webhookCode,
+    });
+
+    return jsonResponse({
+      ok: true,
+      status: result.status,
+      event,
     });
   }),
 });

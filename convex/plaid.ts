@@ -3,8 +3,10 @@ import { v } from "convex/values";
 
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { action, internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import { postLedgerEntryCore } from "./ledger";
+import { ensureSystemSyncActor } from "./systemActors";
 
 type PlaidEnvironment = "sandbox" | "missing" | "unsupported";
 
@@ -73,6 +75,8 @@ type PlaidRouteResult = {
   stage: string;
 };
 
+type PlaidSyncTrigger = "cron" | "webhook" | "manual";
+
 type PlaidSyncResult = {
   stagedCount: number;
   postedCount: number;
@@ -84,11 +88,110 @@ type PlaidSyncResult = {
   nextCursor: string;
 };
 
+type PlaidItemSyncResult = PlaidSyncResult & {
+  status: "synced" | "skipped" | "missing_item";
+  itemId: string;
+  unmatchedAccountCount: number;
+  trigger: PlaidSyncTrigger;
+};
+
+type ListActiveSyncTargetsResult = Array<{
+  plaidItemId: string;
+  entityId: Id<"entities">;
+  lastSyncCursor: string | null;
+  lastSyncedAt: number | null;
+}>;
+
+type ClaimPlaidItemSyncArgs = {
+  plaidItemId: string;
+  trigger: PlaidSyncTrigger;
+  entityId?: Id<"entities">;
+  webhookCode?: string;
+};
+
+type ClaimPlaidItemSyncResult =
+  | {
+      status: "claimed";
+      item: {
+        plaidItemId: string;
+        entityId: Id<"entities">;
+        accessToken: string;
+        institutionName: string;
+        lastSyncCursor: string | null;
+      };
+    }
+  | {
+      status: "missing_item" | "skipped" | "locked";
+      reason?: string;
+      item: null;
+    };
+
+type ReleasePlaidItemSyncArgs = {
+  plaidItemId: string;
+  status: "active" | "relink_required";
+  institutionName?: string;
+  itemLoginRequired?: boolean;
+};
+
+type ReleasePlaidItemSyncResult = {
+  status: "released" | "missing_item";
+};
+
+type SyncItemTransactionsInternalArgs = {
+  plaidItemId: string;
+  transactions: PlaidTransactionLike[];
+  removedTransactionIds: string[];
+  nextCursor: string;
+  trigger: PlaidSyncTrigger;
+  webhookCode?: string;
+};
+
+type SyncItemByPlaidItemIdArgs = {
+  plaidItemId: string;
+  trigger: PlaidSyncTrigger;
+  entityId?: Id<"entities">;
+  webhookCode?: string;
+};
+
+type SyncItemByPlaidItemIdResult =
+  | PlaidItemSyncResult
+  | {
+      status: "missing_item" | "skipped" | "locked" | "error";
+      itemId: string;
+      trigger: PlaidSyncTrigger;
+      reason?: string;
+    };
+
 const validateEntityAccessRef = makeFunctionReference<
   "query",
   { entityId: Id<"entities"> },
   { entityId: Id<"entities">; workspaceId: Id<"workspaces">; currency: string }
 >("plaid:validateEntityAccess");
+const listActiveSyncTargetsRef = makeFunctionReference<
+  "query",
+  Record<string, never>,
+  ListActiveSyncTargetsResult
+>("plaid:listActiveSyncTargets");
+const claimPlaidItemSyncRef = makeFunctionReference<
+  "mutation",
+  ClaimPlaidItemSyncArgs,
+  ClaimPlaidItemSyncResult
+>("plaid:claimPlaidItemSync");
+const releasePlaidItemSyncRef = makeFunctionReference<
+  "mutation",
+  ReleasePlaidItemSyncArgs,
+  ReleasePlaidItemSyncResult
+>("plaid:releasePlaidItemSync");
+const syncItemTransactionsInternalRef = makeFunctionReference<
+  "mutation",
+  SyncItemTransactionsInternalArgs,
+  PlaidItemSyncResult
+>("plaid:syncItemTransactionsInternal");
+const syncItemByPlaidItemIdRef = makeFunctionReference<
+  "action",
+  SyncItemByPlaidItemIdArgs,
+  SyncItemByPlaidItemIdResult
+>("plaid:syncItemByPlaidItemId");
 
 const plaidPersonalFinanceCategoryValidator = v.object({
   primary: v.string(),
@@ -108,6 +211,8 @@ const plaidTransactionValidator = v.object({
   unofficial_currency_code: v.optional(v.union(v.string(), v.null())),
   personal_finance_category: v.optional(v.union(plaidPersonalFinanceCategoryValidator, v.null())),
 });
+
+const plaidSyncTriggerValidator = v.union(v.literal("cron"), v.literal("webhook"), v.literal("manual"));
 
 export const openBooksSandboxUser = {
   username: "openbooks_user_transactions_dynamic",
@@ -346,7 +451,7 @@ async function nextLedgerAccountNumber(ctx: MutationCtx, entityId: Id<"entities"
   throw new Error("No chart-of-accounts slot is available for this Plaid account.");
 }
 
-async function callPlaid(path: string, body: Record<string, unknown>) {
+export async function callPlaid(path: string, body: Record<string, unknown>) {
   const response = await fetch(`${plaidBaseUrl()}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -377,12 +482,89 @@ function plaidSandboxFallbackEnv(env: PlaidEnvState, error: unknown): PlaidEnvSt
   };
 }
 
-async function reverseRemovedPlaidTransaction(
+function emptyPlaidSyncSummary(nextCursor: string): PlaidSyncResult {
+  return {
+    stagedCount: 0,
+    postedCount: 0,
+    needsReviewCount: 0,
+    duplicateCount: 0,
+    plaidPriorCount: 0,
+    removedCount: 0,
+    removedReversalCount: 0,
+    nextCursor,
+  };
+}
+
+function emptyItemSyncResult(
+  status: PlaidItemSyncResult["status"],
+  itemId: string,
+  trigger: PlaidSyncTrigger,
+  nextCursor: string,
+): PlaidItemSyncResult {
+  return {
+    status,
+    itemId,
+    trigger,
+    unmatchedAccountCount: 0,
+    ...emptyPlaidSyncSummary(nextCursor),
+  };
+}
+
+function addSyncSummary(total: PlaidSyncResult, next: PlaidSyncResult) {
+  total.stagedCount += next.stagedCount;
+  total.postedCount += next.postedCount;
+  total.needsReviewCount += next.needsReviewCount;
+  total.duplicateCount += next.duplicateCount;
+  total.plaidPriorCount += next.plaidPriorCount;
+  total.removedCount += next.removedCount;
+  total.removedReversalCount += next.removedReversalCount;
+  total.nextCursor = next.nextCursor || total.nextCursor;
+}
+
+async function upsertItemLoginRequiredInbox(
   ctx: MutationCtx,
   args: {
     entityId: Id<"entities">;
+    institutionName: string;
+    itemId: string;
+  },
+) {
+  const payload = buildItemLoginRequiredInboxPayload({
+    institutionName: args.institutionName,
+    itemId: args.itemId,
+  });
+  const now = Date.now();
+  const existing = await ctx.db
+    .query("inboxItems")
+    .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+    .take(100);
+  const duplicate = existing.find(
+    (item) => item.kind === "connection" && item.status === "open" && item.payloadSummary === payload.payloadSummary,
+  );
+  if (duplicate) {
+    return {
+      inboxItemId: duplicate._id,
+      payloadSummary: duplicate.payloadSummary,
+    };
+  }
+  const inboxItemId = await ctx.db.insert("inboxItems", {
+    entityId: args.entityId,
+    kind: payload.kind,
+    payloadSummary: payload.payloadSummary,
+    status: "open",
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { inboxItemId, payloadSummary: payload.payloadSummary };
+}
+
+async function reverseRemovedPlaidTransaction(
+  ctx: MutationCtx,
+  args: {
+    entity: Doc<"entities">;
     transaction: Doc<"transactions">;
     plaidTransactionId: string;
+    actorUserId?: Id<"users">;
   },
 ) {
   if (!args.transaction.entryId) return false;
@@ -392,11 +574,10 @@ async function reverseRemovedPlaidTransaction(
     .collect();
   if (lines.length === 0) return false;
 
-  await ctx.runMutation(api.ledger.postEntry, {
-    entityId: args.entityId,
+  const reversal = {
     date: args.transaction.date,
     memo: `${args.transaction.merchant} - Plaid removed transaction reversal`,
-    source: "bank",
+    source: "bank" as const,
     sourceId: `plaid-removed:${args.plaidTransactionId}`,
     reversesEntryId: args.transaction.entryId,
     lines: lines.map((line) => ({
@@ -405,7 +586,21 @@ async function reverseRemovedPlaidTransaction(
       creditMinor: line.debitMinor,
       currency: line.currency,
     })),
-  });
+  };
+
+  if (args.actorUserId) {
+    await postLedgerEntryCore(ctx, {
+      entity: args.entity,
+      userId: args.actorUserId,
+      ...reversal,
+      auditAction: "system.sync.ledger_entry.reversed",
+    });
+  } else {
+    await ctx.runMutation(api.ledger.postEntry, {
+      entityId: args.entity._id,
+      ...reversal,
+    });
+  }
   return true;
 }
 
@@ -417,6 +612,7 @@ async function syncPlaidTransactions(
     transactions: PlaidTransactionLike[];
     removedTransactionIds: string[];
     nextCursor?: string;
+    actorUserId?: Id<"users">;
   },
 ): Promise<PlaidSyncResult> {
   const now = Date.now();
@@ -451,9 +647,10 @@ async function syncPlaidTransactions(
       .first();
     if (!transaction || transaction.entityId !== args.entity._id) continue;
     const reversed = await reverseRemovedPlaidTransaction(ctx, {
-      entityId: args.entity._id,
+      entity: args.entity,
       transaction,
       plaidTransactionId,
+      actorUserId: args.actorUserId,
     });
     if (reversed) removedReversalCount += 1;
     await ctx.db.patch(transaction._id, {
@@ -504,7 +701,12 @@ async function syncPlaidTransactions(
     if (carryover?.categoryAccountId) {
       routeArgs.categoryAccountId = carryover.categoryAccountId as Id<"ledgerAccounts">;
     }
-    const result: PlaidRouteResult = await ctx.runMutation(api.pipeline.routeTransaction, routeArgs);
+    const result: PlaidRouteResult = args.actorUserId
+      ? await ctx.runMutation(internal.pipeline.routeTransactionInternal, {
+          ...routeArgs,
+          actorUserId: args.actorUserId,
+        })
+      : await ctx.runMutation(api.pipeline.routeTransaction, routeArgs);
     if (result.status === "posted") postedCount += 1;
     if (result.status === "needs_review") needsReviewCount += 1;
     if (result.status === "duplicate") duplicateCount += 1;
@@ -557,6 +759,10 @@ export const listConnectionState = query({
       .query("bankAccounts")
       .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
       .take(100);
+    const plaidItems = await ctx.db
+      .query("plaidItems")
+      .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+      .take(20);
     const transactions = await ctx.db
       .query("transactions")
       .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
@@ -585,6 +791,15 @@ export const listConnectionState = query({
         plaidItemId: account.plaidItemId ?? null,
         lastSyncCursor: account.lastSyncCursor ?? null,
         lastSyncedAt: account.lastSyncedAt ?? null,
+      })),
+      items: plaidItems.map((item) => ({
+        plaidItemId: item.plaidItemId,
+        institutionName: item.institutionName ?? null,
+        status: item.status,
+        lastSyncCursor: item.lastSyncCursor ?? null,
+        lastSyncedAt: item.lastSyncedAt ?? null,
+        lastSyncTrigger: item.lastSyncTrigger ?? null,
+        lastWebhookCode: item.lastWebhookCode ?? null,
       })),
       recentTransactions: transactions
         .filter((transaction) => transaction.source === "bank" && transaction.externalId.startsWith("plaid:"))
@@ -639,6 +854,12 @@ export const persistPlaidItem = internalMutation({
       }
       await ctx.db.replace(existing._id, {
         ...row,
+        ...(existing.lastSyncCursor ? { lastSyncCursor: existing.lastSyncCursor } : {}),
+        ...(existing.lastSyncedAt ? { lastSyncedAt: existing.lastSyncedAt } : {}),
+        ...(existing.lastSyncStartedAt ? { lastSyncStartedAt: existing.lastSyncStartedAt } : {}),
+        ...(existing.syncLockUntil ? { syncLockUntil: existing.syncLockUntil } : {}),
+        ...(existing.lastSyncTrigger ? { lastSyncTrigger: existing.lastSyncTrigger } : {}),
+        ...(existing.lastWebhookCode ? { lastWebhookCode: existing.lastWebhookCode } : {}),
         createdAt: existing.createdAt,
       });
       return { plaidItemRecordId: existing._id, status: "updated" as const };
@@ -648,6 +869,329 @@ export const persistPlaidItem = internalMutation({
       createdAt: now,
     });
     return { plaidItemRecordId, status: "created" as const };
+  },
+});
+
+export const listActiveSyncTargets = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const items = await ctx.db.query("plaidItems").take(100);
+    return items
+      .filter((item) => item.status === "active")
+      .map((item) => ({
+        plaidItemId: item.plaidItemId,
+        entityId: item.entityId,
+        lastSyncCursor: item.lastSyncCursor ?? null,
+        lastSyncedAt: item.lastSyncedAt ?? null,
+      }));
+  },
+});
+
+export const claimPlaidItemSync = internalMutation({
+  args: {
+    plaidItemId: v.string(),
+    trigger: plaidSyncTriggerValidator,
+    entityId: v.optional(v.id("entities")),
+    webhookCode: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const item = await ctx.db
+      .query("plaidItems")
+      .withIndex("by_item", (q) => q.eq("plaidItemId", args.plaidItemId))
+      .unique();
+    if (!item) {
+      return { status: "missing_item" as const, item: null };
+    }
+    if (args.entityId && item.entityId !== args.entityId) {
+      return { status: "missing_item" as const, item: null };
+    }
+    if (item.status !== "active") {
+      return { status: "skipped" as const, reason: item.status, item: null };
+    }
+    const now = Date.now();
+    if (item.syncLockUntil && item.syncLockUntil > now) {
+      return { status: "locked" as const, reason: "sync_in_progress", item: null };
+    }
+
+    await ctx.db.patch(item._id, {
+      syncLockUntil: now + 5 * 60_000,
+      lastSyncStartedAt: now,
+      lastSyncTrigger: args.trigger,
+      ...(args.webhookCode ? { lastWebhookCode: args.webhookCode } : {}),
+      updatedAt: now,
+    });
+
+    return {
+      status: "claimed" as const,
+      item: {
+        plaidItemId: item.plaidItemId,
+        entityId: item.entityId,
+        accessToken: item.accessToken,
+        institutionName: item.institutionName ?? "Plaid institution",
+        lastSyncCursor: item.lastSyncCursor ?? null,
+      },
+    };
+  },
+});
+
+export const releasePlaidItemSync = internalMutation({
+  args: {
+    plaidItemId: v.string(),
+    status: v.union(v.literal("active"), v.literal("relink_required")),
+    institutionName: v.optional(v.string()),
+    itemLoginRequired: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const item = await ctx.db
+      .query("plaidItems")
+      .withIndex("by_item", (q) => q.eq("plaidItemId", args.plaidItemId))
+      .unique();
+    if (!item) return { status: "missing_item" as const };
+
+    const now = Date.now();
+    await ctx.db.patch(item._id, {
+      status: args.status,
+      syncLockUntil: undefined,
+      updatedAt: now,
+    });
+
+    if (args.itemLoginRequired) {
+      await upsertItemLoginRequiredInbox(ctx, {
+        entityId: item.entityId,
+        institutionName: args.institutionName ?? item.institutionName ?? "Plaid institution",
+        itemId: item.plaidItemId,
+      });
+    }
+
+    return { status: "released" as const };
+  },
+});
+
+export const syncItemTransactionsInternal = internalMutation({
+  args: {
+    plaidItemId: v.string(),
+    transactions: v.array(plaidTransactionValidator),
+    removedTransactionIds: v.array(v.string()),
+    nextCursor: v.string(),
+    trigger: plaidSyncTriggerValidator,
+    webhookCode: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<PlaidItemSyncResult> => {
+    const item = await ctx.db
+      .query("plaidItems")
+      .withIndex("by_item", (q) => q.eq("plaidItemId", args.plaidItemId))
+      .unique();
+    if (!item) {
+      return emptyItemSyncResult("missing_item", args.plaidItemId, args.trigger, args.nextCursor);
+    }
+    if (item.status !== "active") {
+      return emptyItemSyncResult("skipped", args.plaidItemId, args.trigger, args.nextCursor);
+    }
+    const entity = await ctx.db.get(item.entityId);
+    if (!entity) {
+      return emptyItemSyncResult("missing_item", args.plaidItemId, args.trigger, args.nextCursor);
+    }
+
+    const actorUserId = await ensureSystemSyncActor(ctx, entity.workspaceId);
+    const accounts = await ctx.db
+      .query("bankAccounts")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .collect();
+    const syncAccounts = accounts.filter(
+      (account) =>
+        account.includeInSync &&
+        account.plaidItemId === item.plaidItemId &&
+        Boolean(account.plaidAccountId),
+    );
+    const accountsByPlaidId = new Map(syncAccounts.map((account) => [account.plaidAccountId!, account]));
+    const transactionsByAccount = new Map<string, PlaidTransactionLike[]>();
+    let unmatchedAccountCount = 0;
+
+    for (const transaction of args.transactions) {
+      if (!accountsByPlaidId.has(transaction.account_id)) {
+        unmatchedAccountCount += 1;
+        continue;
+      }
+      const rows = transactionsByAccount.get(transaction.account_id) ?? [];
+      rows.push(transaction);
+      transactionsByAccount.set(transaction.account_id, rows);
+    }
+
+    const summary = emptyPlaidSyncSummary(args.nextCursor);
+    if (args.removedTransactionIds.length > 0) {
+      const anchorAccount = syncAccounts[0];
+      if (anchorAccount) {
+        addSyncSummary(
+          summary,
+          await syncPlaidTransactions(ctx, {
+            entity,
+            bankAccount: anchorAccount,
+            transactions: [],
+            removedTransactionIds: args.removedTransactionIds,
+            nextCursor: args.nextCursor,
+            actorUserId,
+          }),
+        );
+      }
+    }
+
+    for (const [plaidAccountId, transactions] of transactionsByAccount) {
+      const bankAccount = accountsByPlaidId.get(plaidAccountId);
+      if (!bankAccount) continue;
+      addSyncSummary(
+        summary,
+        await syncPlaidTransactions(ctx, {
+          entity,
+          bankAccount,
+          transactions,
+          removedTransactionIds: [],
+          nextCursor: args.nextCursor,
+          actorUserId,
+        }),
+      );
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(item._id, {
+      lastSyncCursor: args.nextCursor,
+      lastSyncedAt: now,
+      syncLockUntil: undefined,
+      lastSyncTrigger: args.trigger,
+      ...(args.webhookCode ? { lastWebhookCode: args.webhookCode } : {}),
+      updatedAt: now,
+    });
+
+    return {
+      status: "synced",
+      itemId: args.plaidItemId,
+      trigger: args.trigger,
+      unmatchedAccountCount,
+      ...summary,
+      nextCursor: args.nextCursor,
+    };
+  },
+});
+
+export const syncItemByPlaidItemId = internalAction({
+  args: {
+    plaidItemId: v.string(),
+    trigger: plaidSyncTriggerValidator,
+    entityId: v.optional(v.id("entities")),
+    webhookCode: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<SyncItemByPlaidItemIdResult> => {
+    const claim = await ctx.runMutation(claimPlaidItemSyncRef, args);
+    if (claim.status !== "claimed" || !claim.item) {
+      return {
+        status: claim.status,
+        itemId: args.plaidItemId,
+        trigger: args.trigger,
+        reason: "reason" in claim ? claim.reason : undefined,
+      };
+    }
+
+    const env = normalizePlaidEnvState(plaidEnvInput());
+    if (!env.ready) {
+      await ctx.runMutation(releasePlaidItemSyncRef, {
+        plaidItemId: args.plaidItemId,
+        status: "active",
+      });
+      return {
+        status: "skipped" as const,
+        itemId: args.plaidItemId,
+        trigger: args.trigger,
+        reason: "plaid_env_not_ready",
+      };
+    }
+
+    try {
+      let cursor = claim.item.lastSyncCursor ?? undefined;
+      let hasMore = true;
+      let pages = 0;
+      const transactions: PlaidTransactionLike[] = [];
+      const removedTransactionIds: string[] = [];
+
+      while (hasMore && pages < 4) {
+        const payload = await callPlaid("/transactions/sync", {
+          access_token: claim.item.accessToken,
+          ...(cursor ? { cursor } : {}),
+          count: 100,
+        });
+        const added = Array.isArray(payload.added) ? payload.added as PlaidTransactionLike[] : [];
+        const modified = Array.isArray(payload.modified) ? payload.modified as PlaidTransactionLike[] : [];
+        const removed = Array.isArray(payload.removed)
+          ? payload.removed
+            .map((transaction) =>
+              transaction && typeof transaction === "object" && "transaction_id" in transaction
+                ? String((transaction as { transaction_id: unknown }).transaction_id)
+                : null,
+            )
+            .filter((transactionId): transactionId is string => Boolean(transactionId))
+          : [];
+        transactions.push(...added, ...modified);
+        removedTransactionIds.push(...removed);
+        cursor = typeof payload.next_cursor === "string" ? payload.next_cursor : cursor;
+        hasMore = Boolean(payload.has_more);
+        pages += 1;
+      }
+
+      return await ctx.runMutation(syncItemTransactionsInternalRef, {
+        plaidItemId: args.plaidItemId,
+        transactions,
+        removedTransactionIds,
+        nextCursor: cursor ?? "",
+        trigger: args.trigger,
+        ...(args.webhookCode ? { webhookCode: args.webhookCode } : {}),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "PLAID_SYNC_FAILED";
+      const itemLoginRequired = message.includes("ITEM_LOGIN_REQUIRED");
+      await ctx.runMutation(releasePlaidItemSyncRef, {
+        plaidItemId: args.plaidItemId,
+        status: itemLoginRequired ? "relink_required" : "active",
+        institutionName: claim.item.institutionName,
+        itemLoginRequired,
+      });
+      return {
+        status: itemLoginRequired ? "skipped" as const : "error" as const,
+        itemId: args.plaidItemId,
+        trigger: args.trigger,
+        reason: message,
+      };
+    }
+  },
+});
+
+export const syncAllActiveItems = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ targetCount: number; results: SyncItemByPlaidItemIdResult[] }> => {
+    const targets = await ctx.runQuery(listActiveSyncTargetsRef, {});
+    const results = [];
+    for (const target of targets) {
+      results.push(
+        await ctx.runAction(syncItemByPlaidItemIdRef, {
+          plaidItemId: target.plaidItemId,
+          trigger: "cron",
+        }),
+      );
+    }
+    return { targetCount: targets.length, results };
+  },
+});
+
+export const syncItemNow = action({
+  args: {
+    entityId: v.id("entities"),
+    plaidItemId: v.string(),
+  },
+  handler: async (ctx, args): Promise<SyncItemByPlaidItemIdResult> => {
+    await ctx.runQuery(validateEntityAccessRef, { entityId: args.entityId });
+    const result: SyncItemByPlaidItemIdResult = await ctx.runAction(syncItemByPlaidItemIdRef, {
+      entityId: args.entityId,
+      plaidItemId: args.plaidItemId,
+      trigger: "manual",
+    });
+    return result;
   },
 });
 
@@ -922,33 +1466,11 @@ export const handleItemLoginRequired = mutation({
   },
   handler: async (ctx, args) => {
     await requireEntity(ctx, args.entityId);
-    const payload = buildItemLoginRequiredInboxPayload({
+    return await upsertItemLoginRequiredInbox(ctx, {
+      entityId: args.entityId,
       institutionName: args.institutionName,
       itemId: args.itemId,
     });
-    const now = Date.now();
-    const existing = await ctx.db
-      .query("inboxItems")
-      .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
-      .take(100);
-    const duplicate = existing.find(
-      (item) => item.kind === "connection" && item.status === "open" && item.payloadSummary === payload.payloadSummary,
-    );
-    if (duplicate) {
-      return {
-        inboxItemId: duplicate._id,
-        payloadSummary: duplicate.payloadSummary,
-      };
-    }
-    const inboxItemId = await ctx.db.insert("inboxItems", {
-      entityId: args.entityId,
-      kind: payload.kind,
-      payloadSummary: payload.payloadSummary,
-      status: "open",
-      createdAt: now,
-      updatedAt: now,
-    });
-    return { inboxItemId, payloadSummary: payload.payloadSummary };
   },
 });
 

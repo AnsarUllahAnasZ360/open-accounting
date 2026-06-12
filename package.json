@@ -36,8 +36,10 @@
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.116",
     "@auth/core": "^0.37.0",
+    "@convex-dev/agent": "^0.6.3",
     "@convex-dev/auth": "^0.0.93",
     "ai": "^6.0.202",
-    "convex": "^1.40.0"
+    "convex": "^1.40.0",
+    "convex-helpers": "^0.1.119"
   }
 }

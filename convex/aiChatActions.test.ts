@@ -2,6 +2,7 @@ import { makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 
+import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -31,7 +32,12 @@ const createJournalEntry = makeFunctionReference<
     debitAccountNumber?: string;
     creditAccountNumber?: string;
   },
-  { action: "createJournalEntry"; entryId: string; debitTotal: number; creditTotal: number }
+  {
+    action: "createJournalEntry";
+    entryId: Id<"journalEntries">;
+    debitTotal: number;
+    creditTotal: number;
+  }
 >("aiChatActions:createJournalEntry");
 
 async function setupChatActions(t: ReturnType<typeof convexTest>) {

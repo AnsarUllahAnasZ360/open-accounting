@@ -38,6 +38,7 @@ import type * as money from "../money.js";
 import type * as onboarding from "../onboarding.js";
 import type * as payroll from "../payroll.js";
 import type * as payrollMath from "../payrollMath.js";
+import type * as performance from "../performance.js";
 import type * as pipeline from "../pipeline.js";
 import type * as plaid from "../plaid.js";
 import type * as plaidWebhook from "../plaidWebhook.js";
@@ -94,6 +95,7 @@ declare const fullApi: ApiFromModules<{
   onboarding: typeof onboarding;
   payroll: typeof payroll;
   payrollMath: typeof payrollMath;
+  performance: typeof performance;
   pipeline: typeof pipeline;
   plaid: typeof plaid;
   plaidWebhook: typeof plaidWebhook;

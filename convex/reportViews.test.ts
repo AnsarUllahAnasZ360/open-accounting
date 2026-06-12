@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { convexTest } from "convex-test";
+import { convexTest, type TestConvex } from "convex-test";
 import { makeFunctionReference } from "convex/server";
 import { describe, expect, it } from "vitest";
 
@@ -33,6 +33,22 @@ type ReportPack = {
   apAging: {
     totalMinor: number;
   };
+  limits: {
+    reportLimit: number;
+    truncated: boolean;
+    rowCounts: {
+      ledgerAccounts: number;
+      journalEntries: number;
+      journalLines: number;
+      transactions: number;
+      invoices: number;
+      bills: number;
+      payrollRuns: number;
+      contacts: number;
+      bankAccounts: number;
+      totalRows: number;
+    };
+  };
 };
 
 const reportPackRef = makeFunctionReference<
@@ -48,7 +64,7 @@ const reportPackRef = makeFunctionReference<
   ReportPack
 >("reportViews:reportPack");
 
-async function setupReportsLedger(t: ReturnType<typeof convexTest>) {
+async function setupReportsLedger(t: TestConvex<typeof schema>) {
   return await t.run(async (ctx) => {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
@@ -140,7 +156,7 @@ async function setupReportsLedger(t: ReturnType<typeof convexTest>) {
   });
 }
 
-function authed(t: ReturnType<typeof convexTest>, userId: string) {
+function authed(t: TestConvex<typeof schema>, userId: string) {
   return t.withIdentity({
     subject: `${userId}|test-session`,
     tokenIdentifier: "test|owner",
@@ -256,6 +272,20 @@ describe("report views", () => {
     expect(accrual.trialBalance.differenceMinor).toBe(0);
     expect(accrual.arAging.totalMinor).toBe(100000);
     expect(accrual.apAging.totalMinor).toBe(20000);
+    expect(accrual.limits).toMatchObject({
+      reportLimit: 5000,
+      truncated: false,
+      rowCounts: {
+        ledgerAccounts: 6,
+        journalEntries: 4,
+        journalLines: 8,
+        invoices: 1,
+        bills: 1,
+        contacts: 2,
+        bankAccounts: 0,
+        totalRows: 22,
+      },
+    });
   });
 
   it("rejects report access without workspace membership", async () => {

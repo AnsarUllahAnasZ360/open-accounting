@@ -827,5 +827,36 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 - **Next:** H2 acceptance/mobile pack, H4 perf/limits, H5 docs closeout, plus
   external Plaid/Stripe proof if Ansar provides the sessions/secrets.
 
+### 2026-06-12 — Batch H4: performance and limits snapshot (lead)
+
+- **Changed:** added a sanitized `performance.limitsSnapshot` query and
+  `scripts/h4-performance-limits.mjs` so H4 can measure row counts without
+  dumping full report rows through the CLI. Report packs now expose
+  `limits.rowCounts` alongside the existing `truncated` flag.
+- **Why this matters:** `coreViews.dashboard` and `reportViews.reportPack` are
+  intentionally rich owner surfaces, but they must stay bounded. The snapshot
+  measures the same high-risk tables the UI reads: ledger accounts, entries,
+  lines, transactions, inbox items, invoices, bills, payroll, contacts, and the
+  register activity-feed inputs.
+- **Evidence / verification:**
+  - `node scripts/h4-performance-limits.mjs` -> **green** and wrote
+    `docs/finishing/evidence/2026-06-12-H4-performance-limits.json`.
+  - Live cloud-dev Acme snapshot: dashboard **3,948/5,000 rows**,
+    report pack **3,920/5,000 rows**, register page bounded to **120 rows**,
+    all `truncated` flags false. The current live Acme transaction count is 924
+    rows (the original seed-status document still says 922 because later
+    verified flows added two rows).
+  - `pnpm vitest run convex/coreViews.test.ts convex/reportViews.test.ts` ->
+    **4/4 green**, covering entity isolation, dashboard read stats,
+    performance snapshot shape, report math, and report row-count metadata.
+  - `npx convex dev --once` -> **green** against cloud dev
+    `ceaseless-mandrill-524`.
+- **Status:** H4 performance/limits pass is **WORKING and evidenced** for the
+  seeded 924-transaction demo entity. Follow-up for a later scale milestone:
+  convert the rich dashboard/report reads into paginated or materialized
+  read-model slices before the default book approaches the 5,000-row cap.
+- **Next:** H2 acceptance/mobile evidence pack and H5 final docs cross-check,
+  plus external Plaid/Stripe proof if Ansar provides the sessions/secrets.
+
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

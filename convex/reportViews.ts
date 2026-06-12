@@ -155,7 +155,22 @@ function emptyReportPack(args: {
     generalLedger: { rows: [] },
     trialBalance: { rows: [], totalDebitMinor: 0, totalCreditMinor: 0, differenceMinor: 0 },
     journal: { entries: [] },
-    limits: { reportLimit: REPORT_LIMIT, truncated: false },
+    limits: {
+      reportLimit: REPORT_LIMIT,
+      truncated: false,
+      rowCounts: {
+        ledgerAccounts: 0,
+        journalEntries: 0,
+        journalLines: 0,
+        transactions: 0,
+        invoices: 0,
+        bills: 0,
+        payrollRuns: 0,
+        contacts: 0,
+        bankAccounts: 0,
+        totalRows: 0,
+      },
+    },
   };
 }
 
@@ -842,6 +857,27 @@ async function buildReportPackForEntity(
       },
       limits: {
         reportLimit: REPORT_LIMIT,
+        rowCounts: {
+          ledgerAccounts: accounts.length,
+          journalEntries: entries.length,
+          journalLines: lines.length,
+          transactions: transactions.length,
+          invoices: invoices.length,
+          bills: bills.length,
+          payrollRuns: payrollRuns.length,
+          contacts: contacts.length,
+          bankAccounts: bankAccounts.length,
+          totalRows:
+            accounts.length +
+            entries.length +
+            lines.length +
+            transactions.length +
+            invoices.length +
+            bills.length +
+            payrollRuns.length +
+            contacts.length +
+            bankAccounts.length,
+        },
         truncated:
           accounts.length >= REPORT_LIMIT ||
           entries.length >= REPORT_LIMIT ||

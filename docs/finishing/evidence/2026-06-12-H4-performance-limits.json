@@ -1,0 +1,78 @@
+{
+  "generatedBy": "scripts/h4-performance-limits.mjs",
+  "generatedAt": "2026-06-12T21:26:54.534Z",
+  "seed": "openbooks-demo-v1-2026-06-11",
+  "entityId": "ks7fda0ssemtv76anafv11sc8h88hwpc",
+  "noSecrets": true,
+  "seedCounts": {
+    "transactions": 922,
+    "posted": 915,
+    "inbox": 12,
+    "eval": 120,
+    "trialBalanceDifferenceMinor": 0
+  },
+  "snapshot": {
+    "checks": {
+      "dashboardUnderLimit": true,
+      "reportUnderLimit": true,
+      "transactionsPageBounded": true
+    },
+    "dashboard": {
+      "limit": 5000,
+      "rowCounts": {
+        "bankAccounts": 4,
+        "bills": 12,
+        "contacts": 22,
+        "inboxItems": 28,
+        "invoices": 16,
+        "journalEntries": 964,
+        "journalLines": 1929,
+        "ledgerAccounts": 37,
+        "payrollRuns": 12,
+        "totalRows": 3948,
+        "transactions": 924
+      },
+      "truncated": false
+    },
+    "entity": {
+      "currency": "USD",
+      "id": "ks7fda0ssemtv76anafv11sc8h88hwpc",
+      "name": "Acme Studio LLC"
+    },
+    "inbox": {
+      "categoryOptionsReturned": 37,
+      "documentsRead": 16,
+      "openRowsReturned": 21
+    },
+    "reportPack": {
+      "limit": 5000,
+      "rowCounts": {
+        "bankAccounts": 4,
+        "bills": 12,
+        "contacts": 22,
+        "invoices": 16,
+        "journalEntries": 964,
+        "journalLines": 1929,
+        "ledgerAccounts": 37,
+        "payrollRuns": 12,
+        "totalRows": 3920,
+        "transactions": 924
+      },
+      "truncated": false
+    },
+    "transactionsRegister": {
+      "boundedPageSize": 120,
+      "rowCounts": {
+        "auditEventsForActivity": 1000,
+        "bankAccounts": 4,
+        "documents": 16,
+        "inboxItems": 28,
+        "journalEntriesForActivity": 964,
+        "journalLines": 1929,
+        "ledgerAccounts": 37,
+        "transactions": 924
+      },
+      "rowsReturned": 120
+    }
+  }
+}

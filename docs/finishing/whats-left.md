@@ -33,7 +33,7 @@ closeout.
   deployed route.
 - **Still open:** B6 real-Bedrock high/low import split proof · G4 true PDF
   raster-to-Bedrock proof · Plaid hosted-item proof · Stripe webhook delivery
-  proof · remaining H acceptance evidence/perf/docs closeout · prod
+  proof · remaining H acceptance evidence/docs closeout · prod
   redeploy only if Ansar reauthorizes it.
 
 ---
@@ -197,10 +197,13 @@ labels, runs the real Bedrock pipeline on a temporary eval business, and reports
 `docs/finishing/evidence/2026-06-12-H3-ai-eval-settings.png`. A 120-row live run
 recorded 88/119 in Settings but failed before JSON write near the long-action
 boundary, so the committed synchronous cap is 60 rows; bigger evals should be a
-chunked/background job. Remaining: H4 perf/limits pass. H5 completion-report v2
-+ refresh `how-openbooks-works.md` + README quickstart + `AGENTS.md`. Do
-**not** deploy to Vercel in this run unless Ansar reauthorizes it; the account
-context changed.
+chunked/background job. H4 **performance/limits is done/evidenced** with
+`docs/finishing/evidence/2026-06-12-H4-performance-limits.json`: live Acme
+dashboard reads 3,948/5,000 rows, report pack reads 3,920/5,000, register rows
+are bounded to 120, and no truncation flags are set. Remaining: H2 acceptance
+evidence/mobile pack and H5 completion-report v2 + refresh
+`how-openbooks-works.md` + README quickstart + `AGENTS.md`. Do **not** deploy to
+Vercel in this run unless Ansar reauthorizes it; the account context changed.
 
 ---
 

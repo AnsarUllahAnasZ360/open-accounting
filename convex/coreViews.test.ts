@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest, type TestConvex } from "convex-test";
+import { makeFunctionReference } from "convex/server";
 import { describe, expect, it } from "vitest";
 
 import { api } from "./_generated/api";
@@ -7,6 +8,17 @@ import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+
+const limitsSnapshotRef = makeFunctionReference<
+  "query",
+  { entityId?: Id<"entities"> },
+  {
+    dashboard: { limit: number; truncated: boolean; rowCounts: { totalRows: number } };
+    reportPack: { limit: number; truncated: boolean; rowCounts: { totalRows: number } };
+    transactionsRegister: { rowsReturned: number; boundedPageSize: number };
+    checks: { dashboardUnderLimit: boolean; reportUnderLimit: boolean; transactionsPageBounded: boolean };
+  }
+>("performance:limitsSnapshot");
 
 async function setupWorkspace(t: TestConvex<typeof schema>) {
   return await t.run(async (ctx) => {
@@ -227,5 +239,26 @@ describe("core read models scope to the selected entity", () => {
     expect(freshDashboard?.cashPositionMinor).toBe(0);
     expect(freshDashboard?.recentActivity).toHaveLength(0);
     expect(freshDashboard?.readStats.totalRows).toBe(0);
+  });
+
+  it("exposes bounded performance row-count snapshots", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupWorkspace(t);
+    const session = authed(t, ids.userId);
+
+    const snapshot = await session.query(limitsSnapshotRef, { entityId: ids.liveEntityId });
+
+    expect(snapshot).toMatchObject({
+      dashboard: { limit: 5000, truncated: false },
+      reportPack: { limit: 5000, truncated: false },
+      transactionsRegister: { rowsReturned: 1, boundedPageSize: 120 },
+      checks: {
+        dashboardUnderLimit: true,
+        reportUnderLimit: true,
+        transactionsPageBounded: true,
+      },
+    });
+    expect(snapshot.dashboard.rowCounts.totalRows).toBeGreaterThanOrEqual(6);
+    expect(snapshot.reportPack.rowCounts.totalRows).toBeGreaterThanOrEqual(6);
   });
 });

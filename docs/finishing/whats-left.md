@@ -32,8 +32,7 @@ closeout.
   sandbox item and that item sync is proven end to end; row #4 is still
   **PARTIAL** until a real Stripe CLI/Dashboard test webhook is delivered to the
   deployed route.
-- **Still open:** Plaid hosted-item proof · Stripe webhook delivery proof · H2
-  final evidence-index cross-check ·
+- **Still open:** Plaid hosted-item proof · Stripe webhook delivery proof ·
   prod redeploy only if Ansar reauthorizes it.
 
 ---
@@ -216,11 +215,12 @@ evidence index** at
 #5 Inbox, #8 Contacts, #10 Reports export equality, #11 Data export, #16 Mobile,
 #17 Audit log, row #14 five-question Ask AI report-answer path + B6 live import
 split, and row #15 Receipts text-PDF raster-to-Bedrock path are now evidenced.
-H2 still needs Plaid hosted item proof, Stripe webhook delivery, and a final H5
-evidence-index cross-check before the whole
-acceptance pack can close. H5 docs refresh is **partially done/evidenced**: `README.md`,
-`docs/finishing/how-openbooks-works.md`, and `AGENTS.md` now match shipped
-reality, but final H5 closeout still needs the completed H2 evidence pack. Do
+H2 remains **PARTIAL only for external rows #12 and #13**: Plaid hosted item
+proof and Stripe webhook delivery. H5 docs refresh and final evidence-index
+cross-check are **WORKING/evidenced**: `README.md`,
+`docs/finishing/how-openbooks-works.md`, `AGENTS.md`, this handoff, the
+completion report, and the evidence index now match shipped reality and call out
+the blocked external proof honestly. Do
 **not** deploy to Vercel in this run unless Ansar reauthorizes it; the account
 context changed.
 

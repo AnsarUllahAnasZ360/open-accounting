@@ -1125,5 +1125,32 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   left blocked unless external sessions are provided. Do not deploy unless Ansar
   reauthorizes it.
 
+### 2026-06-12 — Batch H5 final cross-check: evidence index + blocked external rails (lead)
+
+- **Changed:** reconciled the H2 acceptance evidence index and the fresh-session
+  handoff after the G4 and B6 completion batches. Row #14 is now **WORKING** for
+  both Ask AI report-answer parity and the B6 live import split; row #15 is
+  **WORKING** for text-PDF raster-to-Bedrock receipts; row #18 is **WORKING**
+  for the final honesty check.
+- **Blocked rows:** rows #12 and #13 are now explicitly **BLOCKED**, not vaguely
+  partial. Plaid still needs a completed hosted sandbox Link session against
+  cloud dev followed by real item sync proof. Stripe still needs a real
+  Stripe CLI/Dashboard test-mode webhook delivered to the cloud `/stripe/webhook`
+  route and a visible invoice/payout update. These external proofs were not
+  available in this no-deploy run.
+- **Evidence / verification:**
+  - Evidence-file existence check over
+    `docs/finishing/evidence/2026-06-12-H2-acceptance-evidence-index.md` -> **no
+    missing linked files**.
+  - `pnpm test:e2e tests/e2e/acceptance-h2-pack.spec.ts` -> **2/2 green
+    real-click**, refreshing the Contacts/Data/Mobile evidence screenshots.
+  - Batch gates: `git diff --check` -> **green**; `pnpm verify` -> **green**
+    (typecheck, lint, build, **151/151 unit**); `npx convex dev --once` ->
+    **green** against cloud dev `ceaseless-mandrill-524`.
+- **Status:** H5 is **WORKING/evidenced**. Overall finishing remains **PARTIAL**
+  only because Plaid hosted-item proof and Stripe webhook delivery proof require
+  external sessions not available here. No Vercel deployment was attempted, per
+  Ansar's instruction.
+
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

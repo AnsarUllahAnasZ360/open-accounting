@@ -33,7 +33,7 @@ closeout.
   deployed route.
 - **Still open:** B6 real-Bedrock high/low import split proof · G4 true PDF
   raster-to-Bedrock proof · Plaid hosted-item proof · Stripe webhook delivery
-  proof · H2 acceptance/mobile evidence pack + final evidence-index cross-check · prod
+  proof · H2 missing screenshot/proof rows + final evidence-index cross-check · prod
   redeploy only if Ansar reauthorizes it.
 
 ---
@@ -200,12 +200,15 @@ boundary, so the committed synchronous cap is 60 rows; bigger evals should be a
 chunked/background job. H4 **performance/limits is done/evidenced** with
 `docs/finishing/evidence/2026-06-12-H4-performance-limits.json`: live Acme
 dashboard reads 3,948/5,000 rows, report pack reads 3,920/5,000, register rows
-are bounded to 120, and no truncation flags are set. H5 docs refresh is
+are bounded to 120, and no truncation flags are set. H2 now has a **partial
+evidence index** at
+`docs/finishing/evidence/2026-06-12-H2-acceptance-evidence-index.md`, but still
+needs the missing non-external screenshots/proofs before it can close. H5 docs refresh is
 **partially done/evidenced**: `README.md`, `docs/finishing/how-openbooks-works.md`,
 and `AGENTS.md` now match shipped reality, but final H5 closeout still needs the
-H2 evidence index. Remaining: H2 acceptance evidence/mobile pack and final H5
-evidence-index cross-check. Do **not** deploy to Vercel in this run unless Ansar
-reauthorizes it; the account context changed.
+completed H2 evidence pack. Remaining: H2 missing non-external screenshot/proof
+rows and final H5 evidence-index cross-check. Do **not** deploy to Vercel in
+this run unless Ansar reauthorizes it; the account context changed.
 
 ---
 

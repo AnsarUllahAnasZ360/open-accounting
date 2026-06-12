@@ -883,5 +883,23 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 - **Next:** H2 acceptance/mobile evidence pack, then final H5 evidence-index
   cross-check; external Plaid/Stripe proof remains input-dependent.
 
+### 2026-06-12 — Batch H2 partial: acceptance evidence index (lead)
+
+- **Changed:** created
+  `docs/finishing/evidence/2026-06-12-H2-acceptance-evidence-index.md`, an
+  18-row map from the initiation acceptance walkthrough to current
+  finishing-branch evidence, gaps, and blocked external inputs.
+- **Evidence posture:** this is intentionally **PARTIAL**, not a replacement for
+  the requested one-pass screenshot pack. It prevents overclaiming by naming the
+  rows that still need stronger finishing evidence: Inbox keyboard/batch,
+  Contacts finishing screenshot, CSV/export equality, Settings Data export,
+  hosted Plaid item proof, Stripe webhook proof, AI five-question parity/import
+  split, true PDF raster vision, and the full four-surface mobile pack.
+- **Status:** H2 now has an evidence index, but H2 remains **PARTIAL** until the
+  missing screenshots/proofs are captured or the external rows are formally
+  marked BLOCKED with Ansar's unavailable inputs.
+- **Next:** finish the H2 screenshot pack for non-external rows first; then run
+  final H5 cross-check. Do not deploy unless Ansar reauthorizes it.
+
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

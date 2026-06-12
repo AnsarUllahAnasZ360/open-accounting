@@ -932,5 +932,25 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 - **Next:** run both gates for this batch, then continue the remaining H2/H5
   closeout rows. Do not deploy unless Ansar reauthorizes it.
 
+### 2026-06-12 — Batch H2 partial: audit posting trace (lead)
+
+- **Changed:** added `tests/e2e/audit-h2.spec.ts`, a real-click audit-log
+  acceptance proof. The spec creates a disposable business, selects it, imports a
+  manual transaction through the Transactions pipeline, then opens
+  Settings/Audit and filters by the unique merchant.
+- **Evidence / verification:**
+  - `pnpm test:e2e tests/e2e/audit-h2.spec.ts` -> **1/1 green** after aligning
+    the assertion to the user-visible audit summary (`seeded category` + amount)
+    rather than an internal action enum.
+  - Screenshot:
+    `docs/finishing/evidence/2026-06-12-H2-audit-posting-trace.png`.
+- **Status:** H2 row #17 Audit log is now **WORKING/evidenced**. The broader H2
+  acceptance pack remains **PARTIAL** because Inbox keyboard/batch behavior,
+  report export-equals-screen proof, AI report-answer parity/import split, true
+  PDF raster vision, Plaid hosted item proof, Stripe webhook delivery, and final
+  H5 cross-check are still open or input-dependent.
+- **Next:** run both gates for this audit batch, commit it, then continue the
+  remaining H2/H5 closeout rows. Do not deploy unless Ansar reauthorizes it.
+
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

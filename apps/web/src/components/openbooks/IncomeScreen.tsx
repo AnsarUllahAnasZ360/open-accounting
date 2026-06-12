@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
 
 type IncomeData = FunctionReturnType<typeof api.incomeViews.overview>;
 type IncomeTab = "payments" | "invoices" | "receivables";
@@ -41,9 +42,13 @@ function StatusChip({ status }: { status: string }) {
 }
 
 export function IncomeScreen() {
+  const { activeEntity } = useActiveEntity();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const data = useQuery(api.incomeViews.overview, {});
+  const data = useQuery(
+    api.incomeViews.overview,
+    activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : {},
+  );
   // Deep-link: /income?tab=invoices (from receivables heat cells / elsewhere).
   // Read once at mount via the lazy initializer; in-app tab clicks drive it after.
   const initialTab = searchParams.get("tab");

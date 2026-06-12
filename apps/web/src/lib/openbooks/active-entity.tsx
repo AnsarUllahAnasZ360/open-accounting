@@ -22,6 +22,7 @@ export type ActiveEntityContextValue = {
   role: string;
   activeEntity: ActiveEntity;
   entities: EntityOption[];
+  selectEntity: (entityId: string) => void;
 };
 
 const FALLBACK: ActiveEntityContextValue = {
@@ -29,6 +30,7 @@ const FALLBACK: ActiveEntityContextValue = {
   role: "member",
   activeEntity: { name: "Your business" },
   entities: [],
+  selectEntity: () => {},
 };
 
 const ActiveEntityContext = createContext<ActiveEntityContextValue>(FALLBACK);

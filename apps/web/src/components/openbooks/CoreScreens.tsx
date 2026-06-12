@@ -27,6 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
 
 type ReviewFilter = "all" | "auto" | "confirmed" | "needs_review" | "excluded";
 
@@ -42,24 +43,37 @@ function categoryLabel(kind: string) {
   return kind.replaceAll("_", " ");
 }
 
+function entityArg(entityId?: string) {
+  return entityId ? { entityId: entityId as Id<"entities"> } : {};
+}
+
 export function DashboardScreen() {
   // The period selector drives the query so it scopes every period-sensitive
   // widget (P&L snapshot, expense breakdown, income-by-customer, payroll) —
   // not just decoration. `null` lets the server pick the latest month with data.
+  const { activeEntity } = useActiveEntity();
   const [period, setPeriod] = useState<string | null>(null);
-  const dashboard = useQuery(api.coreViews.dashboard, { period: period ?? undefined });
+  const dashboard = useQuery(api.coreViews.dashboard, {
+    ...entityArg(activeEntity.id),
+    period: period ?? undefined,
+  });
 
   if (dashboard === undefined) return <LoadingBlock label="dashboard" />;
   if (!dashboard) {
-    return <EmptyState title="No entity yet" description="Seed demo data from Settings before reviewing the business dashboard." />;
+    return <EmptyState title="No entity yet" description="Create a business before reviewing the dashboard." />;
   }
+  const isFreshEntity =
+    dashboard.readStats.transactions === 0 &&
+    dashboard.readStats.journalEntries === 0 &&
+    dashboard.readStats.invoices === 0 &&
+    dashboard.readStats.bills === 0;
 
   return (
     <div className="space-y-5" data-testid="dashboard-screen">
       <section className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-xs md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-base font-semibold">Operating snapshot</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{dashboard.entity.name} · ledger-backed demo books</p>
+          <p className="mt-1 text-sm text-muted-foreground">{dashboard.entity.name} · ledger-backed books</p>
         </div>
         <div className="grid gap-1.5 sm:w-48">
           <Label>Period</Label>
@@ -77,6 +91,23 @@ export function DashboardScreen() {
           </Select>
         </div>
       </section>
+
+      {isFreshEntity ? (
+        <section className="rounded-lg border border-dashed bg-card p-4 shadow-xs" data-testid="dashboard-empty-entity">
+          <h2 className="text-base font-semibold">Ready for money data</h2>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Connect a bank or import CSV transactions to populate this business. Reports and registers will stay empty until real activity posts through the ledger.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href="/settings/connections">Connect a bank</Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/transactions">Import CSV</Link>
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -266,7 +297,8 @@ export function DashboardScreen() {
 }
 
 export function InboxScreen() {
-  const inbox = useQuery(api.coreViews.inbox, {});
+  const { activeEntity } = useActiveEntity();
+  const inbox = useQuery(api.coreViews.inbox, entityArg(activeEntity.id));
   const confirmTransaction = useAction(api.semanticMemory.confirmTransactionWithMemoryEmbedding);
   const excludeTransaction = useMutation(api.pipeline.excludeTransaction);
   const createRuleFromTransaction = useMutation(api.pipeline.createRuleFromTransaction);
@@ -638,6 +670,7 @@ export function InboxScreen() {
 }
 
 export function TransactionsScreen() {
+  const { activeEntity } = useActiveEntity();
   const searchParams = useSearchParams();
   const focusId = searchParams.get("focus");
   const [review, setReview] = useState<ReviewFilter>("all");
@@ -648,7 +681,7 @@ export function TransactionsScreen() {
   const [manualAmount, setManualAmount] = useState("-42.00");
   const [manualMerchant, setManualMerchant] = useState("Manual import");
   const [csvText, setCsvText] = useState("date,description,amount\n2026-06-30,Sample CSV expense,-25.00");
-  const data = useQuery(api.coreViews.transactions, { review, search });
+  const data = useQuery(api.coreViews.transactions, { ...entityArg(activeEntity.id), review, search });
   const recategorizeTransaction = useAction(api.semanticMemory.recategorizeTransactionWithMemoryEmbedding);
   const excludeTransaction = useMutation(api.pipeline.excludeTransaction);
   const splitTransaction = useMutation(api.pipeline.splitTransaction);
@@ -949,6 +982,13 @@ export function TransactionsScreen() {
                   <TableCell className="text-right"><Amount amountMinor={row.amountMinor} signed /></TableCell>
                 </TableRow>
               ))}
+              {data.rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground" data-testid="transactions-empty">
+                    Connect a bank or import CSV transactions to populate this register.
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </div>

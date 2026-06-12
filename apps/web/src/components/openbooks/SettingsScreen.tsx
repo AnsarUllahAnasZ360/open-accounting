@@ -7,6 +7,7 @@ import { useCallback, useMemo } from "react";
 
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
 import { cn } from "@/lib/utils";
 import { SETTINGS_SECTIONS, type SettingsSectionId } from "@/lib/openbooks/settings-sections";
 import { AiSection } from "@/components/openbooks/settings/AiSection";
@@ -50,6 +51,7 @@ function isSettingsSection(value: string): value is SettingsSectionId {
 export function SettingsScreen({ section }: { section?: string }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { activeEntity } = useActiveEntity();
 
   // Active section: explicit prop (from the route) wins; otherwise parse the URL
   // (/settings/<id>); default to businesses.
@@ -74,7 +76,14 @@ export function SettingsScreen({ section }: { section?: string }) {
   // (demo) entity is the report subject; sections that need an entity use it.
   const viewer = useQuery(api.session.viewer, {});
   const canAccessSettings = viewer?.role === "owner" || viewer?.role === "admin";
-  const moduleEntityId = useQuery(api.moduleViews.activeEntityId, canAccessSettings ? {} : "skip") as Id<"entities"> | null | undefined;
+  const moduleEntityId = useQuery(
+    api.moduleViews.activeEntityId,
+    canAccessSettings
+      ? activeEntity.id
+        ? { entityId: activeEntity.id as Id<"entities"> }
+        : {}
+      : "skip",
+  ) as Id<"entities"> | null | undefined;
 
   if (viewer && !canAccessSettings) {
     return (

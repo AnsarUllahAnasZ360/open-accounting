@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/command";
 import { appRoutes, settingsRoute } from "@/lib/openbooks/content";
 import { formatMinorMoney } from "@/components/openbooks/primitives";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 // The 11 reports the Reports screen knows about. Kept here as a static list so
 // the palette can route to them without a backend query (the Reports screen
@@ -63,15 +65,24 @@ export function CommandPalette({
   canAccessSettings: boolean;
 }) {
   const router = useRouter();
+  const { activeEntity } = useActiveEntity();
 
   // Reuse EXISTING queries the screens already load — no new Convex queries or
   // indexes are added by Epic A. Transactions + contacts are filtered client
   // side by cmdk's built-in fuzzy matching.
   const transactionsData = useQuery(
     api.coreViews.transactions,
-    enabled ? { review: "all" } : "skip",
+    enabled
+      ? {
+          ...(activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : {}),
+          review: "all",
+        }
+      : "skip",
   );
-  const overview = useQuery(api.moduleViews.overview, enabled ? {} : "skip");
+  const overview = useQuery(
+    api.moduleViews.overview,
+    enabled ? (activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : {}) : "skip",
+  );
 
   const currency = transactionsData?.entity.currency ?? "USD";
 

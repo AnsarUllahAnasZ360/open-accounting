@@ -66,6 +66,7 @@ export type ReportPack = {
     name: string;
     currency: string;
   };
+  reportCards?: Array<{ id: ReportExportId; group: string; name: string; description: string }>;
   controls: {
     startDate: string;
     endDate: string;
@@ -172,6 +173,10 @@ export type ReportPack = {
         currency: string;
       }>;
     }>;
+  };
+  limits?: {
+    reportLimit: number;
+    truncated: boolean;
   };
 };
 

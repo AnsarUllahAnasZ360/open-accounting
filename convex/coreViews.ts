@@ -24,20 +24,21 @@ const months = [
   "2026-06",
 ];
 
-async function getActiveEntity(ctx: QueryCtx) {
+async function getActiveEntity(ctx: QueryCtx, entityId?: Id<"entities">) {
   const { membership } = await requireAnyWorkspaceRole(ctx, "member");
-  const entity =
-    (await ctx.db
-      .query("entities")
-      .withIndex("by_workspace_and_slug", (q) =>
-        q.eq("workspaceId", membership.workspaceId).eq("slug", "acme-studio-llc"),
-      )
-      .unique()) ??
-    (await ctx.db
-      .query("entities")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId))
-      .first());
-  if (!entity) return null;
+  const entity = entityId
+    ? await ctx.db.get(entityId)
+    : (await ctx.db
+        .query("entities")
+        .withIndex("by_workspace_and_slug", (q) =>
+          q.eq("workspaceId", membership.workspaceId).eq("slug", "acme-studio-llc"),
+        )
+        .unique()) ??
+      (await ctx.db
+        .query("entities")
+        .withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId))
+        .first());
+  if (!entity || entity.workspaceId !== membership.workspaceId) return null;
   await requireWorkspaceRole(ctx, entity.workspaceId, "member");
   return entity;
 }
@@ -68,13 +69,14 @@ const DASHBOARD_LIMIT = 5000;
 
 export const dashboard = query({
   args: {
+    entityId: v.optional(v.id("entities")),
     // Period selector. "YYYY-MM" scopes the P&L snapshot, expense breakdown,
     // income-by-customer, and payroll widgets so the selector drives EVERY
     // period-sensitive widget instead of being decorative.
     period: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const entity = await getActiveEntity(ctx);
+    const entity = await getActiveEntity(ctx, args.entityId);
     if (!entity) return null;
 
     const [accounts, bankAccounts, entries, lines, transactions, inboxItems, invoices, bills, payrollRuns, contacts] =
@@ -253,22 +255,51 @@ export const dashboard = query({
           memo: entry.memo,
           source: entry.source,
         })),
+      readStats: {
+        ledgerAccounts: accounts.length,
+        bankAccounts: bankAccounts.length,
+        journalEntries: entries.length,
+        journalLines: lines.length,
+        transactions: transactions.length,
+        inboxItems: inboxItems.length,
+        invoices: invoices.length,
+        bills: bills.length,
+        payrollRuns: payrollRuns.length,
+        contacts: contacts.length,
+        totalRows:
+          accounts.length +
+          bankAccounts.length +
+          entries.length +
+          lines.length +
+          transactions.length +
+          inboxItems.length +
+          invoices.length +
+          bills.length +
+          payrollRuns.length +
+          contacts.length,
+        limit: DASHBOARD_LIMIT,
+        truncated:
+          accounts.length >= DASHBOARD_LIMIT ||
+          entries.length >= DASHBOARD_LIMIT ||
+          lines.length >= DASHBOARD_LIMIT ||
+          transactions.length >= DASHBOARD_LIMIT,
+      },
     };
   },
 });
 
 export const inbox = query({
-  args: {},
-  handler: async (ctx) => {
-    const entity = await getActiveEntity(ctx);
+  args: { entityId: v.optional(v.id("entities")) },
+  handler: async (ctx, args) => {
+    const entity = await getActiveEntity(ctx, args.entityId);
     if (!entity) return null;
 
     const [items, transactions, accounts, bankAccounts, documents] = await Promise.all([
-      ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
+      ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
+      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(DASHBOARD_LIMIT),
+      ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500),
+      ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
+      ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
     ]);
     const transactionsById = new Map(transactions.map((transaction) => [transaction._id, transaction]));
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
@@ -342,20 +373,21 @@ export const inbox = query({
 
 export const transactions = query({
   args: {
+    entityId: v.optional(v.id("entities")),
     review: v.optional(v.union(v.literal("all"), v.literal("auto"), v.literal("confirmed"), v.literal("needs_review"), v.literal("excluded"))),
     search: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const entity = await getActiveEntity(ctx);
+    const entity = await getActiveEntity(ctx, args.entityId);
     if (!entity) return null;
 
     const [transactions, accounts, bankAccounts, inboxItems, allLines, documents, entries, auditEvents] = await Promise.all([
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
-      ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
+      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(DASHBOARD_LIMIT),
+      ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500),
+      ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
+      ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
+      ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(DASHBOARD_LIMIT),
+      ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
       ctx.db.query("journalEntries").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).order("desc").take(1000),
       ctx.db.query("auditEvents").withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId)).order("desc").take(1000),
     ]);
@@ -399,7 +431,7 @@ export const transactions = query({
       const lines = await ctx.db
         .query("journalLines")
         .withIndex("by_entry", (q) => q.eq("entryId", row.entryId!))
-        .collect();
+        .take(100);
       entryLines.set(row.entryId, lines);
     }
 

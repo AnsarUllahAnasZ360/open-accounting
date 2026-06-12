@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 
 import { api } from "../../../../../../convex/_generated/api";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { DemoDataPanel } from "@/components/openbooks/DemoDataPanel";
 import { LeadsPanel } from "@/components/openbooks/LeadsPanel";
 import { Button } from "@/components/ui/button";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
 import {
   downloadReportFile,
   reportCsvFile,
@@ -23,7 +25,11 @@ const REPORT_ARGS = {
 };
 
 export function DataSection() {
-  const reportPack = useQuery(api.reportViews.reportPack, REPORT_ARGS) as ReportPack | undefined;
+  const { activeEntity } = useActiveEntity();
+  const reportPack = useQuery(
+    api.reportViews.reportPack,
+    activeEntity.id ? { ...REPORT_ARGS, entityId: activeEntity.id as Id<"entities"> } : REPORT_ARGS,
+  ) as ReportPack | undefined;
 
   function exportBundle() {
     if (!reportPack) return;

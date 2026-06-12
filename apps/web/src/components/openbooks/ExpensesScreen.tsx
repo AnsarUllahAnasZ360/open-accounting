@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
 
 type ExpensesData = FunctionReturnType<typeof api.expensesViews.overview>;
 type Period = "this" | "last";
@@ -28,8 +29,12 @@ function deltaLabel(deltaPct: number | null, isNew: boolean) {
 const DOTS = ["#475467", "#0e9384", "#8c6a3f", "#f79009", "#9da8b6", "#2c2c2c", "#635bff", "#1d6bb5", "#b54708", "#7a4a8c"];
 
 export function ExpensesScreen() {
+  const { activeEntity } = useActiveEntity();
   const [period, setPeriod] = useState<Period>("this");
-  const data = useQuery(api.expensesViews.overview, { period });
+  const data = useQuery(api.expensesViews.overview, {
+    ...(activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : {}),
+    period,
+  });
 
   if (data === undefined) {
     return <section className="rounded-lg border bg-card p-4 text-sm text-muted-foreground shadow-xs">Loading expenses…</section>;

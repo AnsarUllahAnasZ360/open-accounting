@@ -21,6 +21,7 @@ import {
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { CommandPalette } from "@/components/openbooks/CommandPalette";
 import { OpenBooksAIChat } from "@/components/openbooks/OpenBooksAIChat";
 import { Button } from "@/components/ui/button";
@@ -34,13 +35,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { frontendAiStatus, OPENBOOKS_AI_EVENT } from "@/lib/openbooks/ai";
-import { ActiveEntityProvider, type EntityOption } from "@/lib/openbooks/active-entity";
+import { ActiveEntityProvider, useActiveEntity, type EntityOption } from "@/lib/openbooks/active-entity";
 import { appRoutes, mobileRoutes, settingsRoute } from "@/lib/openbooks/content";
 import { openBooksDevAuthBypassEnabled } from "@/lib/openbooks/dev-mode";
 import type { ReportPack } from "@/lib/openbooks/reports-export";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_STORAGE_KEY = "ob:sidebar-collapsed";
+const ACTIVE_ENTITY_STORAGE_KEY = "ob:active-entity-id";
 
 function initials(name: string | null | undefined, fallback = "U") {
   if (!name) return fallback;
@@ -94,18 +96,52 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   const sessionReady = isAuthenticated || devAuthBypass;
   const { signOut } = useAuthActions();
   const viewer = useQuery(api.session.viewer, sessionReady ? {} : "skip");
+  const businesses = useQuery(api.entities.list, sessionReady ? {} : "skip");
+  const [activeEntityId, setActiveEntityId] = useState<string | null>(null);
+  const activeBusinessRows = useMemo(
+    () => businesses?.rows.filter((entity) => !entity.archived) ?? [],
+    [businesses],
+  );
+  useEffect(() => {
+    if (!sessionReady || businesses === undefined) return;
+    if (activeBusinessRows.length === 0) {
+      if (activeEntityId !== null) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- sync selected entity to the loaded workspace entity list.
+        setActiveEntityId(null);
+      }
+      return;
+    }
+    const activeIds = new Set(activeBusinessRows.map((entity) => String(entity.id)));
+    if (activeEntityId && activeIds.has(activeEntityId)) return;
+    let storedId: string | null = null;
+    try {
+      storedId = window.localStorage.getItem(ACTIVE_ENTITY_STORAGE_KEY);
+    } catch {
+      // ignore storage access errors
+    }
+    const nextId = storedId && activeIds.has(storedId) ? storedId : String(activeBusinessRows[0]!.id);
+    setActiveEntityId(nextId);
+  }, [activeBusinessRows, activeEntityId, businesses, sessionReady]);
+  const selectedEntity = useMemo(
+    () => activeBusinessRows.find((entity) => entity.id === activeEntityId) ?? activeBusinessRows[0] ?? null,
+    [activeBusinessRows, activeEntityId],
+  );
+  const selectedEntityId = selectedEntity?.id;
   const reportArgs = useMemo(
     () => ({
+      ...(selectedEntityId ? { entityId: selectedEntityId as Id<"entities"> } : {}),
       startDate: "2026-01-01",
       endDate: "2026-12-31",
       basis: "accrual" as const,
       compare: "none" as const,
       columnMode: "monthly" as const,
     }),
-    [],
+    [selectedEntityId],
   );
-  const reportPack = useQuery(api.reportViews.reportPack, sessionReady ? reportArgs : "skip") as ReportPack | undefined;
-  const businesses = useQuery(api.entities.list, sessionReady ? {} : "skip");
+  const reportPack = useQuery(
+    api.reportViews.reportPack,
+    sessionReady && businesses !== undefined ? reportArgs : "skip",
+  ) as ReportPack | undefined;
   const aiProviderStatus = useQuery(
     api.ai.providerStatus,
     sessionReady && viewer?.workspace?.id ? { workspaceId: viewer.workspace.id } : "skip",
@@ -134,6 +170,16 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   const [paletteMounted, setPaletteMounted] = useState(false);
   const [pendingAiPrompt, setPendingAiPrompt] = useState("");
   const [aiReportPack, setAiReportPack] = useState<ReportPack | undefined>();
+
+  const selectActiveEntity = useCallback((entityId: string) => {
+    setActiveEntityId(entityId);
+    setAiReportPack(undefined);
+    try {
+      window.localStorage.setItem(ACTIVE_ENTITY_STORAGE_KEY, entityId);
+    } catch {
+      // ignore storage access errors
+    }
+  }, []);
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((value) => {
@@ -204,15 +250,14 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   const rawRole = viewer?.role;
   const role = roleLabel(rawRole);
   const canAccessSettings = rawRole === "owner" || rawRole === "admin";
-  const activeEntityName = reportPack?.entity.name ?? "Your business";
+  const activeEntityName = selectedEntity?.name ?? reportPack?.entity.name ?? "Your business";
   const currentRouteLabel = appRoutes.find((route) => route.href === pathname)?.label ?? settingsRoute.label;
 
   const entityOptions: EntityOption[] = useMemo(
     () => {
-      const activeId = reportPack?.entity.id;
-      const rows = businesses?.rows.filter((entity) => !entity.archived) ?? [];
-      if (rows.length) {
-        return rows.map((entity) => ({
+      const activeId = selectedEntity?.id ?? reportPack?.entity.id;
+      if (activeBusinessRows.length) {
+        return activeBusinessRows.map((entity) => ({
           id: entity.id,
           name: entity.name,
           currency: entity.currency,
@@ -232,7 +277,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
           ]
         : [];
     },
-    [businesses, reportPack],
+    [activeBusinessRows, reportPack, selectedEntity?.id],
   );
 
   const activeEntityContext = useMemo(
@@ -240,14 +285,15 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
       workspaceName,
       role,
       activeEntity: {
-        id: reportPack?.entity.id,
+        id: selectedEntity?.id ?? reportPack?.entity.id,
         name: activeEntityName,
-        currency: reportPack?.entity.currency,
-        isDemo: true,
+        currency: selectedEntity?.currency ?? reportPack?.entity.currency,
+        isDemo: selectedEntity?.isDemo ?? false,
       },
       entities: entityOptions,
+      selectEntity: selectActiveEntity,
     }),
-    [activeEntityName, entityOptions, reportPack, role, workspaceName],
+    [activeEntityName, entityOptions, reportPack, role, selectActiveEntity, selectedEntity, workspaceName],
   );
 
   const handleSignOut = useCallback(async () => {
@@ -340,6 +386,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
                 avatarColor={avatarColor}
                 role={role}
                 canAccessSettings={canAccessSettings}
+                onSelectEntity={selectActiveEntity}
                 onCollapse={toggleCollapsed}
                 onCloseMobile={() => setSidebarOpen(false)}
                 onNavigate={() => setSidebarOpen(false)}
@@ -482,8 +529,12 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
 }
 
 function InboxBadge({ collapsed }: { collapsed?: boolean }) {
-  // Inbox count from the existing dashboard query (no new backend).
-  const dashboard = useQuery(api.coreViews.dashboard, {});
+  // Inbox count from the active entity's dashboard query (no new backend).
+  const { activeEntity } = useActiveEntity();
+  const dashboard = useQuery(
+    api.coreViews.dashboard,
+    activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : {},
+  );
   const count = dashboard?.inbox.openCount ?? 0;
 
   if (collapsed) {
@@ -518,6 +569,7 @@ function ExpandedSidebar({
   avatarColor,
   role,
   canAccessSettings,
+  onSelectEntity,
   onCollapse,
   onCloseMobile,
   onNavigate,
@@ -532,6 +584,7 @@ function ExpandedSidebar({
   avatarColor: string;
   role: string;
   canAccessSettings: boolean;
+  onSelectEntity: (entityId: string) => void;
   onCollapse: () => void;
   onCloseMobile: () => void;
   onNavigate: () => void;
@@ -576,6 +629,7 @@ function ExpandedSidebar({
           activeEntityName={activeEntityName}
           entityOptions={entityOptions}
           canAccessSettings={canAccessSettings}
+          onSelectEntity={onSelectEntity}
           onNavigate={onNavigate}
         />
       </div>
@@ -751,11 +805,13 @@ function EntitySwitcher({
   activeEntityName,
   entityOptions,
   canAccessSettings,
+  onSelectEntity,
   onNavigate,
 }: {
   activeEntityName: string;
   entityOptions: EntityOption[];
   canAccessSettings: boolean;
+  onSelectEntity: (entityId: string) => void;
   onNavigate: () => void;
 }) {
   return (
@@ -777,7 +833,17 @@ function EntitySwitcher({
         <DropdownMenuLabel>Businesses</DropdownMenuLabel>
         {entityOptions.length ? (
           entityOptions.map((entity) => (
-            <DropdownMenuItem key={entity.id ?? entity.name} className="gap-2" disabled={entity.active}>
+            <DropdownMenuItem
+              key={entity.id ?? entity.name}
+              className="gap-2"
+              data-testid={entity.id ? `entity-option-${entity.id}` : undefined}
+              disabled={entity.active}
+              onSelect={() => {
+                if (!entity.id) return;
+                onSelectEntity(entity.id);
+                onNavigate();
+              }}
+            >
               <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-[#dcefd2] text-[11px] font-semibold text-[#17540f]">
                 {initials(entity.name, "B")}
               </span>

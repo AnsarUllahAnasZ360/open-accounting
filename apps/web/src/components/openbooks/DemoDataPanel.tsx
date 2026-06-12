@@ -6,8 +6,10 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 
 import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import { Amount } from "@/components/openbooks/primitives";
 import { Button } from "@/components/ui/button";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
 import {
   downloadReportFile,
   settingsDataExportFiles,
@@ -60,6 +62,7 @@ function CountBlock({
 }
 
 export function DemoDataPanel() {
+  const { activeEntity } = useActiveEntity();
   const status = useQuery(api.seedDemo.status, {});
   const seedJob = useQuery(api.seedDemo.jobStatus, {});
   const [state, setState] = useState<ActionState>("idle");
@@ -91,6 +94,7 @@ export function DemoDataPanel() {
     api.reportViews.reportPack,
     latest
       ? {
+          ...(activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : {}),
           startDate: "2026-01-01",
           endDate: "2026-12-31",
           basis: "accrual",
@@ -141,7 +145,7 @@ export function DemoDataPanel() {
             Data
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Reset Acme Studio LLC to the deterministic ledger-backed demo books.
+            Reset Acme Studio LLC to deterministic demo books. Exports follow the selected business in the sidebar.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

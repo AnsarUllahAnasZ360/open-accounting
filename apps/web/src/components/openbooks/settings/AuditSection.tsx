@@ -5,7 +5,9 @@ import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { api } from "../../../../../../convex/_generated/api";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { Input } from "@/components/ui/input";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
 import {
   Select,
   SelectContent,
@@ -23,7 +25,11 @@ const ACTOR_STYLE: Record<string, string> = {
 };
 
 export function AuditSection() {
-  const data = useQuery(api.moduleViews.overview, {});
+  const { activeEntity } = useActiveEntity();
+  const data = useQuery(
+    api.moduleViews.overview,
+    activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : {},
+  );
   const [text, setText] = useState("");
   const [actorKind, setActorKind] = useState<"all" | "ai" | "rule" | "user" | "system">("all");
   const [since, setSince] = useState("");

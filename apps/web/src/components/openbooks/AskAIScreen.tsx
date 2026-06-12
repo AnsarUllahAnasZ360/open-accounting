@@ -6,11 +6,14 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { OpenBooksAIChat } from "@/components/openbooks/OpenBooksAIChat";
 import { CategoryChip, PageHeader } from "@/components/openbooks/primitives";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
 import { frontendAiStatus } from "@/lib/openbooks/ai";
 import { openBooksDevAuthBypassEnabled } from "@/lib/openbooks/dev-mode";
 import type { ReportPack } from "@/lib/openbooks/reports-export";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 export function AskAIScreen() {
+  const { activeEntity } = useActiveEntity();
   const { isAuthenticated } = useConvexAuth();
   const sessionReady = isAuthenticated || openBooksDevAuthBypassEnabled();
   const viewer = useQuery(api.session.viewer, sessionReady ? {} : "skip");
@@ -18,6 +21,7 @@ export function AskAIScreen() {
     api.reportViews.reportPack,
     sessionReady
       ? {
+          ...(activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : {}),
           startDate: "2026-01-01",
           endDate: "2026-12-31",
           basis: "accrual",
@@ -35,7 +39,7 @@ export function AskAIScreen() {
   return (
     <div className="space-y-5">
       <PageHeader
-        eyebrow="Acme Studio LLC"
+        eyebrow={activeEntity.name}
         title="Ask AI"
         description="Ask questions against reports, transactions, balances, contacts, payroll, and confirmed bookkeeping context."
         actions={<CategoryChip active label={aiStatus.mode === "active" ? "Bedrock active" : "Degraded mode"} />}

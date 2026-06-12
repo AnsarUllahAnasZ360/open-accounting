@@ -56,12 +56,17 @@ import {
 } from "@/components/ui/table";
 import { PlaidConnectionPanel } from "@/components/openbooks/PlaidConnectionPanel";
 import { StripeConnectionPanel } from "@/components/openbooks/StripeConnectionPanel";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
 import { aiAutonomyOptions, frontendAiStatus, type AiAutonomyMode } from "@/lib/openbooks/ai";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../convex/_generated/api";
 
 function useModuleOverview() {
-  return useQuery(api.moduleViews.overview, {}) as ModuleOverview | undefined;
+  const { activeEntity } = useActiveEntity();
+  return useQuery(
+    api.moduleViews.overview,
+    activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : {},
+  ) as ModuleOverview | undefined;
 }
 
 function LoadingBlock({ label }: { label: string }) {

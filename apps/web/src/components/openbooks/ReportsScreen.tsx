@@ -54,6 +54,7 @@ import {
   type ReportExportId,
   type ReportPack,
 } from "@/lib/openbooks/reports-export";
+import { useActiveEntity } from "@/lib/openbooks/active-entity";
 import {
   REPORT_PRESETS,
   clampRange,
@@ -66,6 +67,7 @@ import {
 } from "@/lib/openbooks/report-periods";
 import { createAiRequestEvent } from "@/lib/openbooks/ai";
 import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 type ReportBasis = "accrual" | "cash";
 type CompareMode = "none" | "priorPeriod" | "priorYear";
@@ -1126,6 +1128,7 @@ function ActiveReport({
 // ---- Screen --------------------------------------------------------------
 
 export function ReportsScreen() {
+  const { activeEntity } = useActiveEntity();
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlReport = searchParams.get("report") as ReportExportId | null;
@@ -1171,8 +1174,15 @@ export function ReportsScreen() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const queryArgs = useMemo(
-    () => ({ startDate: range.startDate, endDate: range.endDate, basis, compare, columnMode }),
-    [range.startDate, range.endDate, basis, compare, columnMode],
+    () => ({
+      ...(activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : {}),
+      startDate: range.startDate,
+      endDate: range.endDate,
+      basis,
+      compare,
+      columnMode,
+    }),
+    [activeEntity.id, range.startDate, range.endDate, basis, compare, columnMode],
   );
   const pack = useQuery(api.reportViews.reportPack, selectedReport ? queryArgs : "skip") as ReportPack | undefined;
 

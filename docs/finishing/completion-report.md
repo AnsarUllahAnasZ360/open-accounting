@@ -901,5 +901,36 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 - **Next:** finish the H2 screenshot pack for non-external rows first; then run
   final H5 cross-check. Do not deploy unless Ansar reauthorizes it.
 
+### 2026-06-12 — Batch H2 partial: non-external screenshot pack (lead)
+
+- **Changed:** added `tests/e2e/acceptance-h2-pack.spec.ts`, a real-click
+  acceptance slice for three rows that did not require Plaid, Stripe, or Vercel:
+  Contacts, Settings Data export, and mobile Dashboard/Inbox/Transactions/Ask
+  AI. The spec is read-only against the shared demo books: it selects an
+  existing contact, proves a browser JSON download event, and opens mobile
+  surfaces without posting or mutating ledger state.
+- **Evidence / verification:**
+  - `pnpm test:e2e tests/e2e/acceptance-h2-pack.spec.ts` -> **2/2 green**.
+  - Contacts row #8: selecting a directory row updates the profile and asserts
+    default-category + merge affordances. Screenshot:
+    `docs/finishing/evidence/2026-06-12-H2-contacts-profile.png`.
+  - Data export row #11: Settings/Data JSON dump button fired a real browser
+    `download` event with the expected reports-export filename. Screenshot:
+    `docs/finishing/evidence/2026-06-12-H2-data-export.png`.
+  - Mobile row #16: Dashboard, Inbox, Transactions, and Ask AI were checked at
+    390px with no horizontal scroll. Screenshots:
+    `docs/finishing/evidence/2026-06-12-H2-mobile-dashboard.png`,
+    `docs/finishing/evidence/2026-06-12-H2-mobile-inbox.png`,
+    `docs/finishing/evidence/2026-06-12-H2-mobile-transactions.png`,
+    `docs/finishing/evidence/2026-06-12-H2-mobile-ask-ai.png`.
+- **Status:** rows #8, #11, and #16 in the H2 evidence index are now
+  **WORKING/evidenced**. H2 overall remains **PARTIAL** because Inbox
+  keyboard/batch behavior, report export-equals-screen proof, audit cross-link,
+  AI report-answer parity/import split, true PDF raster vision, Plaid hosted
+  item proof, Stripe webhook delivery, and the final H5 cross-check are still
+  open or input-dependent.
+- **Next:** run both gates for this batch, then continue the remaining H2/H5
+  closeout rows. Do not deploy unless Ansar reauthorizes it.
+
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

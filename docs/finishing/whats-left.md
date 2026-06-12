@@ -33,8 +33,9 @@ closeout.
   deployed route.
 - **Still open:** B6 real-Bedrock high/low import split proof · G4 true PDF
   raster-to-Bedrock proof · Plaid hosted-item proof · Stripe webhook delivery
-  proof · H2 missing screenshot/proof rows + final evidence-index cross-check · prod
-  redeploy only if Ansar reauthorizes it.
+  proof · H2 remaining Inbox keyboard/batch, report export-equality, audit
+  cross-link, AI parity/import split, and final evidence-index cross-check ·
+  prod redeploy only if Ansar reauthorizes it.
 
 ---
 
@@ -114,7 +115,7 @@ e2e green.
 | 7 | Reports home→viewer, sane periods, drill-down, cash⇄accrual | ✅ WORKING incl. active-entity report reads |
 | 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B5; B6 import-trigger scheduling/run history evidenced, real-Bedrock split remains |
 | 9 | Settings: 10-section subnav | ✅ WORKING |
-| 10 | Mobile usable at 390px | ◑ PARTIAL → H1 core mobile dashboard now evidenced; full four-surface mobile pack still H2 |
+| 10 | Mobile usable at 390px | ✅ WORKING → H2 real-click pass covers Dashboard, Inbox, Transactions, and Ask AI at 390px with screenshots |
 
 ---
 
@@ -189,7 +190,10 @@ manual import/recategorize/split/CSV/mobile with real clicks, screenshots the
 flow, then archives the throwaway business. Remaining H1/H2: rewrite the rest of
 the acceptance pack to mirror `docs/initiation/acceptance.md` rows 1-18,
 including Inbox keyboard/batch, CSV equals screen, report export equality, and
-all four mobile surfaces. H3 **honest categorization eval is done/evidenced**:
+the final row-by-row cross-check. H2 now has a non-external screenshot pack in
+`tests/e2e/acceptance-h2-pack.spec.ts`: Contacts row selection/profile,
+Settings Data JSON export download, and Dashboard/Inbox/Transactions/Ask AI at
+390px are green with screenshots. H3 **honest categorization eval is done/evidenced**:
 the old "100%" compared the seed to itself; the new harness strips route-visible
 labels, runs the real Bedrock pipeline on a temporary eval business, and reports
 **45/60 correct (75.0%)**, below the 80% target. Evidence:
@@ -202,13 +206,16 @@ chunked/background job. H4 **performance/limits is done/evidenced** with
 dashboard reads 3,948/5,000 rows, report pack reads 3,920/5,000, register rows
 are bounded to 120, and no truncation flags are set. H2 now has a **partial
 evidence index** at
-`docs/finishing/evidence/2026-06-12-H2-acceptance-evidence-index.md`, but still
-needs the missing non-external screenshots/proofs before it can close. H5 docs refresh is
-**partially done/evidenced**: `README.md`, `docs/finishing/how-openbooks-works.md`,
-and `AGENTS.md` now match shipped reality, but final H5 closeout still needs the
-completed H2 evidence pack. Remaining: H2 missing non-external screenshot/proof
-rows and final H5 evidence-index cross-check. Do **not** deploy to Vercel in
-this run unless Ansar reauthorizes it; the account context changed.
+`docs/finishing/evidence/2026-06-12-H2-acceptance-evidence-index.md`, and rows
+#8 Contacts, #11 Data export, and #16 Mobile are now WORKING/evidenced. H2 still
+needs Inbox keyboard/batch, report/export equality, audit cross-link, AI parity /
+import split, true PDF raster vision, Plaid hosted item proof, Stripe webhook
+delivery, and a final H5 evidence-index cross-check before the whole acceptance
+pack can close. H5 docs refresh is **partially done/evidenced**: `README.md`,
+`docs/finishing/how-openbooks-works.md`, and `AGENTS.md` now match shipped
+reality, but final H5 closeout still needs the completed H2 evidence pack. Do
+**not** deploy to Vercel in this run unless Ansar reauthorizes it; the account
+context changed.
 
 ---
 

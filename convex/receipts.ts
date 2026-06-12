@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { makeFunctionReference } from "convex/server";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -15,13 +16,20 @@ import { assertNonNegativeMinorUnit } from "./money";
 import { embedSemanticText, SEMANTIC_MEMORY_DIMENSIONS } from "./semanticMemory";
 
 const documentKindValidator = v.union(v.literal("receipt"), v.literal("bill"));
+const extractionSourceValidator = v.union(
+  v.literal("filename_fixture"),
+  v.literal("manual"),
+  v.literal("bedrock_degraded"),
+  v.literal("bedrock_vision"),
+  v.literal("pdf_text"),
+);
 
 type ExtractedReceipt = {
   vendor: string | null;
   date: string | null;
   totalMinor: number | null;
   confidence: number;
-  source: "filename_fixture" | "manual" | "bedrock_degraded" | "bedrock_vision";
+  source: "filename_fixture" | "manual" | "bedrock_degraded" | "bedrock_vision" | "pdf_text";
   notes: string;
 };
 
@@ -65,12 +73,41 @@ type ReceiptEmbeddingMatch = {
   score: number;
 };
 
+type ReceiptTransactionEmbeddingRow = {
+  transactionId: Id<"transactions">;
+  sourceText: string;
+  embedding: number[];
+  embeddingModel: string;
+};
+
 type ReceiptEmbeddingMatchResult = {
   match: ReceiptEmbeddingMatch | null;
   sourceText: string;
   embedding: number[];
   embeddingModel: string;
 };
+
+const receiptTransactionEmbeddingRowsRef = makeFunctionReference<
+  "query",
+  {
+    entityId: Id<"entities">;
+    transactionIds: Id<"transactions">[];
+    embeddingModel: string;
+  },
+  ReceiptTransactionEmbeddingRow[]
+>("receipts:receiptTransactionEmbeddingRows");
+
+const upsertReceiptTransactionEmbeddingRef = makeFunctionReference<
+  "mutation",
+  {
+    entityId: Id<"entities">;
+    transactionId: Id<"transactions">;
+    sourceText: string;
+    embedding: number[];
+    embeddingModel: string;
+  },
+  { receiptTransactionEmbeddingId: Id<"receiptTransactionEmbeddings">; status: "created" | "updated" }
+>("receipts:upsertReceiptTransactionEmbedding");
 
 function titleCase(value: string) {
   return value
@@ -173,6 +210,66 @@ export function normalizeBedrockReceiptExtraction(
     confidence: vendor && date && totalMinor !== null ? Math.max(confidence, 0.72) : Math.min(confidence, 0.55),
     source: vendor && date && totalMinor !== null ? "bedrock_vision" : "bedrock_degraded",
     notes,
+  };
+}
+
+function unescapePdfString(value: string) {
+  return value
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\(/g, "(")
+    .replace(/\\\)/g, ")")
+    .replace(/\\\\/g, "\\");
+}
+
+export function extractPdfTextFromBytes(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  const matches = Array.from(binary.matchAll(/\(([^()]*)\)/g)).map((match) => unescapePdfString(match[1] ?? ""));
+  return matches.join("\n").replace(/\s+\n/g, "\n").trim();
+}
+
+export function normalizePdfReceiptTextExtraction(
+  text: string,
+  fallbackCurrency: string,
+  fileName: string | null,
+): ExtractedReceipt {
+  const filenameFallback = fileName ? extractReceiptMetadataFromFileName(fileName) : null;
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const joined = lines.join("\n");
+  const vendor =
+    lines
+      .find((line) => /^vendor\s*:/i.test(line))
+      ?.replace(/^vendor\s*:\s*/i, "")
+      .trim() ||
+    lines[0] ||
+    filenameFallback?.vendor ||
+    null;
+  const date = isoDate(joined) ?? filenameFallback?.date ?? null;
+  const totalMatch =
+    joined.match(/(?:total|amount)\s*[:$]?\s*\$?\s*(\d{1,6}(?:\.\d{2})?)/i) ??
+    joined.match(/\$\s*(\d{1,6}(?:\.\d{2})?)/);
+  const totalMinor = totalMatch?.[1]
+    ? Math.round(Number(totalMatch[1]) * 100)
+    : filenameFallback?.totalMinor ?? null;
+  const confidence = vendor && date && totalMinor !== null ? 0.78 : 0.45;
+  return {
+    vendor,
+    date,
+    totalMinor,
+    confidence,
+    source: confidence >= 0.7 ? "pdf_text" : "bedrock_degraded",
+    notes:
+      confidence >= 0.7
+        ? `Extracted ${fallbackCurrency.toUpperCase()} receipt metadata from PDF text.`
+        : "PDF text extraction could not find all receipt fields; review and match manually.",
   };
 }
 
@@ -296,7 +393,7 @@ export function assertReceiptEmbeddingVector(embedding: number[]) {
   }
 }
 
-async function findReceiptMatch(
+async function findReceiptMatchCandidates(
   ctx: MutationCtx,
   args: {
     entityId: Id<"entities">;
@@ -305,7 +402,7 @@ async function findReceiptMatch(
     totalMinor: number;
   },
 ) {
-  if (!args.vendor || !args.date || args.totalMinor <= 0) return null;
+  if (!args.vendor || !args.date || args.totalMinor <= 0) return [];
   const [transactions, documents] = await Promise.all([
     ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", args.entityId)).take(1000),
     ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", args.entityId)).take(1000),
@@ -325,8 +422,110 @@ async function findReceiptMatch(
       const merchantScore = merchantMatches(transaction, args.vendor) ? 1 : 0;
       return { transaction, score: amountScore * 3 + dateScore + merchantScore };
     })
-    .filter((candidate) => candidate.score >= 4)
-    .sort((a, b) => b.score - a.score || b.transaction.date.localeCompare(a.transaction.date))[0]?.transaction ?? null;
+    .filter((candidate) => candidate.score >= 3)
+    .sort((a, b) => b.score - a.score || b.transaction.date.localeCompare(a.transaction.date));
+}
+
+function receiptInboxSummary(args: {
+  kind: "receipt" | "bill";
+  vendor: string;
+  date: string;
+  totalMinor: number;
+  currency: string;
+  candidate: Doc<"transactions"> | null;
+}) {
+  const amount = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: args.currency,
+  }).format(args.totalMinor / 100);
+  const noun = args.kind === "bill" ? "Bill" : "Receipt";
+  if (!args.candidate) {
+    return `${noun} from ${args.vendor} for ${amount} on ${args.date} needs a transaction match.`;
+  }
+  return `${noun} from ${args.vendor} for ${amount} on ${args.date} likely matches ${args.candidate.merchant} on ${args.candidate.date}.`;
+}
+
+async function syncReceiptInboxItem(
+  ctx: MutationCtx,
+  args: {
+    entityId: Id<"entities">;
+    documentId: Id<"documents">;
+    kind: "receipt" | "bill";
+    vendor: string;
+    date: string;
+    totalMinor: number;
+    currency: string;
+    candidateTransactionId?: Id<"transactions">;
+    matchedTransactionId?: Id<"transactions">;
+  },
+) {
+  const now = Date.now();
+  const existing = (await ctx.db
+    .query("inboxItems")
+    .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+    .take(1000))
+    .find((item) => item.kind === "receipt" && item.documentId === args.documentId && item.status === "open");
+  const candidate = args.candidateTransactionId ? await ctx.db.get(args.candidateTransactionId) : null;
+  if (args.matchedTransactionId) {
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        transactionId: args.matchedTransactionId,
+        status: "resolved",
+        updatedAt: now,
+      });
+    }
+    return;
+  }
+  const patch = {
+    ...(candidate ? { transactionId: candidate._id } : {}),
+    documentId: args.documentId,
+    payloadSummary: receiptInboxSummary({
+      kind: args.kind,
+      vendor: args.vendor,
+      date: args.date,
+      totalMinor: args.totalMinor,
+      currency: args.currency,
+      candidate,
+    }),
+    updatedAt: now,
+  };
+  if (existing) {
+    await ctx.db.patch(existing._id, patch);
+    return;
+  }
+  await ctx.db.insert("inboxItems", {
+    entityId: args.entityId,
+    kind: "receipt",
+    status: "open",
+    createdAt: now,
+    ...patch,
+  });
+}
+
+async function resolveReceiptInboxItems(
+  ctx: MutationCtx,
+  args: {
+    entityId: Id<"entities">;
+    documentId: Id<"documents">;
+    transactionId?: Id<"transactions">;
+  },
+) {
+  const now = Date.now();
+  const items = await ctx.db
+    .query("inboxItems")
+    .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+    .take(1000);
+  await Promise.all(
+    items
+      .filter((item) => item.kind === "receipt" && item.documentId === args.documentId && item.status === "open")
+      .map((item) =>
+        ctx.db.patch(item._id, {
+          ...(args.transactionId ? { transactionId: args.transactionId } : {}),
+          status: "resolved",
+          updatedAt: now,
+        }),
+      ),
+  );
 }
 
 export const receiptEmbeddingCandidates = internalQuery({
@@ -399,12 +598,14 @@ export const recordUpload = mutation({
     const currency = args.currency?.trim().toUpperCase() || entity.currency;
     const source = args.vendor || args.date || args.totalMinor !== undefined ? "manual" as const : extracted.source;
     const confidence = source === "manual" ? 0.95 : extracted.confidence;
-    const match = await findReceiptMatch(ctx, {
+    const matchCandidates = await findReceiptMatchCandidates(ctx, {
       entityId: entity._id,
       vendor,
       date,
       totalMinor,
     });
+    const match = matchCandidates.find((candidate) => candidate.score >= 4)?.transaction ?? null;
+    const candidate = matchCandidates[0]?.transaction ?? null;
     const now = Date.now();
     const documentId = await ctx.db.insert("documents", {
       entityId: entity._id,
@@ -425,12 +626,26 @@ export const recordUpload = mutation({
       updatedAt: now,
     });
 
-    if (!match) {
+    await syncReceiptInboxItem(ctx, {
+      entityId: entity._id,
+      documentId,
+      kind: args.kind,
+      vendor,
+      date,
+      totalMinor,
+      currency,
+      ...(candidate ? { candidateTransactionId: candidate._id } : {}),
+      ...(match ? { matchedTransactionId: match._id } : {}),
+    });
+
+    if (match) {
       await ctx.db.insert("inboxItems", {
         entityId: entity._id,
+        documentId,
+        transactionId: match._id,
         kind: "receipt",
-        payloadSummary: `${args.kind === "bill" ? "Bill PDF" : "Receipt"} from ${vendor} needs a manual transaction match.`,
-        status: "open",
+        payloadSummary: `${args.kind === "bill" ? "Bill" : "Receipt"} from ${vendor} auto-matched to ${match.merchant}.`,
+        status: "resolved",
         createdAt: now,
         updatedAt: now,
       });
@@ -460,6 +675,7 @@ export const applyBedrockExtraction = internalMutation({
     currency: v.string(),
     confidence: v.number(),
     notes: v.string(),
+    extractionSource: v.optional(extractionSourceValidator),
     embeddingMatchedTransactionId: v.optional(v.id("transactions")),
     embeddingMatchScore: v.optional(v.number()),
   },
@@ -471,35 +687,57 @@ export const applyBedrockExtraction = internalMutation({
     const entity = await requireEntityForAdmin(ctx, document.entityId);
     assertNonNegativeMinorUnit(args.totalMinor, "Receipt total");
     const currency = args.currency.trim().toUpperCase() || entity.currency;
-    const match = await findReceiptMatch(ctx, {
+    const matchCandidates = await findReceiptMatchCandidates(ctx, {
       entityId: entity._id,
       vendor: args.vendor,
       date: args.date,
       totalMinor: args.totalMinor,
     });
+    const match = matchCandidates.find((candidate) => candidate.score >= 4)?.transaction ?? null;
+    const candidate = matchCandidates[0]?.transaction ?? null;
     const embeddingMatch = args.embeddingMatchedTransactionId
       ? await ctx.db.get(args.embeddingMatchedTransactionId)
       : null;
     if (embeddingMatch && embeddingMatch.entityId !== entity._id) {
       throw new Error("Receipt embedding match must use a transaction from the same entity.");
     }
-    const finalMatch = match ?? embeddingMatch;
+    const existingMatch = document.matchedTransactionId
+      ? await ctx.db.get(document.matchedTransactionId)
+      : null;
+    if (existingMatch && existingMatch.entityId !== entity._id) {
+      throw new Error("Existing receipt match must use a transaction from the same entity.");
+    }
+    const finalMatch = match ?? embeddingMatch ?? existingMatch;
+    const extractionLabel = args.extractionSource === "pdf_text" ? "PDF text extraction" : "Bedrock extraction";
     const notes = match
-      ? `Bedrock extraction auto-matched to ${match.merchant} on ${match.date}.`
-      : finalMatch
-        ? `Bedrock extraction embedding-matched to ${finalMatch.merchant} on ${finalMatch.date} with score ${(args.embeddingMatchScore ?? 0).toFixed(2)}.`
+      ? `${extractionLabel} auto-matched to ${match.merchant} on ${match.date}.`
+      : embeddingMatch
+        ? `${extractionLabel} embedding-matched to ${embeddingMatch.merchant} on ${embeddingMatch.date} with score ${(args.embeddingMatchScore ?? 0).toFixed(2)}.`
+        : existingMatch
+          ? `${extractionLabel} kept the existing match to ${existingMatch.merchant} on ${existingMatch.date}.`
         : args.notes;
     await ctx.db.patch(args.documentId, {
       vendor: args.vendor,
       date: args.date,
       totalMinor: args.totalMinor,
       currency,
-      extractionSource: "bedrock_vision",
+      extractionSource: args.extractionSource ?? "bedrock_vision",
       extractionConfidence: args.confidence,
       extractionNotes: notes,
       matchedTransactionId: finalMatch?._id,
       status: finalMatch ? "matched" : "pending",
       updatedAt: Date.now(),
+    });
+    await syncReceiptInboxItem(ctx, {
+      entityId: entity._id,
+      documentId: document._id,
+      kind: document.kind === "bill" ? "bill" : "receipt",
+      vendor: args.vendor,
+      date: args.date,
+      totalMinor: args.totalMinor,
+      currency,
+      ...(candidate ? { candidateTransactionId: candidate._id } : {}),
+      ...(finalMatch ? { matchedTransactionId: finalMatch._id } : {}),
     });
     return {
       documentId: args.documentId,
@@ -581,6 +819,82 @@ export const upsertReceiptEmbedding = internalMutation({
   },
 });
 
+export const receiptTransactionEmbeddingRows = internalQuery({
+  args: {
+    entityId: v.id("entities"),
+    transactionIds: v.array(v.id("transactions")),
+    embeddingModel: v.string(),
+  },
+  handler: async (ctx, args): Promise<ReceiptTransactionEmbeddingRow[]> => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new Error("OpenBooks entity not found.");
+    }
+    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    const wanted = new Set(args.transactionIds);
+    return (await ctx.db
+      .query("receiptTransactionEmbeddings")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .take(1000))
+      .filter((row) => wanted.has(row.transactionId) && row.embeddingModel === args.embeddingModel && row.status === "ready")
+      .map((row) => ({
+        transactionId: row.transactionId,
+        sourceText: row.sourceText,
+        embedding: row.embedding,
+        embeddingModel: row.embeddingModel,
+      }));
+  },
+});
+
+export const upsertReceiptTransactionEmbedding = internalMutation({
+  args: {
+    entityId: v.id("entities"),
+    transactionId: v.id("transactions"),
+    sourceText: v.string(),
+    embedding: v.array(v.float64()),
+    embeddingModel: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertReceiptEmbeddingVector(args.embedding);
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new Error("OpenBooks entity not found.");
+    }
+    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    const transaction = await ctx.db.get(args.transactionId);
+    if (!transaction || transaction.entityId !== entity._id) {
+      throw new Error("Receipt transaction embedding must belong to this entity.");
+    }
+    const now = Date.now();
+    const existing = (await ctx.db
+      .query("receiptTransactionEmbeddings")
+      .withIndex("by_transaction", (q) => q.eq("transactionId", transaction._id))
+      .collect())
+      .find((row) => row.embeddingModel === args.embeddingModel);
+    const row = {
+      entityId: entity._id,
+      transactionId: transaction._id,
+      sourceText: args.sourceText,
+      embedding: args.embedding,
+      embeddingModel: args.embeddingModel,
+      status: "ready" as const,
+      updatedAt: now,
+    };
+    if (existing) {
+      await ctx.db.replace(existing._id, {
+        ...row,
+        createdAt: existing.createdAt,
+      });
+      return { receiptTransactionEmbeddingId: existing._id, status: "updated" as const };
+    }
+    const receiptTransactionEmbeddingId = await ctx.db.insert("receiptTransactionEmbeddings", {
+      ...row,
+      createdAt: now,
+    });
+    return { receiptTransactionEmbeddingId, status: "created" as const };
+  },
+});
+
 function receiptVisionPrompt(kind: string) {
   return [
     `Extract ${kind === "bill" ? "bill" : "receipt"} fields for OpenBooks.`,
@@ -653,15 +967,38 @@ async function findReceiptEmbeddingMatch(
     date: args.date,
     totalMinor: args.totalMinor,
   });
+  const cachedRows = await ctx.runQuery(receiptTransactionEmbeddingRowsRef, {
+    entityId: args.entityId,
+    transactionIds: candidates.map((candidate) => candidate.transactionId),
+    embeddingModel: receiptEmbedding.modelId,
+  });
+  const cachedByTransactionId = new Map(cachedRows.map((row) => [row.transactionId, row]));
   const scored = await Promise.all(
     candidates.map(async (candidate) => {
-      const candidateEmbedding = await embedSemanticText({
-        modelId: args.embeddingsModel!,
-        text: buildTransactionReceiptMatchText(candidate, args.currency),
-      });
+      const sourceText = buildTransactionReceiptMatchText(candidate, args.currency);
+      const cached = cachedByTransactionId.get(candidate.transactionId);
+      let vector = cached?.sourceText === sourceText ? cached.embedding : null;
+      if (!vector) {
+        const candidateEmbedding = await embedSemanticText({
+          modelId: args.embeddingsModel!,
+          text: sourceText,
+        });
+        vector = candidateEmbedding.vector;
+        try {
+          await ctx.runMutation(upsertReceiptTransactionEmbeddingRef, {
+            entityId: args.entityId,
+            transactionId: candidate.transactionId,
+            sourceText,
+            embedding: vector,
+            embeddingModel: candidateEmbedding.modelId,
+          });
+        } catch {
+          // Matching can still use the live vector if persistence is unavailable.
+        }
+      }
       return {
         transactionId: candidate.transactionId,
-        score: cosineSimilarity(receiptEmbedding.vector, candidateEmbedding.vector),
+        score: cosineSimilarity(receiptEmbedding.vector, vector),
       };
     }),
   );
@@ -678,14 +1015,10 @@ export const extractWithBedrock = action({
     documentId: v.id("documents"),
   },
   handler: async (ctx, args): Promise<
-    | ({ mode: "bedrock" } & ApplyBedrockExtractionResult)
+    | ({ mode: "bedrock" | "pdf_text" } & ApplyBedrockExtractionResult)
     | { mode: "degraded" | "fallback"; status: "skipped"; reason: string }
   > => {
     const context: ReceiptExtractionContext = await ctx.runQuery(internal.receipts.receiptExtractionContext, args);
-    const env = bedrockRuntimeEnv(null);
-    if (!env.ready || !env.modelId) {
-      return { mode: "degraded", status: "skipped", reason: "Bedrock env is absent or incomplete; manual metadata remains available." };
-    }
     if (!context.document.storageId) {
       return { mode: "fallback", status: "skipped", reason: "Document has no stored file to extract." };
     }
@@ -695,6 +1028,37 @@ export const extractWithBedrock = action({
       return { mode: "fallback", status: "skipped", reason: "Stored file could not be read from Convex storage." };
     }
     const mimeType = blob.type || context.document.mimeType || "application/octet-stream";
+    if (mimeType === "application/pdf") {
+      const extracted = normalizePdfReceiptTextExtraction(
+        extractPdfTextFromBytes(await blob.arrayBuffer()),
+        context.entity.currency,
+        context.document.fileName,
+      );
+      if (
+        extracted.source !== "pdf_text" ||
+        !extracted.vendor ||
+        !extracted.date ||
+        extracted.totalMinor === null
+      ) {
+        return { mode: "fallback", status: "skipped", reason: extracted.notes };
+      }
+      const result: ApplyBedrockExtractionResult = await ctx.runMutation(internal.receipts.applyBedrockExtraction, {
+        documentId: context.document.id,
+        vendor: extracted.vendor,
+        date: extracted.date,
+        totalMinor: extracted.totalMinor,
+        currency: context.entity.currency,
+        confidence: extracted.confidence,
+        notes: extracted.notes,
+        extractionSource: "pdf_text",
+      });
+      return { mode: "pdf_text", ...result };
+    }
+
+    const env = bedrockRuntimeEnv(null);
+    if (!env.ready || !env.modelId) {
+      return { mode: "degraded", status: "skipped", reason: "Bedrock env is absent or incomplete; manual metadata remains available." };
+    }
     if (!["image/png", "image/jpeg", "image/webp"].includes(mimeType)) {
       return { mode: "fallback", status: "skipped", reason: "Bedrock receipt extraction currently supports PNG, JPEG, and WebP uploads." };
     }
@@ -813,6 +1177,10 @@ export const manualMatch = mutation({
         createdAt: document.createdAt,
         updatedAt: Date.now(),
       });
+      await resolveReceiptInboxItems(ctx, {
+        entityId: document.entityId,
+        documentId: document._id,
+      });
       return { status: "unmatched" as const };
     }
     const transaction = await ctx.db.get(args.transactionId);
@@ -823,6 +1191,11 @@ export const manualMatch = mutation({
       matchedTransactionId: transaction._id,
       status: "matched",
       updatedAt: Date.now(),
+    });
+    await resolveReceiptInboxItems(ctx, {
+      entityId: document.entityId,
+      documentId: document._id,
+      transactionId: transaction._id,
     });
     return { status: "matched" as const, transactionId: transaction._id };
   },

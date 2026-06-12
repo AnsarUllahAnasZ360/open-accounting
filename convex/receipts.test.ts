@@ -1,22 +1,24 @@
 /// <reference types="vite/client" />
-import { convexTest } from "convex-test";
+import { convexTest, type TestConvex } from "convex-test";
 import { describe, expect, it } from "vitest";
 
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import {
   assertReceiptEmbeddingVector,
   buildReceiptEmbeddingText,
   chooseBestReceiptEmbeddingMatch,
   cosineSimilarity,
-  normalizeBedrockReceiptExtraction,
   extractReceiptMetadataFromFileName,
+  extractPdfTextFromBytes,
+  normalizeBedrockReceiptExtraction,
+  normalizePdfReceiptTextExtraction,
 } from "./receipts";
 import schema from "./schema";
 import { SEMANTIC_MEMORY_DIMENSIONS } from "./semanticMemory";
 
 const modules = import.meta.glob("./**/*.ts");
 
-async function setupReceiptEmbeddingBackend(t: ReturnType<typeof convexTest>) {
+async function setupReceiptEmbeddingBackend(t: TestConvex<typeof schema>) {
   return await t.run(async (ctx) => {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
@@ -82,7 +84,7 @@ async function setupReceiptEmbeddingBackend(t: ReturnType<typeof convexTest>) {
   });
 }
 
-function authed(t: ReturnType<typeof convexTest>, userId: string) {
+function authed(t: TestConvex<typeof schema>, userId: string) {
   return t.withIdentity({
     subject: `${userId}|test-session`,
     tokenIdentifier: "test|owner",
@@ -135,6 +137,25 @@ describe("M11 receipt extraction helpers", () => {
       totalMinor: 9900,
       confidence: 0.84,
       source: "bedrock_vision",
+    });
+  });
+
+  it("extracts PDF text receipt fields into minor units", () => {
+    const pdfLikeBytes = new TextEncoder().encode([
+      "(Vendor: Office Depot)",
+      "(Date: 2026-04-14)",
+      "(Total: $87.19)",
+    ].join("\n")).buffer;
+    const text = extractPdfTextFromBytes(pdfLikeBytes);
+    const result = normalizePdfReceiptTextExtraction(text, "USD", "receipt-office-depot-2026-04-14-87.19.pdf");
+
+    expect(text).toContain("Office Depot");
+    expect(result).toMatchObject({
+      vendor: "Office Depot",
+      date: "2026-04-14",
+      totalMinor: 8719,
+      confidence: 0.78,
+      source: "pdf_text",
     });
   });
 
@@ -233,6 +254,134 @@ describe("M11 receipt extraction helpers", () => {
         matchedTransactionId: ids.transactionId,
         matchScore: 0.93,
         status: "active",
+      });
+    });
+  });
+
+  it("keeps an existing same-document match when a later extraction refines metadata", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupReceiptEmbeddingBackend(t);
+    const session = authed(t, ids.userId);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(ids.documentId, {
+        matchedTransactionId: ids.transactionId,
+        status: "matched",
+      });
+    });
+
+    const result = await session.mutation(internal.receipts.applyBedrockExtraction, {
+      documentId: ids.documentId,
+      vendor: "Amazon Business",
+      date: "2026-04-12",
+      totalMinor: 12845,
+      currency: "USD",
+      confidence: 0.78,
+      notes: "PDF text extracted receipt metadata.",
+      extractionSource: "pdf_text",
+    });
+
+    expect(result).toMatchObject({
+      status: "matched",
+      matchedTransactionId: ids.transactionId,
+      notes: expect.stringContaining("kept the existing match"),
+    });
+    await t.run(async (ctx) => {
+      const document = await ctx.db.get(ids.documentId);
+      expect(document).toMatchObject({
+        matchedTransactionId: ids.transactionId,
+        status: "matched",
+        extractionSource: "pdf_text",
+      });
+    });
+  });
+
+  it("persists one same-entity candidate transaction embedding", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupReceiptEmbeddingBackend(t);
+    const session = authed(t, ids.userId);
+    const vector = Array.from({ length: SEMANTIC_MEMORY_DIMENSIONS }, (_, index) => (index + 1) / SEMANTIC_MEMORY_DIMENSIONS);
+
+    const first = await session.mutation(internal.receipts.upsertReceiptTransactionEmbedding, {
+      entityId: ids.entityId,
+      transactionId: ids.transactionId,
+      sourceText: "transaction_merchant: Amazon Business",
+      embedding: vector,
+      embeddingModel: "amazon.titan-embed-text-v2:0",
+    });
+    const second = await session.mutation(internal.receipts.upsertReceiptTransactionEmbedding, {
+      entityId: ids.entityId,
+      transactionId: ids.transactionId,
+      sourceText: "transaction_merchant: Amazon Business\namount_minor: 12845",
+      embedding: vector,
+      embeddingModel: "amazon.titan-embed-text-v2:0",
+    });
+
+    expect(first).toMatchObject({ status: "created" });
+    expect(second).toMatchObject({ receiptTransactionEmbeddingId: first.receiptTransactionEmbeddingId, status: "updated" });
+    await t.run(async (ctx) => {
+      const rows = await ctx.db
+        .query("receiptTransactionEmbeddings")
+        .withIndex("by_transaction", (q) => q.eq("transactionId", ids.transactionId))
+        .collect();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        entityId: ids.entityId,
+        transactionId: ids.transactionId,
+        status: "ready",
+      });
+    });
+  });
+
+  it("links pending receipt inbox cards to the document and resolves them on manual match", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupReceiptEmbeddingBackend(t);
+    const session = authed(t, ids.userId);
+    const storageId = await t.run(async (ctx) => {
+      return await ctx.storage.store(new Blob(["fixture"], { type: "image/png" }));
+    });
+
+    const upload = await session.mutation(api.receipts.recordUpload, {
+      entityId: ids.entityId,
+      kind: "receipt",
+      storageId,
+      fileName: "receipt-office-depot-2026-04-20-128.45.png",
+      mimeType: "image/png",
+      currency: "USD",
+    });
+
+    expect(upload).toMatchObject({
+      status: "pending",
+      matchedTransactionId: null,
+      vendor: "Office Depot",
+    });
+    const openInbox = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("inboxItems")
+        .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+        .collect();
+    });
+    expect(openInbox).toHaveLength(1);
+    expect(openInbox[0]).toMatchObject({
+      kind: "receipt",
+      status: "open",
+      documentId: upload.documentId,
+      transactionId: ids.transactionId,
+    });
+
+    await session.mutation(api.receipts.manualMatch, {
+      documentId: upload.documentId,
+      transactionId: ids.transactionId,
+    });
+    await t.run(async (ctx) => {
+      const document = await ctx.db.get(upload.documentId);
+      const inboxItem = await ctx.db.get(openInbox[0]._id);
+      expect(document).toMatchObject({
+        matchedTransactionId: ids.transactionId,
+        status: "matched",
+      });
+      expect(inboxItem).toMatchObject({
+        status: "resolved",
+        transactionId: ids.transactionId,
       });
     });
   });

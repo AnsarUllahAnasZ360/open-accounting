@@ -33,6 +33,13 @@ export type ModuleOverview = {
         extractionSource: string;
         extractionConfidence: number;
         extractionNotes: string;
+        candidateTransaction: {
+          id: string;
+          merchant: string;
+          date: string;
+          amountMinor: number;
+          currency: string;
+        } | null;
         matchedTransaction: {
           id: string;
           merchant: string;

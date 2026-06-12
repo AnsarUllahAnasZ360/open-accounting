@@ -263,15 +263,17 @@ export const inbox = query({
     const entity = await getActiveEntity(ctx);
     if (!entity) return null;
 
-    const [items, transactions, accounts, bankAccounts] = await Promise.all([
+    const [items, transactions, accounts, bankAccounts, documents] = await Promise.all([
       ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
       ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
       ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
       ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
+      ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).collect(),
     ]);
     const transactionsById = new Map(transactions.map((transaction) => [transaction._id, transaction]));
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
     const bankAccountsById = new Map(bankAccounts.map((account) => [account._id, account]));
+    const documentsById = new Map(documents.map((document) => [document._id, document]));
     const openItems = items
       .filter((item) => item.status === "open")
       .sort((a, b) => b.createdAt - a.createdAt);
@@ -280,6 +282,7 @@ export const inbox = query({
       entity: { id: entity._id, currency: entity.currency },
       items: openItems.map((item) => {
         const transaction = item.transactionId ? transactionsById.get(item.transactionId) : null;
+        const document = item.documentId ? documentsById.get(item.documentId) : null;
         const category = transaction?.categoryAccountId ? accountsById.get(transaction.categoryAccountId) : null;
         const bankAccount = transaction?.bankAccountId ? bankAccountsById.get(transaction.bankAccountId) : null;
         return {
@@ -287,14 +290,41 @@ export const inbox = query({
           kind: item.kind,
           summary: item.payloadSummary,
           transactionId: transaction?._id ?? null,
-          merchant: transaction?.merchant ?? item.kind,
-          date: transaction?.date ?? null,
-          amountMinor: transaction ? signedTransactionAmount(transaction) : 0,
-          confidence: transaction?.confidence ?? null,
+          documentId: document?._id ?? null,
+          merchant: document?.vendor ?? transaction?.merchant ?? item.kind,
+          date: document?.date ?? transaction?.date ?? null,
+          amountMinor: document ? -document.totalMinor : transaction ? signedTransactionAmount(transaction) : 0,
+          confidence: document?.extractionConfidence ?? transaction?.confidence ?? null,
           reasoning: transaction?.reasoning ?? null,
           categoryName: category?.name ?? "Needs category",
           categoryAccountId: category?._id ?? null,
           bankAccountName: bankAccount?.name ?? "OpenBooks",
+          receiptDocument: document
+            ? {
+                id: document._id,
+                kind: document.kind,
+                vendor: document.vendor,
+                date: document.date,
+                totalMinor: document.totalMinor,
+                currency: document.currency,
+                fileName: document.fileName ?? null,
+                status: document.status,
+                extractionSource: document.extractionSource ?? null,
+                extractionConfidence: document.extractionConfidence ?? null,
+                extractionNotes: document.extractionNotes ?? null,
+                matchedTransactionId: document.matchedTransactionId ?? null,
+                candidate: transaction
+                  ? {
+                      id: transaction._id,
+                      merchant: transaction.merchant,
+                      date: transaction.date,
+                      amountMinor: transaction.amountMinor,
+                      bankAccountName: bankAccount?.name ?? "OpenBooks",
+                      categoryName: category?.name ?? "Needs category",
+                    }
+                  : null,
+              }
+            : null,
         };
       }),
       categoryOptions: accounts

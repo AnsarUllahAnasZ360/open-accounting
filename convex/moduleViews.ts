@@ -156,6 +156,7 @@ export const overview = query({
       employees,
       payrollRuns,
       documents,
+      inboxItems,
       auditEvents,
       journalEntries,
     ] = await Promise.all([
@@ -169,6 +170,7 @@ export const overview = query({
       ctx.db.query("employees").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
       ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(60),
       ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
+      ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
       ctx.db.query("auditEvents").withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId)).order("desc").take(200),
       ctx.db.query("journalEntries").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).order("desc").take(1000),
     ]);
@@ -179,6 +181,11 @@ export const overview = query({
     const documentsById = new Map(documents.map((document) => [document._id, document]));
     const transactionsById = new Map(transactions.map((transaction) => [transaction._id, transaction]));
     const journalEntriesById = new Map(journalEntries.map((entry) => [entry._id as string, entry]));
+    const receiptInboxByDocumentId = new Map(
+      inboxItems
+        .filter((item) => item.kind === "receipt" && item.documentId && item.status === "open")
+        .map((item) => [item.documentId!, item]),
+    );
 
     const invoicesByContact = new Map<Id<"contacts">, Doc<"invoices">[]>();
     for (const invoice of invoices) {
@@ -365,6 +372,10 @@ export const overview = query({
           const matchedTransaction = document.matchedTransactionId
             ? transactionsById.get(document.matchedTransactionId)
             : null;
+          const inboxItem = receiptInboxByDocumentId.get(document._id) ?? null;
+          const candidateTransaction = inboxItem?.transactionId
+            ? transactionsById.get(inboxItem.transactionId)
+            : null;
           return {
             id: document._id,
             kind: document.kind,
@@ -378,6 +389,15 @@ export const overview = query({
             extractionSource: document.extractionSource ?? "manual",
             extractionConfidence: document.extractionConfidence ?? 0,
             extractionNotes: document.extractionNotes ?? "Seeded document.",
+            candidateTransaction: candidateTransaction
+              ? {
+                  id: candidateTransaction._id,
+                  merchant: candidateTransaction.merchant,
+                  date: candidateTransaction.date,
+                  amountMinor: candidateTransaction.amountMinor,
+                  currency: candidateTransaction.currency,
+                }
+              : null,
             matchedTransaction: matchedTransaction
               ? {
                   id: matchedTransaction._id,
@@ -492,7 +512,7 @@ export const overview = query({
         matchCandidates: openBankTransactions,
         uploadPdf: {
           status: "available",
-          reason: "Upload stores the file in Convex, extracts fixture/manual metadata, then auto-matches or queues a receipt inbox card.",
+          reason: "Upload stores the file in Convex, extracts image or PDF text metadata, then auto-matches or queues a receipt inbox card.",
           documents: receiptDocuments,
         },
       },

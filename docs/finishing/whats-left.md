@@ -22,13 +22,15 @@ and the final verification closeout.
   4-hour cron, verified webhook receiver, real `/transactions/sync` action, and
   Settings `Sync now` control. Stripe G3 now has event dedupe, targeted
   invoice/charge/payout sync, `system:sync` ledger posting, and persisted
-  `stripePayoutLines`. Row #3 is still **PARTIAL** until a hosted Plaid Link
-  session produces a real sandbox item and that item sync is proven end to end;
-  row #4 is still **PARTIAL** until a real Stripe CLI/Dashboard test webhook is
-  delivered to the deployed route.
+  `stripePayoutLines`. G4 now has receipt PDF text + image upload, linked
+  receipt Inbox cards, persisted candidate transaction embeddings, and a
+  transaction receipt-chip proof. Row #3 is still **PARTIAL** until a hosted
+  Plaid Link session produces a real sandbox item and that item sync is proven
+  end to end; row #4 is still **PARTIAL** until a real Stripe CLI/Dashboard test
+  webhook is delivered to the deployed route.
 - **Still open:** F1 onboarding stepper · B6 post-import AI run history · G4-G5
-  receipts/entity read models · Stripe webhook delivery proof · H verification
-  closeout · prod redeploy only if Ansar reauthorizes it.
+  remaining receipt gaps/entity read models · Stripe webhook delivery proof · H
+  verification closeout · prod redeploy only if Ansar reauthorizes it.
 
 ---
 
@@ -103,8 +105,8 @@ e2e green.
 | 2 | Shell: collapse rail, footer profile/settings/logout, ⌘K, switcher, Ask AI ⌘J | ✅ WORKING |
 | 3 | Plaid sandbox real Link → sync → ledger/inbox | ◑ PARTIAL → G1a UI/exchange + G2 server sync path done; needs hosted Plaid item proof |
 | 4 | Stripe test mode event-driven sync + payout reconcile | ◑ PARTIAL → G3 code verified; needs real Stripe CLI/Dashboard webhook delivery proof |
-| 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → Epic H rewrites assertions |
-| 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING |
+| 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → receipt cards now have G4 evidence; Epic H still rewrites general assertions |
+| 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING; receipt upload/chip evidenced, full PDF raster + create-expense path still partial |
 | 7 | Reports home→viewer, sane periods, drill-down, cash⇄accrual | ✅ WORKING |
 | 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B5; B6 import-trigger scheduling remains |
 | 9 | Settings: 10-section subnav | ✅ WORKING |
@@ -153,8 +155,15 @@ browser. G3 Stripe is **implemented/evidenced but row #4 remains PARTIAL**:
 webhook events dedupe, targeted invoice/charge/payout sync, `system:sync`
 posting, invoice status update, and persisted `stripePayoutLines` are covered by
 unit tests + Settings e2e, but a real Stripe CLI/Dashboard test webhook has not
-yet been delivered to the cloud route. Next: G4 receipts PDF + persisted vectors
-and inbox card, and G5 entity-scoped read models + pagination/`take()` guards.
+yet been delivered to the cloud route. G4 receipt upload is now
+**partially implemented/evidenced**: PDF text extraction, image upload, linked
+Inbox cards, persisted candidate transaction embeddings, document-specific
+suggested match, and transaction receipt chip proof are green in
+`convex/receipts.test.ts` and `tests/e2e/receipts-g4.spec.ts`; remaining G4 gaps
+are true first-page PDF raster-to-Bedrock vision and the create-expense path that
+posts a balanced entry. Next: G5 entity-scoped read models +
+pagination/`take()` guards, then decide whether to finish the remaining G4 gaps
+before H closeout.
 
 ### E. Epic H — Verification, honest eval, closeout  _(last)_
 Plan Epic H. H1 rewrite the legacy e2e specs to real clicks (remove the

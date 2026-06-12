@@ -63,7 +63,7 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | PARTIAL | `convex/plaid.test.ts` 15/15 + `convex/plaidWebhook.test.ts` 2/2 + `tests/e2e/plaid-link.spec.ts` 3/3 + 3 screenshots | G1 mounts the Plaid Link client and persists exchanged access tokens server-side without leaking them. G2 adds item-level cursor state, `system:sync`, 4h cron, verified Plaid webhook signature handling, real `/transactions/sync`, server-side removal reversal, and a Settings `Sync now` control. Still not WORKING: no completed hosted Plaid Link session + real Plaid sandbox item sync has been proven end-to-end in the browser. |
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | `convex/stripe.test.ts` 6/6 + `convex/stripeWebhook.test.ts` 3/3 + `tests/e2e/stripe-g3.spec.ts` 1/1 + screenshot | G3 code is implemented: Stripe test-mode webhooks dedupe, trigger targeted invoice/charge/payout sync, post through `system:sync`, and persist `stripePayoutLines`; UI reads persisted child rows. Still not WORKING until a real Stripe CLI/Dashboard test webhook is delivered to `/stripe/webhook` on the cloud site and proves invoice/payout update end-to-end. |
 | 5 | Inbox: confirm / correct / rule / batch / keyboard | PARTIAL | inherited | Epic H rewrites assertions; batch + keyboard unverified. |
-| 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + 41 unit | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Partial: receipt-PDF bill intake (Epic G); seeded-bill auto-match e2e skips when no seeded candidate (unit-proven). |
+| 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + `tests/e2e/receipts-g4.spec.ts` G4 + `convex/receipts.test.ts` 12/12 | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Receipt PDF/text + image upload now creates reviewable evidence and transaction receipt chip; still PARTIAL for full first-page PDF raster-to-Bedrock and create-expense-from-receipt path. |
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper. Partial: CSV==screen equality not yet automated (export button works); exhaustive compare-column coverage deferred to H. |
 | 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | WORKING | B1–B3 unit tests + live Bedrock smoke + `tests/e2e/ai-chat.spec.ts` 4/4 + 5 screenshots | Live Bedrock answer renders markdown table and survives reload; New conversation resets thread; durable proposal card confirms through `api.proposals.confirmProposal` on a temporary business, then archives it; desktop dock and mobile sheet verified. Named remaining B6 gap: post-import AI categorizer scheduling/run history is not part of this row and remains for the integrations/pipeline batch. |
 | 9 | Settings: 10-section subnav, all real | WORKING | `tests/e2e/settings.spec.ts` 3/3 + `convex/settings.test.ts` 4/4 + 6 screenshots; F3 invite/staff role path in `tests/e2e/profile-team.spec.ts` + screenshots | 10 sections real-click verified; Add business creates an entity, appears in the switcher, archive hides it while preserving audit history; AI autonomy persists; rule reorder persists; audit filter verified. Team invite copy-link acceptance works; Plunk email delivery remains optional/unconfigured. Named downstream partial: full entity data-switch is G5. |
@@ -526,6 +526,51 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   with `STRIPE_WEBHOOK_SECRET`, proving external delivery plus end-to-end invoice
   or payout update. No live Stripe keys were accepted or used.
 - **Next:** G4 receipt PDF intake, then G5 entity-scoped read models/pagination.
+
+### 2026-06-12 — Batch G4: receipt PDF/text intake + receipt chip proof (lead)
+
+- **Changed:** receipt uploads now carry a real `documents` → `inboxItems`
+  relationship (`inboxItems.documentId`) so receipt review cards can render
+  extracted fields and a specific candidate transaction instead of a loose text
+  summary. Manual receipt matching now resolves the linked receipt Inbox card.
+- **PDF/image extraction:** added deterministic PDF text extraction for
+  text-bearing PDFs and kept image uploads on the existing Bedrock/manual path.
+  Important honesty note: this is **not** full first-page PDF rasterization into
+  the Bedrock vision pipeline yet. The runtime does not currently ship a PDF
+  rasterizer, so first-page image rendering remains a named G4 gap.
+- **Matching/idempotency:** persisted reusable candidate transaction embeddings
+  in `receiptTransactionEmbeddings`. Fixed a real bug found by the browser
+  proof: a refined extraction pass could overwrite an existing same-document
+  match back to `pending` because the matcher excluded the document's own
+  already-matched transaction. `applyBedrockExtraction` now preserves a valid
+  existing same-entity match unless a better match is found.
+- **UI:** Bills upload evidence rows expose only a document-specific suggested
+  match (no more arbitrary "first candidate" shortcut). Inbox receipt cards show
+  extracted fields beside the candidate, and Transactions shows the matched
+  receipt chip/preview from the document read model.
+- **Evidence / verification:**
+  - `pnpm exec vitest run convex/receipts.test.ts` -> **12/12 green**. New
+    assertions cover PDF text parsing, persisted transaction-embedding reuse,
+    linked receipt Inbox cards, manual-match resolution, and the idempotency bug
+    above.
+  - `pnpm exec playwright test tests/e2e/receipts-g4.spec.ts --project=chromium`
+    -> **1/1 green real-click**. The spec discovers an unreceipted outflow,
+    generates a matching PDF, uploads it through the file chooser, confirms the
+    suggested review path when needed, uploads an image receipt with manual
+    metadata, then verifies the Transactions drawer shows the matched receipt
+    preview.
+  - Screenshot:
+    `docs/finishing/evidence/2026-06-12-G4-receipts-pdf-image-chip.png`.
+  - Batch gates: `pnpm verify` -> **green** (typecheck, lint, build,
+    **140/140 unit**); `npx convex dev --once` -> **green** against cloud dev
+    `ceaseless-mandrill-524`.
+- **Status:** receipt evidence upload + receipt chip behavior is **implemented
+  and evidenced**, but G4 remains **PARTIAL** against the full implementation
+  plan. Missing pieces: true first-page PDF raster-to-Bedrock vision, the
+  create-expense-from-receipt path that posts a balanced entry, and email-in
+  remains out of scope per the plan.
+- **Next:** G5 entity-scoped read models + pagination/`take()` guards, while
+  carrying the remaining G4 gaps into H/closeout if not finished.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

@@ -484,7 +484,6 @@ export function BillsScreen() {
   if (data === undefined) return <LoadingBlock label="bills" />;
   if (!data.entity) return <NoEntityState />;
   const entity = data.entity;
-  const matchCandidates = data.bills.matchCandidates;
 
   async function uploadReceiptFiles(files: FileList | null) {
     const file = files?.[0];
@@ -517,15 +516,16 @@ export function BillsScreen() {
       const bedrockResult = hasManualOverrides
         ? null
         : await extractReceiptWithBedrock({ documentId: result.documentId });
+      const extractionLabel = bedrockResult?.mode === "pdf_text" ? "PDF text" : "Bedrock";
       setUploadMessage(
-        bedrockResult?.mode === "bedrock"
+        bedrockResult?.mode === "bedrock" || bedrockResult?.mode === "pdf_text"
           ? bedrockResult.status === "matched"
-            ? `Uploaded ${file.name}: Bedrock extracted ${bedrockResult.vendor} and auto-matched it.`
-            : `Uploaded ${file.name}: Bedrock extracted ${bedrockResult.vendor}; queued for match.`
+            ? `Uploaded ${file.name}: ${extractionLabel} extracted ${bedrockResult.vendor} and auto-matched it.`
+            : `Uploaded ${file.name}: ${extractionLabel} extracted ${bedrockResult.vendor}; queued for match.`
           : result.status === "matched"
           ? `Uploaded ${file.name}: auto-matched to a bank transaction.`
           : bedrockResult
-            ? `Uploaded ${file.name}: queued for manual match. ${bedrockResult.reason}`
+            ? `Uploaded ${file.name}: queued for manual match. ${"reason" in bedrockResult ? bedrockResult.reason : bedrockResult.notes}`
             : `Uploaded ${file.name}: queued for manual match.`,
       );
       setVendor("");
@@ -538,13 +538,16 @@ export function BillsScreen() {
     }
   }
 
-  async function matchFirstCandidate(documentId: string) {
-    const candidate = matchCandidates[0];
+  async function matchSuggestedCandidate(document: {
+    id: string;
+    candidateTransaction?: { id: string; merchant: string } | null;
+  }) {
+    const candidate = document.candidateTransaction;
     if (!candidate) return;
     setUploadMessage("");
     try {
       await manualMatchReceipt({
-        documentId: documentId as Id<"documents">,
+        documentId: document.id as Id<"documents">,
         transactionId: candidate.id as Id<"transactions">,
       });
       setUploadMessage(`Manual match saved to ${candidate.merchant}.`);
@@ -670,10 +673,10 @@ export function BillsScreen() {
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={data.bills.matchCandidates.length === 0}
-                          onClick={() => void matchFirstCandidate(document.id)}
+                          disabled={!document.candidateTransaction}
+                          onClick={() => void matchSuggestedCandidate(document)}
                         >
-                          Manual match first candidate
+                          Confirm suggested match
                         </Button>
                       ) : null}
                     </div>

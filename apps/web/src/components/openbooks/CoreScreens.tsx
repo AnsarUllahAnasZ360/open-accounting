@@ -270,6 +270,7 @@ export function InboxScreen() {
   const confirmTransaction = useAction(api.semanticMemory.confirmTransactionWithMemoryEmbedding);
   const excludeTransaction = useMutation(api.pipeline.excludeTransaction);
   const createRuleFromTransaction = useMutation(api.pipeline.createRuleFromTransaction);
+  const confirmReceiptMatch = useMutation(api.receipts.manualMatch);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>("");
   const [checkedItemIds, setCheckedItemIds] = useState<Set<string>>(new Set());
@@ -285,7 +286,8 @@ export function InboxScreen() {
   );
   const chosenCategoryId = categoryId || selected?.categoryAccountId || inbox?.categoryOptions[0]?.id || "";
   const selectedIndex = inbox?.items.findIndex((item) => item.id === selected?.id) ?? -1;
-  const selectedBatchItems = inbox?.items.filter((item) => checkedItemIds.has(item.id) && item.transactionId) ?? [];
+  const selectedReceipt = selected?.receiptDocument ?? null;
+  const selectedBatchItems = inbox?.items.filter((item) => checkedItemIds.has(item.id) && item.transactionId && item.kind !== "receipt") ?? [];
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -310,7 +312,8 @@ export function InboxScreen() {
       }
       if (event.key === "Enter") {
         event.preventDefault();
-        void confirmSelected();
+        if (selectedReceipt) void confirmReceiptSelected();
+        else void confirmSelected();
       }
     }
 
@@ -319,7 +322,7 @@ export function InboxScreen() {
   });
 
   async function confirmSelected() {
-    if (!selected?.transactionId || !chosenCategoryId) return;
+    if (selected?.kind === "receipt" || !selected?.transactionId || !chosenCategoryId) return;
     setPending(true);
     setMessage("");
     try {
@@ -340,7 +343,7 @@ export function InboxScreen() {
   }
 
   async function excludeSelected() {
-    if (!selected?.transactionId) return;
+    if (selected?.kind === "receipt" || !selected?.transactionId) return;
     setPending(true);
     setMessage("");
     try {
@@ -380,7 +383,7 @@ export function InboxScreen() {
   }
 
   async function saveRuleFromSelected() {
-    if (!selected?.transactionId || !chosenCategoryId) return;
+    if (selected?.kind === "receipt" || !selected?.transactionId || !chosenCategoryId) return;
     setPending(true);
     setMessage("");
     try {
@@ -389,6 +392,26 @@ export function InboxScreen() {
         categoryAccountId: chosenCategoryId as Id<"ledgerAccounts">,
       });
       setMessage("Rule saved for future matching.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function confirmReceiptSelected() {
+    if (!selectedReceipt || !selected?.transactionId) return;
+    setPending(true);
+    setMessage("");
+    try {
+      await confirmReceiptMatch({
+        documentId: selectedReceipt.id as Id<"documents">,
+        transactionId: selected.transactionId as Id<"transactions">,
+      });
+      setCheckedItemIds((current) => {
+        const next = new Set(current);
+        next.delete(selected.id);
+        return next;
+      });
+      setMessage("Receipt match confirmed. The transaction now carries the receipt chip.");
     } finally {
       setPending(false);
     }
@@ -438,7 +461,9 @@ export function InboxScreen() {
                 aria-label={`Select ${item.merchant}`}
                 checked={checkedItemIds.has(item.id)}
                 className="mt-1"
+                disabled={item.kind === "receipt"}
                 onChange={(event) => {
+                  if (item.kind === "receipt") return;
                   const checked = event.currentTarget.checked;
                   setCheckedItemIds((current) => {
                     const next = new Set(current);
@@ -482,46 +507,128 @@ export function InboxScreen() {
                 <Amount amountMinor={selected.amountMinor} />
               </div>
               <div className="rounded-lg border px-3 py-2">
-                <div className="text-xs text-muted-foreground">Account</div>
-                <div className="mt-1 text-sm font-medium">{selected.bankAccountName}</div>
+                <div className="text-xs text-muted-foreground">{selectedReceipt ? "Candidate" : "Account"}</div>
+                <div className="mt-1 text-sm font-medium">
+                  {selectedReceipt?.candidate ? selectedReceipt.candidate.bankAccountName : selected.bankAccountName}
+                </div>
               </div>
             </div>
-            <div className="grid gap-1.5">
-              <Label>Category</Label>
-              <Select value={chosenCategoryId} onValueChange={setCategoryId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {inbox.categoryOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.number} - {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="rounded-lg border p-3 text-sm text-muted-foreground">
-              {selected.reasoning ?? "No rule or match reached the posting threshold. Confirming will post through the ledger."}
-            </div>
+            {selectedReceipt ? (
+              <div className="grid gap-3 md:grid-cols-2" data-testid="receipt-inbox-card">
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <ReceiptText className="size-4 text-primary" />
+                    Extracted receipt
+                  </div>
+                  <div className="mt-3 grid gap-2 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Vendor</span>
+                      <span className="text-right font-medium">{selectedReceipt.vendor}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Date</span>
+                      <span className="text-right font-medium">{selectedReceipt.date}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Total</span>
+                      <Amount amountMinor={selectedReceipt.totalMinor} />
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">File</span>
+                      <span className="truncate text-right font-medium">{selectedReceipt.fileName ?? "Receipt file"}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <FileText className="size-4 text-primary" />
+                    Candidate transaction
+                  </div>
+                  {selectedReceipt.candidate ? (
+                    <div className="mt-3 grid gap-2 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Merchant</span>
+                        <span className="text-right font-medium">{selectedReceipt.candidate.merchant}</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Date</span>
+                        <span className="text-right font-medium">{selectedReceipt.candidate.date}</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Amount</span>
+                        <Amount amountMinor={selectedReceipt.candidate.amountMinor} />
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Category</span>
+                        <span className="text-right font-medium">{selectedReceipt.candidate.categoryName}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-md bg-muted p-3 text-sm text-muted-foreground">No close transaction candidate yet.</div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-1.5">
+                  <Label>Category</Label>
+                  <Select value={chosenCategoryId} onValueChange={setCategoryId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {inbox.categoryOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.number} - {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="rounded-lg border p-3 text-sm text-muted-foreground">
+                  {selected.reasoning ?? "No rule or match reached the posting threshold. Confirming will post through the ledger."}
+                </div>
+              </>
+            )}
             {message ? (
               <div className="rounded-lg border bg-primary/5 p-3 text-sm text-primary" data-testid="inbox-message">
                 {message}
               </div>
             ) : null}
             <div className="flex flex-wrap gap-2">
-              <Button data-testid="inbox-confirm" onClick={confirmSelected} disabled={pending || !selected.transactionId || !chosenCategoryId}>
-                <Check className="size-4" />
-                Confirm and post
-              </Button>
-              <Button variant="outline" onClick={saveRuleFromSelected} disabled={pending || !selected.transactionId || !chosenCategoryId}>
-                <Layers2 className="size-4" />
-                Always do this
-              </Button>
-              <Button variant="outline" onClick={excludeSelected} disabled={pending || !selected.transactionId}>
-                <X className="size-4" />
-                Exclude
-              </Button>
+              {selectedReceipt ? (
+                <>
+                  <Button data-testid="receipt-confirm-match" onClick={confirmReceiptSelected} disabled={pending || !selected.transactionId}>
+                    <Check className="size-4" />
+                    Confirm receipt match
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href="/bills">
+                      <Search className="size-4" />
+                      Pick other
+                    </Link>
+                  </Button>
+                  <Button variant="outline" disabled>
+                    <FileUp className="size-4" />
+                    Create expense
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button data-testid="inbox-confirm" onClick={confirmSelected} disabled={pending || !selected.transactionId || !chosenCategoryId}>
+                    <Check className="size-4" />
+                    Confirm and post
+                  </Button>
+                  <Button variant="outline" onClick={saveRuleFromSelected} disabled={pending || !selected.transactionId || !chosenCategoryId}>
+                    <Layers2 className="size-4" />
+                    Always do this
+                  </Button>
+                  <Button variant="outline" onClick={excludeSelected} disabled={pending || !selected.transactionId}>
+                    <X className="size-4" />
+                    Exclude
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         ) : null}

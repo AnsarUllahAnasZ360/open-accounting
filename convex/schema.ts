@@ -369,6 +369,7 @@ export default defineSchema({
   inboxItems: defineTable({
     entityId: v.id("entities"),
     transactionId: v.optional(v.id("transactions")),
+    documentId: v.optional(v.id("documents")),
     kind: v.union(
       v.literal("categorize"),
       v.literal("receipt"),
@@ -392,7 +393,15 @@ export default defineSchema({
     date: v.string(),
     totalMinor: v.number(),
     currency: v.string(),
-    extractionSource: v.optional(v.union(v.literal("filename_fixture"), v.literal("manual"), v.literal("bedrock_degraded"), v.literal("bedrock_vision"))),
+    extractionSource: v.optional(
+      v.union(
+        v.literal("filename_fixture"),
+        v.literal("manual"),
+        v.literal("bedrock_degraded"),
+        v.literal("bedrock_vision"),
+        v.literal("pdf_text"),
+      ),
+    ),
     extractionConfidence: v.optional(v.number()),
     extractionNotes: v.optional(v.string()),
     matchedTransactionId: v.optional(v.id("transactions")),
@@ -423,6 +432,18 @@ export default defineSchema({
       dimensions: 1024,
       filterFields: ["entityId"],
     }),
+  receiptTransactionEmbeddings: defineTable({
+    entityId: v.id("entities"),
+    transactionId: v.id("transactions"),
+    sourceText: v.string(),
+    embedding: v.array(v.float64()),
+    embeddingModel: v.string(),
+    status: v.union(v.literal("ready"), v.literal("stale")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_transaction", ["transactionId"]),
   invoices: defineTable({
     entityId: v.id("entities"),
     contactId: v.id("contacts"),

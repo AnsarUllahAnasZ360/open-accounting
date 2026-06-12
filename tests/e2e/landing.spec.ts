@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+const EVIDENCE = "docs/finishing/evidence";
+
 test("landing shell renders the OpenBooks bootstrap surface", async ({ page }) => {
   await page.goto("/");
 
@@ -18,11 +20,20 @@ test("landing shell renders the OpenBooks bootstrap surface", async ({ page }) =
   await expect(page.getByRole("heading", { name: "Honest answers" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Work email" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Request access" })).toBeVisible();
+  await page.screenshot({ path: `${EVIDENCE}/2026-06-12-H2-landing-page.png`, fullPage: true });
 });
 
-test("app shell routes are gated for signed-out visitors", async ({ page }) => {
+test("local app route opens owner demo through dev-auth bypass", async ({ page }) => {
+  test.skip(
+    process.env.NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS === "0",
+    "This local evidence row proves the dev-auth access path; signed-out auth is covered separately.",
+  );
+
   await page.goto("/dashboard");
 
-  await expect(page.getByText("Invite-only access")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible({ timeout: 30000 });
+  await expect(page.getByTestId("dashboard-screen")).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText("OpenBooks Owner")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Ask AI/ })).toBeVisible();
+  await page.screenshot({ path: `${EVIDENCE}/2026-06-12-H2-dev-auth-dashboard-access.png`, fullPage: true });
 });

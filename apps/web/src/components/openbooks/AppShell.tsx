@@ -76,7 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <p className="mt-4 text-sm text-muted-foreground">
-            Configure `NEXT_PUBLIC_CONVEX_URL` to activate invite-only access locally.
+            Configure `NEXT_PUBLIC_CONVEX_URL` to activate OpenBooks locally.
           </p>
           <Button asChild className="mt-4 w-full">
             <Link href="/sign-in">Sign in</Link>
@@ -323,11 +323,11 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
             </span>
             <div>
               <div className="text-sm font-semibold">open books</div>
-              <div className="text-xs text-muted-foreground">Invite-only access</div>
+              <div className="text-xs text-muted-foreground">Sign in required</div>
             </div>
           </div>
           <p className="mt-4 text-sm text-muted-foreground">
-            Sign in with an invited account to view this workspace.
+            Sign in or request hosted access to view this workspace.
           </p>
           <Button asChild className="mt-4 w-full">
             <Link href="/sign-in">Sign in</Link>

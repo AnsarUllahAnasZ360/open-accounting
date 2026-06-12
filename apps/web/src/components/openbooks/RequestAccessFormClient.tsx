@@ -45,7 +45,7 @@ export function RequestAccessFormClient() {
       <div className="mb-4">
         <h2 className="text-base font-semibold">Request access</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          OpenBooks is invite-only while the ledger core is being verified.
+          Tell us where OpenBooks should help first.
         </p>
       </div>
       <div className="grid gap-3">

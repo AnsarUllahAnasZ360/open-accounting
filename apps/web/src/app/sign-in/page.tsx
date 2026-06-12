@@ -26,14 +26,14 @@ export default function SignInPage() {
       <section className="mx-auto grid max-w-[1080px] gap-8 px-4 py-14 lg:grid-cols-[1fr_380px] lg:px-6">
         <div>
           <div className="inline-flex h-7 items-center rounded-full bg-[#f1f8ee] px-3 text-[12.5px] font-medium text-[#17540f]">
-            Owner and invited users only
+            Owner-led workspaces
           </div>
           <h1 className="mt-6 max-w-xl text-[44px] font-semibold leading-[1.06] tracking-normal">
-            Your books stay private until the ledger is ready.
+            Your books stay private from day one.
           </h1>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-            OpenBooks keeps public sign-up disabled. The configured owner email can create the first account, and every
-            other user must be invited or request access first.
+            Create a workspace as the owner, or join one from a teammate invite. Hosted-demo requests are captured from
+            the landing page without blocking the open-source app.
           </p>
         </div>
         {convexConfigured ? (

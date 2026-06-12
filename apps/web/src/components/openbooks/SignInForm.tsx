@@ -55,7 +55,7 @@ export function SignInForm({
         router.push("/dashboard");
       } catch (caught) {
         const message = caught instanceof Error ? caught.message : "";
-        setError(message.includes("OpenBooks is invite-only") ? message : "Check your email and password, or create a new OpenBooks account.");
+        setError(message || "Check your email and password, or create a new OpenBooks account.");
         setState("error");
       }
     }

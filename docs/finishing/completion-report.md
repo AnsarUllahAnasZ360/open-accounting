@@ -952,5 +952,30 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 - **Next:** run both gates for this audit batch, commit it, then continue the
   remaining H2/H5 closeout rows. Do not deploy unless Ansar reauthorizes it.
 
+### 2026-06-12 — Batch H2 partial: landing/access refresh (lead)
+
+- **Changed:** refreshed `tests/e2e/landing.spec.ts` away from the stale
+  invite-only gate assumption. The landing test now proves the current public
+  bootstrap page and the local owner dashboard access path under the dev-auth
+  bypass that the Playwright harness intentionally forwards. Also aligned live
+  access copy in sign-in, request-access, shell fallback, leads, and team-invite
+  surfaces so the app no longer tells users public sign-up is disabled.
+- **Evidence / verification:**
+  - `pnpm test:e2e tests/e2e/landing.spec.ts` -> **2/2 green**.
+  - Landing screenshot:
+    `docs/finishing/evidence/2026-06-12-H2-landing-page.png`.
+  - Local dev-auth dashboard access screenshot:
+    `docs/finishing/evidence/2026-06-12-H2-dev-auth-dashboard-access.png`.
+  - Stale-copy scan for `invite-only`, `public sign-up disabled`, and
+    `no public sign-up` has no remaining live app/test/Convex hits; remaining
+    hits are historical docs/evidence references to the old product state.
+- **Status:** H2 row #1 Landing/access is now **WORKING/evidenced** for the
+  current finishing branch. This does **not** re-prove production/password login;
+  that caveat remains on row #3 in the evidence index.
+- **Next:** run both gates for this landing/access batch, commit it, then
+  continue the remaining H2 rows: Inbox keyboard/batch, report export equality,
+  AI parity/import split, PDF raster vision, Plaid/Stripe external proof, and
+  final H5 cross-check. Do not deploy unless Ansar reauthorizes it.
+
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

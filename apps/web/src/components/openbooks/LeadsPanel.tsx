@@ -20,7 +20,7 @@ export function LeadsPanel() {
       <div className="border-b px-4 py-3">
         <h2 className="text-base font-semibold">Request-access leads</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Captured from the invite-only landing page.
+          Captured from the public landing page.
         </p>
       </div>
       <div className="divide-y">

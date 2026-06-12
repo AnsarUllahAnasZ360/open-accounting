@@ -97,8 +97,8 @@ export const list = query({
 
 /**
  * Invite a teammate by email. Owner/admin only. Creates a pending invite record
- * honoring the invite-only gate; it does NOT send email here (that is Epic F3 /
- * Plunk). The UI surfaces the honest pending state.
+ * for this workspace; it does NOT send email here (that is Epic F3 / Plunk).
+ * The UI surfaces the honest pending state.
  */
 export const invite = mutation({
   args: {

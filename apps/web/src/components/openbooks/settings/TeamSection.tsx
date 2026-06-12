@@ -119,7 +119,7 @@ function InviteModal({ emailDeliveryConfigured }: { emailDeliveryConfigured: boo
         <DialogHeader>
           <DialogTitle>Invite a teammate</DialogTitle>
           <DialogDescription>
-            Creates a pending, invite-only access record.{" "}
+            Creates a pending workspace invite.{" "}
             {emailDeliveryConfigured ? "An email goes out now." : "Email delivery is wired to Plunk when configured."}
           </DialogDescription>
         </DialogHeader>

@@ -8,7 +8,7 @@ coverage stay PARTIAL/BLOCKED.
 
 | Row | Acceptance area | Current status | Evidence | Remaining gap |
 |---|---|---|---|---|
-| 1 | Landing / access | PARTIAL | `tests/e2e/landing.spec.ts`, `tests/e2e/auth.spec.ts` exist from initiation-era coverage. | Needs finishing evidence screenshot for current first-run/onboarding posture. |
+| 1 | Landing / access | WORKING | `tests/e2e/landing.spec.ts`, `docs/finishing/evidence/2026-06-12-H2-landing-page.png`, `docs/finishing/evidence/2026-06-12-H2-dev-auth-dashboard-access.png` | Current finishing evidence proves the public landing surface and the local dev-auth owner dashboard access path. Production/password login remains row #3's caveat. |
 | 2 | No public sign-up | SUPERSEDED | `docs/finishing/evidence/2026-06-12-F1-onboarding-dashboard-checklist.png` | Product changed: open-source first-run owner onboarding is now intentional. |
 | 3 | Owner login | WORKING | Dev-auth harness green across current e2e; F1 no-bypass signup proof in `tests/e2e/onboarding.spec.ts`. | Production/password login is not re-proven in this no-deploy run. |
 | 4 | Dashboard | WORKING | `docs/finishing/evidence/2026-06-11-D5-dashboard.png`, `docs/finishing/evidence/2026-06-12-H1-core-dashboard-disposable.png`, `docs/finishing/evidence/2026-06-12-H2-mobile-dashboard.png`, `docs/finishing/evidence/2026-06-12-H4-performance-limits.json` | Broader final pass should still cross-check row links, but dashboard behavior has current desktop + mobile evidence. |
@@ -27,9 +27,11 @@ coverage stay PARTIAL/BLOCKED.
 | 17 | Audit log | WORKING | `tests/e2e/audit-h2.spec.ts`, `docs/finishing/evidence/2026-06-12-E5-audit-filter.png`, `docs/finishing/evidence/2026-06-12-H2-audit-posting-trace.png` | Disposable-business posting proof filters the audit log by the unique merchant and shows the user-visible posting summary. |
 | 18 | Honesty check | WORKING/PARTIAL | `docs/finishing/completion-report.md`, `docs/finishing/whats-left.md`, this index. | Final H5 can close only after H2 screenshots and external Plaid/Stripe rows are resolved or explicitly left blocked. |
 
-Summary: A-C are mostly working, but H2 is still PARTIAL because rows 1, 5, 10,
+Summary: A-C are mostly working, but H2 is still PARTIAL because rows 5, 10,
 12, 13, 14, 15, and 18 need either stronger finishing evidence, final
 cross-checking, or external Plaid/Stripe inputs. Rows 8, 11, and 16 were upgraded
 only after `tests/e2e/acceptance-h2-pack.spec.ts` passed with real clicks and
 fresh screenshots; row 17 was upgraded after `tests/e2e/audit-h2.spec.ts`
-proved a real posting action in the audit log.
+proved a real posting action in the audit log; row 1 was upgraded after
+`tests/e2e/landing.spec.ts` was refreshed away from the stale invite-only
+assumption.

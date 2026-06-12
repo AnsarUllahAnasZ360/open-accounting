@@ -63,7 +63,7 @@ test("owner can review request-access leads in settings", async ({ page }) => {
   await page.getByLabel("Work email").fill(email);
   await page.getByLabel("Name").fill("M2 Lead");
   await page.getByLabel("Company").fill("Access Review LLC");
-  await page.getByRole("textbox", { name: "What should OpenBooks help with?" }).fill("Invite-only intake evidence.");
+  await page.getByRole("textbox", { name: "What should OpenBooks help with?" }).fill("Hosted access intake evidence.");
   await page.getByRole("button", { name: "Request access" }).click();
   await expect(page.getByText("Request saved.")).toBeVisible({ timeout: 15000 });
 

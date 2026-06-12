@@ -25,6 +25,7 @@ import type * as bedrockCategorizer from "../bedrockCategorizer.js";
 import type * as bills from "../bills.js";
 import type * as categories from "../categories.js";
 import type * as coreViews from "../coreViews.js";
+import type * as entities from "../entities.js";
 import type * as expensesViews from "../expensesViews.js";
 import type * as http from "../http.js";
 import type * as incomeViews from "../incomeViews.js";
@@ -41,11 +42,14 @@ import type * as receipts from "../receipts.js";
 import type * as reportViews from "../reportViews.js";
 import type * as reports from "../reports.js";
 import type * as requestAccess from "../requestAccess.js";
+import type * as rules from "../rules.js";
 import type * as seedDemo from "../seedDemo.js";
 import type * as semanticMemory from "../semanticMemory.js";
 import type * as session from "../session.js";
+import type * as settings from "../settings.js";
 import type * as stripe from "../stripe.js";
 import type * as stripeWebhook from "../stripeWebhook.js";
+import type * as team from "../team.js";
 
 import type {
   ApiFromModules,
@@ -71,6 +75,7 @@ declare const fullApi: ApiFromModules<{
   bills: typeof bills;
   categories: typeof categories;
   coreViews: typeof coreViews;
+  entities: typeof entities;
   expensesViews: typeof expensesViews;
   http: typeof http;
   incomeViews: typeof incomeViews;
@@ -87,11 +92,14 @@ declare const fullApi: ApiFromModules<{
   reportViews: typeof reportViews;
   reports: typeof reports;
   requestAccess: typeof requestAccess;
+  rules: typeof rules;
   seedDemo: typeof seedDemo;
   semanticMemory: typeof semanticMemory;
   session: typeof session;
+  settings: typeof settings;
   stripe: typeof stripe;
   stripeWebhook: typeof stripeWebhook;
+  team: typeof team;
 }>;
 
 /**

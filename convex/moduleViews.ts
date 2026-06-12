@@ -584,3 +584,40 @@ export const overview = query({
     };
   },
 });
+
+/**
+ * The workspace's active (report-subject) entity id, or null. A cheap query the
+ * Settings sections use to scope entity-bound reads without pulling the full
+ * module overview.
+ */
+export const activeEntityId = query({
+  args: { entityId: v.optional(v.id("entities")) },
+  handler: async (ctx, args) => {
+    const { entity } = await getActiveEntity(ctx, args.entityId);
+    return entity?._id ?? null;
+  },
+});
+
+/**
+ * The entity sandbox connections (Plaid/Stripe) should attach to. Sandbox data
+ * must not pollute the demo books, so this prefers the dedicated "Live Sandbox"
+ * entity; if it doesn't exist yet the Connections section offers to create it.
+ */
+export const connectionsTarget = query({
+  args: {},
+  handler: async (ctx) => {
+    const { membership } = await requireAnyWorkspaceRole(ctx, "member");
+    const liveSandbox = await ctx.db
+      .query("entities")
+      .withIndex("by_workspace_and_slug", (q) =>
+        q.eq("workspaceId", membership.workspaceId).eq("slug", "live-sandbox"),
+      )
+      .unique();
+    const { entity: active } = await getActiveEntity(ctx);
+    return {
+      liveSandboxEntityId: liveSandbox?._id ?? null,
+      liveSandboxReady: Boolean(liveSandbox),
+      activeEntityId: active?._id ?? null,
+    };
+  },
+});

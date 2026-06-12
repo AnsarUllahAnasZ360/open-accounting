@@ -1,14 +1,12 @@
 "use client";
 
-import { AccountingPanel } from "@/components/openbooks/AccountingPanel";
 import { DashboardScreen, InboxScreen, TransactionsScreen } from "@/components/openbooks/CoreScreens";
-import { DemoDataPanel } from "@/components/openbooks/DemoDataPanel";
-import { LeadsPanel } from "@/components/openbooks/LeadsPanel";
-import { BillsScreen, ContactsScreen, PayrollScreen, RemainingSettingsScreens } from "@/components/openbooks/ModuleScreens";
+import { BillsScreen, ContactsScreen, PayrollScreen } from "@/components/openbooks/ModuleScreens";
 import { ExpensesScreen } from "@/components/openbooks/ExpensesScreen";
 import { IncomeScreen } from "@/components/openbooks/IncomeScreen";
 import { CategoryChip, EmptyState, PageHeader } from "@/components/openbooks/primitives";
 import { ReportsScreen } from "@/components/openbooks/ReportsScreen";
+import { SettingsScreen } from "@/components/openbooks/SettingsScreen";
 import { useActiveEntity } from "@/lib/openbooks/active-entity";
 
 // Only the serializable fields of a route are needed here. The icon (a function
@@ -33,8 +31,19 @@ const KNOWN_ROUTES = [
   "/settings",
 ];
 
-export function AppScreen({ route }: { route: ScreenRoute }) {
+export function AppScreen({ route, settingsSection }: { route: ScreenRoute; settingsSection?: string }) {
   const { activeEntity } = useActiveEntity();
+
+  // Settings owns its own two-level header (Settings title + active-section
+  // subheader), so it renders without the hardcoded entity eyebrow (Epic E1).
+  if (route.href === "/settings") {
+    return (
+      <div className="space-y-5">
+        <PageHeader title="Settings" description="Your workspace, your keys, your data" />
+        <SettingsScreen section={settingsSection} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -54,14 +63,6 @@ export function AppScreen({ route }: { route: ScreenRoute }) {
       {route.href === "/contacts" ? <ContactsScreen /> : null}
       {route.href === "/payroll" ? <PayrollScreen /> : null}
       {route.href === "/reports" ? <ReportsScreen /> : null}
-      {route.href === "/settings" ? (
-        <>
-          <DemoDataPanel />
-          <AccountingPanel />
-          <RemainingSettingsScreens />
-          <LeadsPanel />
-        </>
-      ) : null}
       {!KNOWN_ROUTES.includes(route.href) ? (
         <EmptyState
           title={`${route.label} is queued for the next milestone`}

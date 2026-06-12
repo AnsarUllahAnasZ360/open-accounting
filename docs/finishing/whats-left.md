@@ -1,0 +1,193 @@
+# OpenBooks `finishing` — What's Left (handoff for a fresh session)
+
+Date: 2026-06-12 · Branch: `finishing` · Author: Claude (Opus 4.8), prior session
+
+This is the **single source of truth for picking the work back up in a new chat.**
+Read it with `docs/finishing/implementation-plan.md` (the full epic contract) and
+`docs/finishing/completion-report.md` (the dated, evidence-linked status log).
+
+---
+
+## 0. TL;DR
+
+~Half the finishing plan is **committed and green**. The hard accounting-integrity
+work is done. What remains is mostly **product surface + the live money rails +
+the verification closeout.**
+
+- **Committed & verified:** app shell · Ask AI **engine** (B1–B3) · Reports ·
+  Payroll · Income/Expenses/Bills (incl. the invoice-save & bill-mark-paid
+  mutations).
+- **In the working tree, uncommitted-or-WIP:** **Epic E (Settings)** — all 10
+  section components + backend written; compiles + builds + lints + existing
+  121 unit tests pass; **no E-specific tests / e2e / screenshots yet.** (This
+  session committed it as a clearly-labeled checkpoint — see the git log.)
+- **Not started:** Ask AI **panel UI** (B4–B6) · Onboarding/Profile/Dev-mode (F)
+  · Plaid/Stripe/Receipts rails (G) · Verification closeout (H) · prod redeploy.
+
+---
+
+## 1. The environment (read this before touching anything)
+
+These were fixed/learned the hard way this session. Violating them wastes hours.
+
+1. **Convex runs in the CLOUD, never locally.** `.env.local` is aligned to the
+   cloud dev deployment `z360:openbooks:dev` → `ceaseless-mandrill-524`
+   (`https://ceaseless-mandrill-524.convex.cloud`, site `.convex.site`). It is
+   fully provisioned: env vars (Bedrock, Plaid, Stripe, auth JWT/JWKS, owner
+   creds, dev bypass) **and** seeded data (workspace, Acme Studio LLC demo +
+   Live Sandbox entities, owner user, demo books). **Do NOT run a local Convex
+   backend** (Ansar's machine can't host it). `npx convex dev --once` just
+   *uploads* function code to the cloud and exits.
+2. **Two gates, always — `pnpm verify` does NOT typecheck Convex.** `pnpm verify`
+   = web typecheck + web lint + web build + vitest. It misses Convex `tsc`
+   errors. **After any `convex/` change you MUST also run `npx convex dev --once`**
+   (it runs `tsc` over `convex/` and pushes). A latent convex-tsc error slipped
+   into a commit this way once.
+3. **Convex test helpers must be schema-aware.** Type the test handle as
+   `TestConvex<typeof schema>` (import `type TestConvex` from `convex-test`),
+   **NOT** `ReturnType<typeof convexTest>` — the latter loses the DataModel, so
+   `ctx.db.query(...).withIndex("by_x", ...)` fails convex `tsc` with
+   "keyof SystemIndexes".
+4. **e2e is real-pointer-clicks only.** `dispatchEvent`/`force:true` are banned.
+   `playwright.config.ts` runs `next dev` on port 3100 and **forwards
+   `NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS`** so the suite boots straight into the
+   owner session (next dev runs from `apps/web`, which does NOT auto-load the
+   root `.env.local` — this also means plain `pnpm dev` won't pick up env until
+   F4 ships `pnpm dev:full`). Specs strip the dev-only `nextjs-portal` overlay in
+   a `beforeEach` (that is a Next dev-tools artifact, not a product overlap).
+5. **Never mutate the shared demo books in e2e.** approve/pay/finalize/settle
+   post real ledger entries to the shared cloud deployment. Verify those
+   lifecycles in **in-memory unit tests** (`convexTest`), and keep e2e to
+   navigation/read + flows that create-then-clean their own data.
+6. **Subagents get killed on big epics (~300k tokens / ~40 min).** A, B, C
+   completed; D and E were killed mid-task. Recovery pattern that works: assess
+   the tree (`pnpm typecheck` + `npx convex dev --once`), then either **finish
+   the remainder in the open** or **relaunch a tightly-scoped completion agent**.
+   For the remaining big epics (esp. G), **split into sub-batches** (e.g. G1+G2,
+   then G3, then G4, then G5) to stay under the limit.
+7. **Honesty contract.** A completion-report row is **WORKING only** with a
+   linked green real-click test **and** a screenshot of the behavior as written.
+   Otherwise it's **PARTIAL** (named gaps + next step) or **BLOCKED** (exact input
+   needed). Don't repeat the prior run's "all green, half-built" failure.
+8. **Act on agent-completion notifications immediately** (integrate; don't idle),
+   and **commit per batch** with both gates green before moving on.
+
+---
+
+## 2. Committed state (what you can trust)
+
+`git log --oneline` on `finishing`:
+
+- `chore(finishing): align convex to cloud dev, fix backend tsc, scaffold report + deps`
+- `feat(ai): rebuild Ask AI backend on @convex-dev/agent (Epic B1-B3)`
+- `feat(shell): prototype-faithful app shell & navigation (Epic A)`
+- `feat(reports,payroll): reports home->viewer + payroll run lifecycle (Epic D)`
+- `feat(income,expenses,bills): money screens + invoice-save & bill-mark-paid (Epic C)`
+- _(this session also commits an Epic E checkpoint — see git log for the exact SHA)_
+
+Gates at HEAD before the E checkpoint: `pnpm verify` green (**121/121 unit, 24
+files**), `npx convex dev --once` green, shell + reports/payroll + income/expenses
+e2e green.
+
+**Acceptance table (north-star §0), current:**
+
+| # | Capability | State |
+|---|---|---|
+| 1 | Workspace + business creation via onboarding | ❌ Epic F1 (E2 adds `entities.create`) |
+| 2 | Shell: collapse rail, footer profile/settings/logout, ⌘K, switcher, Ask AI ⌘J | ✅ WORKING |
+| 3 | Plaid sandbox real Link → sync → ledger/inbox | ❌ Epic G1/G2 (fixture mode today) |
+| 4 | Stripe test mode event-driven sync + payout reconcile | ◑ PARTIAL → Epic G3 |
+| 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → Epic H rewrites assertions |
+| 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING |
+| 7 | Reports home→viewer, sane periods, drill-down, cash⇄accrual | ✅ WORKING |
+| 8 | Ask AI: streaming, markdown, threads, propose→confirm | ◑ backend WORKING; **UI is B4–B6** |
+| 9 | Settings: 10-section subnav | ◑ **WIP (Epic E, this tree)** — compiles, unverified |
+| 10 | Mobile usable at 390px | ◑ PARTIAL → asserted per-screen + Epic H |
+
+---
+
+## 3. What's left, in recommended order
+
+Each item points at the authoritative spec in `implementation-plan.md`. Do one
+epic = one tightly-scoped batch; integrate, run BOTH gates + e2e, commit.
+
+### A. Finish & verify Epic E — Settings  _(closest to done)_
+Code is in the tree (10 sections: Businesses, Tax & Fiscal Year, Connections, AI,
+Categories, Rules, Notifications, Team, Data, Audit log; backend `entities.ts`,
+`rules.ts`, `settings.ts`, `team.ts`; schema additions). **Remaining:** write the
+E verification per plan Epic E "Verify" — e2e (navigate all 10 sections; **Add a
+business → appears in switcher → archive → gone**; autonomy radio persists; rule
+reorder persists; audit filter), unit (`entities.create` seeds CoA + authz;
+archive hides/preserves; autonomy→threshold; rule first-match; staff role
+rejected from settings mutation), + screenshots. Then mark row #9 WORKING.
+
+### B. Ask AI panel UI — **B4–B6** (the backend is done & verified)
+Plan Epic B, tasks B4–B6. Makes the engine visible and **docks** the panel
+(Ansar's top complaint: it currently overlays). B4: vendor AI Elements
+(`pnpm dlx ai-elements@latest add conversation message prompt-input tool
+confirmation suggestion loader`), add the Streamdown `@source` to `globals.css`,
+render on `useUIMessages(..., {stream:true})` + `useSmoothText`, proposals →
+Confirmation cards wired to `api.proposals.confirmProposal/dismissProposal`,
+thread switcher, delete the keyword-routing path in `OpenBooksAIChat.tsx`. B5:
+restructure `AppShell` to a docked 380px right column (kill the `xl:pr-[380px]`
+overlay) + `/ask-ai` full-page + mobile bottom-sheet. B6: schedule the
+categorization worker after every import (Plaid/Stripe/CSV), threshold-route via
+the single autonomy constant. **Backend API to consume:** `api.aiThreads.{create,
+listMine,rename,deleteThread,sendMessage,listThreadMessages}` + `api.proposals.*`.
+
+### C. Epic F — Identity (onboarding, profile, dev-mode, sign-in)
+Plan Epic F. F1 onboarding stepper (uses E2 `entities.create`). F2 `/profile` +
+`userProfiles`. F3 team invites end-to-end (`invites.create` → Plunk-or-copy-link;
+`/invite/[token]` accept; **role enforcement** Staff/Accountant). **F4 is high
+value:** `pnpm dev:full` one-command boot (Convex dev + Next dev + idempotent
+owner/seed + "Continue as owner (dev)" button) — this is the north-star entry
+command and currently does not exist; also fixes the env-loading gap in §1.4.
+F5 sign-in/request-access polish.
+
+### D. Epic G — Money rails  _(split into sub-batches; needs an input — see §4)_
+Plan Epic G. **G1 real Plaid Link needs fresh Plaid *sandbox* keys from Ansar**
+(current ones are invalid → fixture mode). Build everything and keep fixture mode
+working if keys are absent. G2 crons + Plaid webhook + **system actor**. G3
+Stripe event-driven sync + persist `stripePayoutLines` (needs
+`STRIPE_WEBHOOK_SECRET` on the deployment for live webhooks). G4 receipts PDF +
+persisted vectors + inbox card. G5 entity-scoped read models (make Live Sandbox a
+real citizen) + the pagination/`take()` guards.
+
+### E. Epic H — Verification, honest eval, closeout  _(last)_
+Plan Epic H. H1 rewrite the legacy e2e specs to real clicks (remove the
+`dispatchEvent` ones the shell agent flagged in `core-screens.spec.ts` et al.).
+H2 acceptance evidence pack (18 rows, desktop+mobile). H3 **honest categorization
+eval** (the old "100%" compared the seed to itself — strip labels, run the
+pipeline + live Bedrock, report real accuracy). H4 perf/limits pass. H5
+completion-report v2 + refresh `how-openbooks-works.md` + README quickstart +
+`AGENTS.md`. Then **redeploy** (Vercel + Convex prod) and smoke owner login on
+`https://openbooks.ansarullahanas.com`.
+
+---
+
+## 4. Inputs needed from Ansar (otherwise build + degrade gracefully)
+
+- **Fresh Plaid *sandbox* `client_id` + `secret`** in `.env.local` and on the
+  Convex deployment (`npx convex env set`) — for G1 real Link. Sandbox only,
+  never live. Runbook: `docs/initiation/access-and-questions.md` §3.
+- **`STRIPE_WEBHOOK_SECRET`** on the Convex dev deployment — for G3 live webhook
+  verification (test mode). Stripe test keys only.
+- **Plunk** (`PLUNK_SECRET_KEY`, `PLUNK_FROM_EMAIL`) — optional, for F3 invite
+  emails; without it the flow shows an honest copy-link state.
+
+None of these block the other epics; G must keep fixture mode working when keys
+are absent.
+
+---
+
+## 5. Gate checklist (run before every batch commit)
+
+1. `pnpm verify` → green (typecheck + lint + build + unit).
+2. `npx convex dev --once` → green (after any `convex/` change).
+3. New/affected `pnpm exec playwright test <spec>` → green, real clicks.
+4. Screenshots → `docs/finishing/evidence/YYYY-MM-DD-<epic><task>-<slug>.png`.
+5. Update `docs/finishing/completion-report.md` (dated batch entry; WORKING only
+   with linked green test + screenshot).
+6. Commit per batch (conventional message; never force-push); restore any
+   incidental `docs/initiation/evidence/playwright-results/` deletions a test run
+   caused (they're gitignored going forward).

@@ -15,6 +15,21 @@ export default defineSchema({
     appName: v.string(),
     defaultCurrency: v.string(),
     fiscalYearStartMonth: v.number(),
+    // Notification preferences (Epic E5). A small fixed-key map of toggles plus
+    // the delivery email. Email delivery itself is wired to Plunk only when
+    // configured; these flags just control which copies would be sent.
+    notificationEmail: v.optional(v.string()),
+    notifications: v.optional(
+      v.object({
+        review: v.boolean(),
+        digest: v.boolean(),
+        anomaly: v.boolean(),
+        sync: v.boolean(),
+        owed: v.boolean(),
+        close: v.boolean(),
+        marketing: v.boolean(),
+      }),
+    ),
     updatedAt: v.number(),
   }).index("by_workspace", ["workspaceId"]),
   entities: defineTable({
@@ -24,6 +39,16 @@ export default defineSchema({
     businessType: v.string(),
     currency: v.string(),
     isDemo: v.boolean(),
+    // Archived businesses keep their books but disappear from the entity
+    // switcher (Epic E2). Optional so existing rows read as not-archived.
+    archived: v.optional(v.boolean()),
+    // Tax & Fiscal Year section (Epic E2). All optional so legacy entities read.
+    fiscalYearStartMonth: v.optional(v.number()), // 1-12, default 1 (January)
+    accountingBasis: v.optional(v.union(v.literal("accrual"), v.literal("cash"))),
+    legalName: v.optional(v.string()),
+    entityType: v.optional(v.string()), // LLC, S-Corporation, ...
+    taxId: v.optional(v.string()),
+    homeState: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -178,6 +203,10 @@ export default defineSchema({
     name: v.string(),
     merchantContains: v.optional(v.string()),
     descriptionContains: v.optional(v.string()),
+    // Optional amount bounds for the AND condition builder (Epic E5). Integer
+    // minor units, compared against the absolute transaction amount.
+    amountMinMinor: v.optional(v.number()),
+    amountMaxMinor: v.optional(v.number()),
     direction: v.union(v.literal("inflow"), v.literal("outflow"), v.literal("any")),
     categoryAccountId: v.id("ledgerAccounts"),
     autoPost: v.boolean(),

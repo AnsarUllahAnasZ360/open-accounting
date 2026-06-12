@@ -5,7 +5,12 @@ import { AppShell } from "@/components/openbooks/AppShell";
 import { allAppRoutes } from "@/lib/openbooks/content";
 
 export function generateStaticParams() {
-  return allAppRoutes.map((route) => ({ section: route.href.slice(1) }));
+  // `/settings` (and its nested sections) are owned by the dedicated
+  // `app/settings/` routes, so exclude it from this catch-all to avoid a
+  // duplicate-route conflict.
+  return allAppRoutes
+    .filter((route) => route.href !== "/settings")
+    .map((route) => ({ section: route.href.slice(1) }));
 }
 
 export default async function SectionPage({
@@ -14,6 +19,10 @@ export default async function SectionPage({
   params: Promise<{ section: string }>;
 }) {
   const { section } = await params;
+  // Defer the settings tree to app/settings/*.
+  if (section === "settings") {
+    notFound();
+  }
   const route = allAppRoutes.find((item) => item.href === `/${section}`);
 
   if (!route) {

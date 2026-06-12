@@ -66,7 +66,7 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + 41 unit | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Partial: receipt-PDF bill intake (Epic G); seeded-bill auto-match e2e skips when no seeded candidate (unit-proven). |
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper. Partial: CSV==screen equality not yet automated (export button works); exhaustive compare-column coverage deferred to H. |
 | 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | PARTIAL (backend WORKING) | B1–B3 unit tests + live Bedrock smoke | Engine done + verified (durable threads, real streaming, 5 read tools, propose→confirm through the ledger). UI is B4 — no screenshot yet, so capability stays PARTIAL until the docked panel renders it. |
-| 9 | Settings: 10-section subnav, all real | NOT STARTED | — | Epic E. Today: one mega-scroll page. |
+| 9 | Settings: 10-section subnav, all real | PARTIAL (WIP) | compiles + builds; no E e2e/unit yet | Epic E core committed: all 10 sections + `entities.create`/archive, `rules`/`settings`/`team` backend, schema. Needs E verification (e2e all sections + Add-a-business→switcher→archive; unit entities.create CoA+authz, role matrix) + screenshots before WORKING. |
 | 10 | Mobile genuinely usable at 390px | PARTIAL | inherited | Epic H asserts; today screenshots only. |
 
 ## Batch log (dated, append-only)
@@ -231,6 +231,26 @@ Updated as evidence lands. Starts as inherited reality from the audit.
     the unused import. `pnpm verify` now genuinely green.
 - **Status:** row #6 **WORKING**. Partial: receipt-PDF bill intake (Epic G).
 - **Next:** Epic E (Settings) — then B4–B6 (chat UI), F, G, H.
+
+### 2026-06-12 — Batch E (checkpoint): Settings core (subagent `settings`, killed mid-task; lead committed a compiling checkpoint)
+
+- **What happened:** the Settings subagent was killed right before it typechecked
+  (same ~token-limit pattern as Reports). It had written all 10 sections + the
+  backend. The lead got it COMPILING + building (fixed stale generated types,
+  4 lint errors, and a client/server boundary build error where
+  `SETTINGS_SECTIONS` lived in a "use client" module and broke
+  `generateStaticParams` — moved it to `lib/openbooks/settings-sections.ts`) and
+  committed it as a **clearly-labeled checkpoint**, NOT a verified WORKING row.
+- **In the tree:** `SettingsScreen.tsx` + `settings/{Businesses,Tax,Connections,
+  Ai,Categories,Rules,Notifications,Team,Data,Audit}Section.tsx` + `/settings/
+  [section]` route; `convex/entities.ts` (create/archive), `convex/rules.ts`,
+  `convex/settings.ts`, `convex/team.ts`; schema additions; `categories.ts`,
+  `moduleViews.ts`, `ledger.ts` (CoA-seed helper) edits.
+- **Evidence:** `pnpm verify` green (121/121 unit), `npx convex dev --once` green.
+  **No E-specific e2e / unit / screenshots yet** → row #9 is **PARTIAL (WIP)**.
+- **Next (for the resuming session):** write the Epic E verification (see
+  `docs/finishing/whats-left.md` §3.A and plan Epic E "Verify"), then mark #9
+  WORKING. Handoff docs added: `whats-left.md` + `resume-prompt.md`.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

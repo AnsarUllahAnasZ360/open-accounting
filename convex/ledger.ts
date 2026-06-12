@@ -25,13 +25,15 @@ const entrySourceValidator = v.union(
   v.literal("rule"),
 );
 
-const chartTemplates: Array<{
+export type ChartTemplateRow = {
   number: string;
   name: string;
   type: Doc<"ledgerAccounts">["type"];
   subtype: string;
   isSystem?: boolean;
-}> = [
+};
+
+export const chartTemplates: Array<ChartTemplateRow> = [
   { number: "1000", name: "Cash on Hand", type: "asset", subtype: "cash" },
   { number: "1010", name: "Operating Checking", type: "asset", subtype: "bank" },
   { number: "1020", name: "Savings", type: "asset", subtype: "bank" },
@@ -89,11 +91,40 @@ export async function getEntityForWrite(
   return entity;
 }
 
-async function seedChartForEntity(ctx: MutationCtx, entity: Doc<"entities">) {
+// Business-type-specific additions layered on top of the base chart. Keeps the
+// shared seeder one source of truth while giving each business type the extra
+// accounts it actually needs (Epic E2 "Add a business" seeds a typed chart).
+export const chartTypeAdditions: Record<string, Array<ChartTemplateRow>> = {
+  ecommerce: [
+    { number: "1300", name: "Inventory", type: "asset", subtype: "inventory" },
+    { number: "5050", name: "Cost of Goods Sold", type: "expense", subtype: "cogs" },
+    { number: "5060", name: "Shipping & Fulfillment", type: "expense", subtype: "shipping" },
+    { number: "4050", name: "Product Sales", type: "income", subtype: "product_sales" },
+  ],
+  software: [
+    { number: "4150", name: "Subscription Revenue", type: "income", subtype: "subscription" },
+  ],
+  agency: [
+    { number: "4150", name: "Retainer Income", type: "income", subtype: "retainer" },
+    { number: "5550", name: "Subcontractors", type: "expense", subtype: "subcontractors" },
+  ],
+  services: [],
+};
+
+export function chartTemplatesForType(businessType: string): Array<ChartTemplateRow> {
+  const additions = chartTypeAdditions[businessType] ?? [];
+  return [...chartTemplates, ...additions];
+}
+
+export async function seedChartForEntity(
+  ctx: MutationCtx,
+  entity: Doc<"entities">,
+  templates: Array<ChartTemplateRow> = chartTemplatesForType(entity.businessType),
+) {
   const now = Date.now();
   let created = 0;
 
-  for (const template of chartTemplates) {
+  for (const template of templates) {
     const existing = await ctx.db
       .query("ledgerAccounts")
       .withIndex("by_entity_and_number", (q) =>

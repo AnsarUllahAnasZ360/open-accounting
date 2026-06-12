@@ -59,13 +59,13 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | # | Capability | Status | Evidence | Notes |
 |---|---|---|---|---|
 | 1 | Workspace + business creation via onboarding | NOT STARTED | — | Epic F1/E2. Today: hardcoded `ansar-workspace`. |
-| 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Partials downstream: profile page content (F2), multi-entity data-switch (G5), sync-now action (G2), ⌘K server search index (follow-up). AI panel still overlay until B5 docks it. |
+| 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots; B5 dock verified in `tests/e2e/ai-chat.spec.ts` | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Partials downstream: profile page content (F2), multi-entity data-switch (G5), sync-now action (G2), ⌘K server search index (follow-up). AI panel is now docked on desktop and a bottom sheet on mobile. |
 | 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | NOT STARTED | — | Epic G1/G2. Today: fixture mode only. |
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | inherited | Epic G3. Webhook receiver real; events trigger nothing yet. |
 | 5 | Inbox: confirm / correct / rule / batch / keyboard | PARTIAL | inherited | Epic H rewrites assertions; batch + keyboard unverified. |
 | 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + 41 unit | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Partial: receipt-PDF bill intake (Epic G); seeded-bill auto-match e2e skips when no seeded candidate (unit-proven). |
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper. Partial: CSV==screen equality not yet automated (export button works); exhaustive compare-column coverage deferred to H. |
-| 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | PARTIAL (backend WORKING) | B1–B3 unit tests + live Bedrock smoke | Engine done + verified (durable threads, real streaming, 5 read tools, propose→confirm through the ledger). UI is B4 — no screenshot yet, so capability stays PARTIAL until the docked panel renders it. |
+| 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | WORKING | B1–B3 unit tests + live Bedrock smoke + `tests/e2e/ai-chat.spec.ts` 4/4 + 5 screenshots | Live Bedrock answer renders markdown table and survives reload; New conversation resets thread; durable proposal card confirms through `api.proposals.confirmProposal` on a temporary business, then archives it; desktop dock and mobile sheet verified. Named remaining B6 gap: post-import AI categorizer scheduling/run history is not part of this row and remains for the integrations/pipeline batch. |
 | 9 | Settings: 10-section subnav, all real | WORKING | `tests/e2e/settings.spec.ts` 3/3 + `convex/settings.test.ts` 4/4 + 6 screenshots | 10 sections real-click verified; Add business creates an entity, appears in the switcher, archive hides it while preserving audit history; AI autonomy persists; rule reorder persists; audit filter verified. Named downstream partials: full entity data-switch is G5; invite email/acceptance flow is F3. |
 | 10 | Mobile genuinely usable at 390px | PARTIAL | inherited | Epic H asserts; today screenshots only. |
 
@@ -287,6 +287,53 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   outside Epic E: G5 owns full entity-scoped data switching; F3 owns invite email
   and acceptance flow.
 - **Next:** B4-B6 Ask AI panel UI.
+
+### 2026-06-12 — Batch B4-B5: Ask AI panel UI and docked layout (lead)
+
+- **Changed:** rebuilt `OpenBooksAIChat.tsx` on the verified Convex Agent
+  thread APIs: `api.aiThreads.listMine/createThread/sendMessage/
+  listThreadMessages/deleteThread` + `useUIMessages(..., { stream: true })` and
+  `useSmoothText`; replaced component-state/keyword answers and the legacy
+  `/ai/chat` pseudo-stream client path with durable Convex threads; rendered
+  markdown tables/bold/links, tool collapsibles, proposal confirmation cards
+  from `api.proposals.listProposals`, and confirm/dismiss buttons wired to
+  `api.proposals.confirmProposal/dismissProposal`.
+- **Layout:** replaced the fixed translate-x overlay with a real 380px docked
+  desktop column inside the shell flex row; mobile now opens a bottom sheet with
+  body-scroll lock and horizontal containment; `/ask-ai` gets a full-page mode
+  with thread rail and artifacts panel.
+- **Backend trust fix:** tightened `OPENBOOKS_AGENT_INSTRUCTIONS` so the model
+  must call the matching propose tool before claiming a proposal is prepared.
+  Added a dev-auth-guarded `api.aiThreads.createProposalFixture` for stable e2e
+  proposal-card setup; it creates a temporary thread/proposal only when backend
+  dev auth is enabled. The real-click confirm test creates a temporary business,
+  confirms the rule proposal through the normal mutation, then archives that
+  temporary business so shared demo books are not mutated.
+- **AI Elements note:** attempted the plan command
+  `pnpm dlx ai-elements@latest add conversation message prompt-input tool
+  confirmation suggestion loader`; the registry failed because `loader` no
+  longer exists at `elements.ai-sdk.dev`. Used local shadcn-style UI instead,
+  while preserving the required behavior and visual contract.
+- **Evidence / verification:**
+  - `tests/e2e/ai-chat.spec.ts` -> **4/4 green real-click**: live Bedrock
+    markdown table + reload persistence + New conversation reset; durable
+    confirmation card + real-click Confirm through `api.proposals` on a
+    temporary business; docked desktop panel keeps dashboard links clickable; 390px
+    mobile bottom sheet opens/closes with no horizontal scroll.
+  - Screenshots:
+    `docs/finishing/evidence/2026-06-12-B4-markdown-thread.png`,
+    `docs/finishing/evidence/2026-06-12-B4-thread-persist-new.png`,
+    `docs/finishing/evidence/2026-06-12-B4-confirmation-card.png`,
+    `docs/finishing/evidence/2026-06-12-B5-docked-desktop.png`,
+    `docs/finishing/evidence/2026-06-12-B5-mobile-sheet.png`.
+  - Batch gates: `pnpm verify` -> **green** (typecheck, lint, build, **125/125
+    unit**); `npx convex dev --once` -> **green** against cloud dev
+    `ceaseless-mandrill-524`.
+- **Status:** acceptance row #8 **WORKING** for Ask AI thread/UI/propose-confirm
+  behavior; B6 post-import categorizer scheduling/run history remains **PARTIAL**
+  and should be completed in the integrations/pipeline batch.
+- **Next:** Epic F (onboarding, profile, team invites, `pnpm dev:full`) before
+  the larger Epic G integration work.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

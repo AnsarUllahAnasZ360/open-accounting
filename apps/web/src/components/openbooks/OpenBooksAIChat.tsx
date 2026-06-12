@@ -1,233 +1,540 @@
 "use client";
 
-import { useAuthToken } from "@convex-dev/auth/react";
-import { useMutation } from "convex/react";
-import { ArrowUp, CheckCircle2, CircleAlert, Maximize2, PanelRightClose, Sparkles } from "lucide-react";
+import {
+  optimisticallySendMessage,
+  useSmoothText,
+  useUIMessages,
+  type UIMessage,
+} from "@convex-dev/agent/react";
+import { useMutation, useQuery } from "convex/react";
+import {
+  ArrowUp,
+  CheckCircle2,
+  CircleAlert,
+  Loader2,
+  Maximize2,
+  MessageSquarePlus,
+  PanelRightClose,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  aiSuggestedPrompts,
-  answerOpenBooksQuestion,
-  formatAiMoney,
-  type AiAnswer,
-  type AiStatus,
-} from "@/lib/openbooks/ai";
-import { openBooksDevAuthBypassEnabled } from "@/lib/openbooks/dev-mode";
+import type { AiStatus } from "@/lib/openbooks/ai";
 import type { ReportPack } from "@/lib/openbooks/reports-export";
 import { cn } from "@/lib/utils";
 
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  answer?: AiAnswer;
-  pending?: boolean;
-  streaming?: boolean;
+const SUGGESTIONS = [
+  "How did we do last month vs. before?",
+  "Top 5 expenses this quarter?",
+  "Who owes me money right now?",
+  "How much did Stripe take in fees this year?",
+  "What's my monthly payroll cost in USD?",
+];
+
+type ThreadSummary = {
+  threadId: string;
+  title: string;
+  lastActiveAt: number;
 };
 
-type ProposalAnswer = Extract<AiAnswer, { kind: "proposal" }>;
-type ProposalState = {
-  status: "idle" | "saving" | "saved" | "error";
+type ProposalKind = "categorize" | "rule" | "invoiceDraft" | "bill" | "journalEntry";
+type ProposalStatus = "proposed" | "confirmed" | "dismissed" | "expired";
+
+type ProposalRow = {
+  id: Id<"proposals">;
+  kind: ProposalKind;
+  summary: string;
+  status: ProposalStatus;
+  messageId: string | null;
+  payload: unknown;
+  resultSummary: string | null;
+  createdAt: number;
+  decidedAt: number | null;
+};
+
+type ProposalActionState = {
+  status: "confirming" | "dismissing" | "done" | "error";
   message?: string;
 };
 
-function nextMessageId() {
-  return `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
+type MessagePart = UIMessage["parts"][number] & Record<string, unknown>;
 
-function convexSiteUrl() {
-  const raw = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (!raw) return null;
-
+function compactJson(value: unknown) {
+  if (value === undefined || value === null) return "";
   try {
-    const url = new URL(raw);
-    if (url.hostname.endsWith(".convex.cloud")) {
-      url.hostname = url.hostname.replace(/\.convex\.cloud$/, ".convex.site");
-      return url.toString().replace(/\/$/, "");
-    }
-    if ((url.hostname === "localhost" || url.hostname === "127.0.0.1") && url.port === "3210") {
-      url.port = "3211";
-      return url.toString().replace(/\/$/, "");
-    }
-    return url.toString().replace(/\/$/, "");
+    return JSON.stringify(value, null, 2).slice(0, 1200);
   } catch {
-    return null;
+    return String(value);
   }
 }
 
-function shouldUseLiveRuntime(question: string, answer: AiAnswer) {
-  if (answer.kind === "proposal") return false;
-  const normalized = question.trim().toLowerCase();
-  if (aiSuggestedPrompts.some((prompt) => prompt.toLowerCase() === normalized)) return false;
-  return ![
-    "top 5",
-    "expense",
-    "owe",
-    "owes",
-    "payroll",
-    "stripe",
-    "last month",
-    "explain this report",
-  ].some((phrase) => normalized.includes(phrase));
+function sentenceCase(value: string) {
+  return value
+    .replace(/^tool-/, "")
+    .replace(/([A-Z])/g, " $1")
+    .replace(/[-_]/g, " ")
+    .trim()
+    .replace(/^./, (char) => char.toUpperCase());
 }
 
-async function streamLiveAnswer({
-  question,
-  workspaceId,
-  entityId,
-  token,
-  onChunk,
-}: {
-  question: string;
-  workspaceId: Id<"workspaces">;
-  entityId?: Id<"entities">;
-  token?: string;
-  onChunk: (text: string) => void;
-}) {
-  const siteUrl = convexSiteUrl();
-  if (!siteUrl) {
-    throw new Error("Convex HTTP endpoint is not configured.");
-  }
-
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
-  if (token) {
-    headers.authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${siteUrl}/ai/chat`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ workspaceId, entityId, question }),
-  });
-
-  if (!response.body) {
-    throw new Error("OpenBooks AI did not return a stream.");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let received = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    received += decoder.decode(value, { stream: true });
-    onChunk(received);
-  }
-  received += decoder.decode();
-  if (!response.ok && !received) {
-    throw new Error(`OpenBooks AI returned HTTP ${response.status}.`);
-  }
-  return received.trim();
+function formatThreadTime(value: number) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(value);
 }
 
-function AnswerCard({
-  answer,
-  proposalState,
-  onConfirmProposal,
-}: {
-  answer: AiAnswer;
-  proposalState?: ProposalState;
-  onConfirmProposal?: (answer: ProposalAnswer) => void;
-}) {
-  if (answer.kind === "table") {
-    return (
-      <div className="mt-3 overflow-hidden rounded-lg border bg-background">
-        <div className="border-b px-3 py-2">
-          <div className="text-sm font-medium">{answer.title}</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">{answer.body}</p>
-        </div>
-        <table className="w-full text-sm" data-testid="ai-answer-table">
-          <thead className="bg-muted/50 text-xs text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium">{answer.columns[0]}</th>
-              <th className="px-3 py-2 text-right font-medium">{answer.columns[1]}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {answer.rows.map((row) => (
-              <tr key={row.label}>
-                <td className="px-3 py-2">{row.label}</td>
-                <td className="money-figures px-3 py-2 text-right">{row.value}</td>
+function proposalKindLabel(kind: ProposalKind) {
+  switch (kind) {
+    case "categorize":
+      return "Categorization proposal";
+    case "rule":
+      return "Rule proposal";
+    case "invoiceDraft":
+      return "Draft invoice proposal";
+    case "bill":
+      return "Bill posting proposal";
+    case "journalEntry":
+      return "Journal entry proposal";
+  }
+}
+
+function proposalActionLabel(kind: ProposalKind) {
+  switch (kind) {
+    case "categorize":
+      return "Confirm categorization";
+    case "rule":
+      return "Create rule";
+    case "invoiceDraft":
+      return "Save invoice draft";
+    case "bill":
+      return "Add bill";
+    case "journalEntry":
+      return "Post journal entry";
+  }
+}
+
+function payloadFacts(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
+  return Object.entries(payload as Record<string, unknown>)
+    .filter(([, value]) => typeof value !== "object")
+    .slice(0, 6)
+    .map(([key, value]) => ({
+      label: sentenceCase(key),
+      value: String(value),
+    }));
+}
+
+function partText(part: MessagePart) {
+  return typeof part.text === "string" ? part.text : "";
+}
+
+function textForMessage(message: UIMessage) {
+  const partTextValue = message.parts
+    .filter((part): part is MessagePart => part.type === "text")
+    .map(partText)
+    .filter(Boolean)
+    .join("\n\n");
+  return partTextValue || message.text || "";
+}
+
+function toolPartsForMessage(message: UIMessage) {
+  return message.parts.filter((part): part is MessagePart => part.type.startsWith("tool-"));
+}
+
+function isSeparatorLine(line: string) {
+  return /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(line);
+}
+
+function isTableStart(lines: string[], index: number) {
+  return Boolean(lines[index]?.includes("|") && lines[index + 1] && isSeparatorLine(lines[index + 1]!));
+}
+
+function parseTableRow(line: string) {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function InlineMarkdown({ text }: { text: string }) {
+  const pieces = text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g).filter(Boolean);
+  return (
+    <>
+      {pieces.map((piece, index) => {
+        const bold = piece.match(/^\*\*([^*]+)\*\*$/);
+        if (bold) {
+          return <strong key={`${piece}-${index}`}>{bold[1]}</strong>;
+        }
+        const link = piece.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (link) {
+          const [, label, href] = link;
+          const className =
+            href.startsWith("/")
+              ? "inline-flex h-7 items-center rounded-[6px] border border-[#bbe0a9] bg-[#f1f8ee] px-2 text-xs font-medium text-[#1d6b12] hover:bg-[#dcefd2]"
+              : "font-medium text-primary underline underline-offset-2";
+          return (
+            <Link key={`${piece}-${index}`} href={href} className={className}>
+              {label}
+            </Link>
+          );
+        }
+        return <span key={`${piece}-${index}`}>{piece}</span>;
+      })}
+    </>
+  );
+}
+
+function MarkdownBlocks({ text }: { text: string }) {
+  const lines = text.split(/\r?\n/);
+  const blocks = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    const trimmed = line.trim();
+    if (!trimmed) {
+      index += 1;
+      continue;
+    }
+
+    if (isTableStart(lines, index)) {
+      const header = parseTableRow(lines[index]!);
+      index += 2;
+      const rows = [];
+      while (index < lines.length && lines[index]!.includes("|") && lines[index]!.trim()) {
+        rows.push(parseTableRow(lines[index]!));
+        index += 1;
+      }
+      blocks.push(
+        <div key={`table-${index}`} className="my-3 overflow-hidden rounded-[8px] border bg-background">
+          <table className="w-full text-sm" data-testid="ai-markdown-table">
+            <thead className="bg-muted/50 text-xs text-muted-foreground">
+              <tr>
+                {header.map((cell) => (
+                  <th key={cell} className="px-3 py-2 text-left font-medium">
+                    <InlineMarkdown text={cell} />
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y">
+              {rows.map((row, rowIndex) => (
+                <tr key={`${row.join("-")}-${rowIndex}`}>
+                  {row.map((cell, cellIndex) => (
+                    <td
+                      key={`${cell}-${cellIndex}`}
+                      className={cn("px-3 py-2", cellIndex > 0 && "money-figures text-right")}
+                    >
+                      <InlineMarkdown text={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
+
+    if (trimmed.startsWith("### ")) {
+      blocks.push(
+        <h3 key={`h3-${index}`} className="mt-3 text-sm font-semibold">
+          <InlineMarkdown text={trimmed.slice(4)} />
+        </h3>,
+      );
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("## ")) {
+      blocks.push(
+        <h2 key={`h2-${index}`} className="mt-3 text-[15px] font-semibold">
+          <InlineMarkdown text={trimmed.slice(3)} />
+        </h2>,
+      );
+      index += 1;
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(trimmed)) {
+      const items = [];
+      while (index < lines.length && /^[-*]\s+/.test(lines[index]!.trim())) {
+        items.push(lines[index]!.trim().replace(/^[-*]\s+/, ""));
+        index += 1;
+      }
+      blocks.push(
+        <ul key={`ul-${index}`} className="my-2 list-disc space-y-1 pl-5">
+          {items.map((item) => (
+            <li key={item}>
+              <InlineMarkdown text={item} />
+            </li>
+          ))}
+        </ul>,
+      );
+      continue;
+    }
+
+    const paragraph = [trimmed];
+    index += 1;
+    while (
+      index < lines.length &&
+      lines[index]!.trim() &&
+      !isTableStart(lines, index) &&
+      !/^#{2,3}\s+/.test(lines[index]!.trim()) &&
+      !/^[-*]\s+/.test(lines[index]!.trim())
+    ) {
+      paragraph.push(lines[index]!.trim());
+      index += 1;
+    }
+    blocks.push(
+      <p key={`p-${index}`} className="my-2 leading-6">
+        <InlineMarkdown text={paragraph.join(" ")} />
+      </p>,
     );
   }
 
-  if (answer.kind === "proposal") {
-    const state = proposalState ?? { status: "idle" as const };
-    return (
-      <div className="mt-3 rounded-lg border bg-background p-3">
-        <div className="flex items-start gap-2">
-          <CircleAlert className="mt-0.5 size-4 text-primary" />
-          <div>
-            <div className="text-sm font-medium">{answer.title}</div>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">{answer.body}</p>
-          </div>
-        </div>
-        <div className="mt-3 rounded-lg bg-muted/40 p-2 text-xs text-muted-foreground">
-          Nothing has been posted or written yet.
-        </div>
-        {answer.facts.length ? (
-          <div className="mt-3 divide-y rounded-lg border text-xs">
-            {answer.facts.map((fact) => (
-              <div key={fact.label} className="grid grid-cols-[0.7fr_1fr] gap-3 px-3 py-2">
-                <span className="text-muted-foreground">{fact.label}</span>
-                <span className="font-medium">{fact.value}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {state.message ? (
-          <div
-            className={cn(
-              "mt-3 rounded-lg border p-2 text-xs",
-              state.status === "error" ? "border-destructive/30 text-destructive" : "border-primary/30 text-primary",
-            )}
-            data-testid="ai-proposal-result"
-          >
-            {state.message}
-          </div>
-        ) : null}
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            disabled={!onConfirmProposal || state.status === "saving" || state.status === "saved"}
-            size="sm"
-            onClick={() => onConfirmProposal?.(answer)}
-          >
-            {state.status === "saving" ? "Confirming..." : state.status === "saved" ? "Confirmed" : answer.actionLabel}
-          </Button>
-          <Button size="sm" variant="outline">Not now</Button>
-        </div>
-      </div>
-    );
+  if (!blocks.length) {
+    return <p className="text-muted-foreground">Waiting for the assistant...</p>;
   }
+
+  return <>{blocks}</>;
+}
+
+function SmoothMarkdown({ text, streaming }: { text: string; streaming: boolean }) {
+  const [visibleText] = useSmoothText(text, { startStreaming: streaming, charsPerSec: 220 });
+  return (
+    <div className="text-sm leading-6" data-testid="ai-markdown-response">
+      <MarkdownBlocks text={visibleText} />
+    </div>
+  );
+}
+
+function ToolPartCard({ part }: { part: MessagePart }) {
+  const state = typeof part.state === "string" ? part.state : "pending";
+  const input = "input" in part ? part.input : undefined;
+  const output = "output" in part ? part.output : undefined;
+  const content = compactJson(output ?? input);
+  return (
+    <details className="mt-3 rounded-[8px] border bg-background" data-testid="ai-tool-card">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted-foreground">
+        {sentenceCase(part.type)} · {sentenceCase(state)}
+      </summary>
+      {content ? (
+        <pre className="max-h-[220px] overflow-auto border-t bg-muted/30 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+          {content}
+        </pre>
+      ) : null}
+    </details>
+  );
+}
+
+function ProposalCard({
+  proposal,
+  state,
+  onConfirm,
+  onDismiss,
+}: {
+  proposal: ProposalRow;
+  state?: ProposalActionState;
+  onConfirm: (proposal: ProposalRow) => void;
+  onDismiss: (proposal: ProposalRow) => void;
+}) {
+  const pending = state?.status === "confirming" || state?.status === "dismissing";
+  const proposed = proposal.status === "proposed";
+  const facts = payloadFacts(proposal.payload);
+  const result = state?.message ?? proposal.resultSummary;
 
   return (
-    <div className="mt-3 rounded-lg border bg-background p-3">
-      <div className="text-sm font-medium">{answer.title}</div>
-      <p className="mt-1 text-sm leading-6 text-muted-foreground">{answer.body}</p>
-      {answer.rows?.length ? (
-        <div className="mt-3 divide-y rounded-lg border">
-          {answer.rows.map((row) => (
-            <div key={row.label} className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">{row.label}</span>
-              <span className="money-figures font-medium">{row.value}</span>
+    <div className="mt-3 rounded-[8px] border bg-background p-3" data-testid="ai-confirmation-card">
+      <div className="flex items-start gap-2">
+        <CircleAlert className="mt-0.5 size-4 shrink-0 text-primary" />
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{proposalKindLabel(proposal.kind)}</div>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">{proposal.summary}</p>
+        </div>
+      </div>
+      <div className="mt-3 rounded-[7px] bg-muted/40 p-2 text-xs text-muted-foreground">
+        Nothing has been posted or written yet. The ledger changes only after confirmation.
+      </div>
+      {facts.length ? (
+        <div className="mt-3 divide-y rounded-[8px] border text-xs">
+          {facts.map((fact) => (
+            <div key={fact.label} className="grid grid-cols-[0.8fr_1fr] gap-3 px-3 py-2">
+              <span className="text-muted-foreground">{fact.label}</span>
+              <span className="min-w-0 truncate font-medium">{fact.value}</span>
             </div>
           ))}
         </div>
       ) : null}
+      {result ? (
+        <div
+          className={cn(
+            "mt-3 rounded-[7px] border p-2 text-xs",
+            state?.status === "error" ? "border-destructive/30 text-destructive" : "border-primary/30 text-primary",
+          )}
+          data-testid="ai-proposal-result"
+        >
+          {result}
+        </div>
+      ) : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          disabled={!proposed || pending}
+          size="sm"
+          type="button"
+          onClick={() => onConfirm(proposal)}
+        >
+          {state?.status === "confirming" ? "Confirming..." : proposalActionLabel(proposal.kind)}
+        </Button>
+        <Button
+          disabled={!proposed || pending}
+          size="sm"
+          type="button"
+          variant="outline"
+          onClick={() => onDismiss(proposal)}
+        >
+          {state?.status === "dismissing" ? "Dismissing..." : "Not now"}
+        </Button>
+        {!proposed ? (
+          <Badge variant="outline" className="h-8 capitalize">
+            {proposal.status}
+          </Badge>
+        ) : null}
+      </div>
     </div>
+  );
+}
+
+function MessageBubble({
+  message,
+  proposals,
+  actionStates,
+  onConfirm,
+  onDismiss,
+}: {
+  message: UIMessage;
+  proposals: ProposalRow[];
+  actionStates: Record<string, ProposalActionState>;
+  onConfirm: (proposal: ProposalRow) => void;
+  onDismiss: (proposal: ProposalRow) => void;
+}) {
+  const text = textForMessage(message);
+  const toolParts = toolPartsForMessage(message);
+  const streaming = message.status === "streaming" || message.status === "pending";
+  const isUser = message.role === "user";
+
+  return (
+    <div
+      className={cn(
+        "max-w-[94%] rounded-[8px] border px-3 py-2 shadow-xs",
+        isUser ? "ml-auto border-primary bg-primary text-primary-foreground" : "bg-card text-card-foreground",
+      )}
+      data-testid={isUser ? "ai-user-message" : "ai-assistant-message"}
+    >
+      {isUser ? (
+        <div className="whitespace-pre-wrap text-sm leading-6">{text}</div>
+      ) : (
+        <>
+          {text ? <SmoothMarkdown text={text} streaming={streaming} /> : null}
+          {!text && streaming ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Reading your books...
+            </div>
+          ) : null}
+          {toolParts.map((part) => (
+            <ToolPartCard key={`${message.id}-${part.type}-${String(part.toolCallId ?? "")}`} part={part} />
+          ))}
+          {proposals.map((proposal) => (
+            <ProposalCard
+              key={proposal.id}
+              proposal={proposal}
+              state={actionStates[proposal.id]}
+              onConfirm={onConfirm}
+              onDismiss={onDismiss}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ThreadRail({
+  activeThreadId,
+  threads,
+  onSelect,
+  onNew,
+  onDelete,
+}: {
+  activeThreadId: string | null | undefined;
+  threads: ThreadSummary[];
+  onSelect: (threadId: string | null) => void;
+  onNew: () => void;
+  onDelete: (threadId: string) => void;
+}) {
+  return (
+    <aside className="hidden w-[236px] shrink-0 border-r bg-muted/20 lg:flex lg:flex-col" data-testid="ai-thread-rail">
+      <div className="border-b p-3">
+        <Button className="w-full justify-start" size="sm" type="button" variant="outline" onClick={onNew}>
+          <MessageSquarePlus className="size-4" />
+          New conversation
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {threads.length ? (
+          threads.map((thread) => (
+            <button
+              key={thread.threadId}
+              type="button"
+              data-testid="ai-thread-row"
+              data-active={thread.threadId === activeThreadId ? "true" : "false"}
+              className={cn(
+                "mb-1 w-full rounded-[8px] border px-3 py-2 text-left transition-colors",
+                thread.threadId === activeThreadId
+                  ? "border-[#bbe0a9] bg-[#f1f8ee]"
+                  : "border-transparent hover:border-border hover:bg-background",
+              )}
+              onClick={() => onSelect(thread.threadId)}
+            >
+              <div className="truncate text-sm font-medium">{thread.title}</div>
+              <div className="mt-1 text-[11px] text-muted-foreground">{formatThreadTime(thread.lastActiveAt)}</div>
+            </button>
+          ))
+        ) : (
+          <div className="rounded-[8px] border border-dashed p-3 text-xs leading-5 text-muted-foreground">
+            Recent conversations will appear here after the first question.
+          </div>
+        )}
+      </div>
+      {activeThreadId ? (
+        <div className="border-t p-3">
+          <Button
+            className="w-full justify-start"
+            size="sm"
+            type="button"
+            variant="ghost"
+            onClick={() => onDelete(activeThreadId)}
+          >
+            <Trash2 className="size-4" />
+            Delete thread
+          </Button>
+        </div>
+      ) : null}
+    </aside>
   );
 }
 
@@ -248,331 +555,361 @@ export function OpenBooksAIChat({
   mode?: "drawer" | "page";
   onClose?: () => void;
 }) {
-  const authToken = useAuthToken();
-  const devAuthBypass = openBooksDevAuthBypassEnabled();
-  const createConfirmedRule = useMutation(api.ai.createConfirmedRule);
-  const categorizeTransactions = useMutation(api.aiChatActions.categorizeTransactions);
-  const draftInvoice = useMutation(api.aiChatActions.draftInvoice);
-  const addBill = useMutation(api.aiChatActions.addBill);
-  const createJournalEntry = useMutation(api.aiChatActions.createJournalEntry);
+  const createThread = useMutation(api.aiThreads.createThread);
+  const deleteThread = useMutation(api.aiThreads.deleteThread);
+  const sendMessage = useMutation(api.aiThreads.sendMessage).withOptimisticUpdate((store, args) => {
+    optimisticallySendMessage(api.aiThreads.listThreadMessages)(store, args);
+  });
+  const confirmProposal = useMutation(api.proposals.confirmProposal);
+  const dismissProposal = useMutation(api.proposals.dismissProposal);
+
+  const threadRows = useQuery(api.aiThreads.listMine, workspaceId ? { limit: 16 } : "skip") as
+    | ThreadSummary[]
+    | undefined;
+  const [activeThreadId, setActiveThreadId] = useState<string | null | undefined>(undefined);
+  const messagesPage = useUIMessages(
+    api.aiThreads.listThreadMessages,
+    activeThreadId ? { threadId: activeThreadId } : "skip",
+    { initialNumItems: 40, stream: true },
+  );
+  const proposalRows = useQuery(
+    api.proposals.listProposals,
+    activeThreadId ? { threadId: activeThreadId } : "skip",
+  ) as ProposalRow[] | undefined;
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content:
-        "Ask a read-only question about reports, transactions, balances, contacts, or payroll. Write-like requests become confirmation cards.",
-    },
-  ]);
-  const [proposalStates, setProposalStates] = useState<Record<string, ProposalState>>({});
+  const [sendError, setSendError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [proposalStates, setProposalStates] = useState<Record<string, ProposalActionState>>({});
   const listRef = useRef<HTMLDivElement>(null);
   const lastExternalPromptRef = useRef("");
-  const booksContextReady = Boolean(reportPack?.entity.id);
 
-  const submitQuestion = useCallback(async (question: string) => {
-    const trimmed = question.trim();
-    if (!trimmed || !booksContextReady) return;
+  const threads = threadRows ?? [];
+  const messages = useMemo(() => (messagesPage.results ?? []) as UIMessage[], [messagesPage.results]);
+  const proposals = useMemo(() => proposalRows ?? [], [proposalRows]);
+  const entityId = reportPack?.entity.id as Id<"entities"> | undefined;
+  const booksContextReady = Boolean(workspaceId && entityId);
+  const activeThread = threads.find((thread) => thread.threadId === activeThreadId);
 
-    const pendingId = nextMessageId();
-    const localAnswer = answerOpenBooksQuestion(trimmed, reportPack);
-    const useLiveRuntime = Boolean(
-      aiStatus.configured &&
-        workspaceId &&
-        (authToken || devAuthBypass) &&
-        shouldUseLiveRuntime(trimmed, localAnswer),
-    );
-    setMessages((current) => [
-      ...current,
-      { id: nextMessageId(), role: "user", content: trimmed },
-      {
-        id: pendingId,
-        role: "assistant",
-        content: aiStatus.configured ? "Reading your books..." : "Reading available report data in degraded mode...",
-        pending: true,
-        streaming: useLiveRuntime,
-      },
-    ]);
-    setInput("");
+  useEffect(() => {
+    if (!threadRows) return;
+    if (activeThreadId === undefined) {
+      setActiveThreadId(threadRows[0]?.threadId ?? null);
+      return;
+    }
+    if (activeThreadId && !threadRows.some((thread) => thread.threadId === activeThreadId)) {
+      setActiveThreadId(threadRows[0]?.threadId ?? null);
+    }
+  }, [activeThreadId, threadRows]);
 
-    if (useLiveRuntime && workspaceId) {
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages.length, proposals.length]);
+
+  const submitPrompt = useCallback(
+    async (prompt: string) => {
+      const trimmed = prompt.trim();
+      if (!trimmed) return;
+      if (!booksContextReady || !entityId) {
+        setSendError("OpenBooks is still loading the workspace and business context.");
+        return;
+      }
+
+      setSending(true);
+      setSendError("");
       try {
-        const text = await streamLiveAnswer({
-          question: trimmed,
-          workspaceId,
-          entityId: reportPack?.entity.id as Id<"entities"> | undefined,
-          token: authToken ?? undefined,
-          onChunk: (text) => {
-            setMessages((current) =>
-              current.map((message) =>
-                message.id === pendingId
-                  ? { ...message, content: text || "Reading your books...", pending: true, streaming: true }
-                  : message,
-              ),
-            );
-          },
-        });
-        setMessages((current) =>
-          current.map((message) =>
-            message.id === pendingId
-              ? {
-                  ...message,
-                  content: text || "OpenBooks AI did not return an answer.",
-                  pending: false,
-                  streaming: false,
-                }
-              : message,
-          ),
-        );
-      } catch {
-        const answer = answerOpenBooksQuestion(trimmed, reportPack);
-        setMessages((current) =>
-          current.map((message) =>
-            message.id === pendingId
-              ? {
-                  ...message,
-                  content: answer.title,
-                  answer,
-                  pending: false,
-                  streaming: false,
-                }
-              : message,
-          ),
-        );
+        let threadId = activeThreadId || null;
+        if (!threadId) {
+          const created = await createThread({ entityId, firstMessage: trimmed });
+          threadId = created.threadId;
+          setActiveThreadId(threadId);
+        }
+        await sendMessage({ threadId, prompt: trimmed });
+        setInput("");
+      } catch (error) {
+        setSendError(error instanceof Error ? error.message : "Could not send this Ask AI message.");
+      } finally {
+        setSending(false);
       }
-      return;
-    }
-
-    window.setTimeout(() => {
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === pendingId
-            ? { ...message, content: localAnswer.title, answer: localAnswer, pending: false, streaming: false }
-            : message,
-        ),
-      );
-    }, 320);
-  }, [aiStatus.configured, authToken, booksContextReady, devAuthBypass, reportPack, workspaceId]);
-
-  const confirmProposal = useCallback(async (messageId: string, answer: ProposalAnswer) => {
-    const entityId = reportPack?.entity.id as Id<"entities"> | undefined;
-    if (!entityId) {
-      setProposalStates((current) => ({
-        ...current,
-        [messageId]: {
-          status: "error",
-          message: "Load the entity report context before confirming this action.",
-        },
-      }));
-      return;
-    }
-
-    setProposalStates((current) => ({
-      ...current,
-      [messageId]: { status: "saving", message: "Applying this action after your confirmation..." },
-    }));
-
-    try {
-      let message: string;
-      switch (answer.action) {
-        case "createRule": {
-          const result = await createConfirmedRule({
-            entityId,
-            merchantContains: answer.merchantContains,
-            autoPost: false,
-          });
-          message = `Rule ${result.status}; ${answer.merchantContains} will file to ${result.categoryName} after review.`;
-          break;
-        }
-        case "categorizeTransactions": {
-          const result = await categorizeTransactions({
-            entityId,
-            merchantContains: answer.merchantContains,
-            categoryAccountNumber: answer.categoryAccountNumber,
-            limit: answer.limit,
-          });
-          message = `${result.updatedCount} transaction${result.updatedCount === 1 ? "" : "s"} categorized as ${result.categoryName}.`;
-          break;
-        }
-        case "draftInvoice": {
-          const result = await draftInvoice({
-            entityId,
-            customerName: answer.customerName,
-            amountMinor: answer.amountMinor,
-            issueDate: answer.issueDate,
-            dueDate: answer.dueDate,
-            ...(answer.memo ? { memo: answer.memo } : {}),
-          });
-          message = `Draft invoice ${result.number} created. No revenue was posted yet.`;
-          break;
-        }
-        case "addBill": {
-          const result = await addBill({
-            entityId,
-            vendorName: answer.vendorName,
-            amountMinor: answer.amountMinor,
-            issueDate: answer.issueDate,
-            dueDate: answer.dueDate,
-            expenseAccountNumber: answer.expenseAccountNumber,
-          });
-          message = `Bill added and posted to A/P through postEntry as ${result.expenseAccountName}.`;
-          break;
-        }
-        case "createJournalEntry": {
-          const result = await createJournalEntry({
-            entityId,
-            date: answer.date,
-            memo: answer.memo,
-            amountMinor: answer.amountMinor,
-            debitAccountNumber: answer.debitAccountNumber,
-            creditAccountNumber: answer.creditAccountNumber,
-          });
-          message = `Balanced journal entry posted. Debits and credits both equal ${formatAiMoney(result.debitTotal, reportPack?.entity.currency)}.`;
-          break;
-        }
-      }
-      setProposalStates((current) => ({
-        ...current,
-        [messageId]: {
-          status: "saved",
-          message,
-        },
-      }));
-    } catch (error) {
-      setProposalStates((current) => ({
-        ...current,
-        [messageId]: {
-          status: "error",
-          message: error instanceof Error ? error.message : "Could not create the rule.",
-        },
-      }));
-    }
-  }, [
-    addBill,
-    categorizeTransactions,
-    createConfirmedRule,
-    createJournalEntry,
-    draftInvoice,
-    reportPack?.entity.currency,
-    reportPack?.entity.id,
-  ]);
+    },
+    [activeThreadId, booksContextReady, createThread, entityId, sendMessage],
+  );
 
   useEffect(() => {
     if (!pendingPrompt || pendingPrompt === lastExternalPromptRef.current) return;
     if (!booksContextReady) return;
     lastExternalPromptRef.current = pendingPrompt;
-    void submitQuestion(pendingPrompt.split("::")[0]);
-  }, [booksContextReady, pendingPrompt, submitQuestion]);
+    void submitPrompt(pendingPrompt.split("::")[0] ?? pendingPrompt);
+  }, [booksContextReady, pendingPrompt, submitPrompt]);
 
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  const handleNewThread = useCallback(() => {
+    setActiveThreadId(null);
+    setInput("");
+    setSendError("");
+    setProposalStates({});
+  }, []);
+
+  const handleDeleteThread = useCallback(
+    async (threadId: string) => {
+      await deleteThread({ threadId });
+      setActiveThreadId(null);
+    },
+    [deleteThread],
+  );
+
+  const handleConfirmProposal = useCallback(
+    async (proposal: ProposalRow) => {
+      setProposalStates((current) => ({
+        ...current,
+        [proposal.id]: { status: "confirming", message: "Applying this only after your confirmation..." },
+      }));
+      try {
+        const result = await confirmProposal({ proposalId: proposal.id });
+        setProposalStates((current) => ({
+          ...current,
+          [proposal.id]: { status: "done", message: result.resultSummary },
+        }));
+      } catch (error) {
+        setProposalStates((current) => ({
+          ...current,
+          [proposal.id]: {
+            status: "error",
+            message: error instanceof Error ? error.message : "Could not confirm this proposal.",
+          },
+        }));
+      }
+    },
+    [confirmProposal],
+  );
+
+  const handleDismissProposal = useCallback(
+    async (proposal: ProposalRow) => {
+      setProposalStates((current) => ({
+        ...current,
+        [proposal.id]: { status: "dismissing", message: "Dismissing this proposal..." },
+      }));
+      try {
+        await dismissProposal({ proposalId: proposal.id });
+        setProposalStates((current) => ({
+          ...current,
+          [proposal.id]: { status: "done", message: "Dismissed. No books were changed." },
+        }));
+      } catch (error) {
+        setProposalStates((current) => ({
+          ...current,
+          [proposal.id]: {
+            status: "error",
+            message: error instanceof Error ? error.message : "Could not dismiss this proposal.",
+          },
+        }));
+      }
+    },
+    [dismissProposal],
+  );
+
+  const proposalsByMessage = useMemo(() => {
+    const map = new Map<string, ProposalRow[]>();
+    for (const proposal of proposals) {
+      if (!proposal.messageId) continue;
+      const rows = map.get(proposal.messageId) ?? [];
+      rows.push(proposal);
+      map.set(proposal.messageId, rows);
+    }
+    return map;
+  }, [proposals]);
+
+  const unmatchedProposals = useMemo(() => {
+    const messageIds = new Set(messages.map((message) => message.id));
+    return proposals.filter((proposal) => !proposal.messageId || !messageIds.has(proposal.messageId));
+  }, [messages, proposals]);
+
+  const empty = messages.length === 0;
+  const pageMode = mode === "page";
 
   return (
     <div
       className={cn(
-        "flex h-full flex-col bg-background",
-        mode === "page" && "min-h-[680px] overflow-hidden rounded-lg border shadow-xs",
+        "flex h-full min-h-0 min-w-0 overflow-hidden bg-background",
+        pageMode && "min-h-[calc(100vh-12rem)] overflow-hidden rounded-[8px] border shadow-xs",
       )}
-      data-testid={mode === "page" ? "m10-ai-chat-page" : "m10-ai-chat-drawer"}
+      data-testid={pageMode ? "m10-ai-chat-page" : "m10-ai-chat-drawer"}
     >
-      <div className="flex h-14 items-center justify-between border-b px-4">
-        <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          <Sparkles className="size-4 text-primary" />
-          <span>Ask AI</span>
-          <Badge variant="outline" className="ml-1">
-            {aiStatus.mode === "active" ? "Bedrock active" : "Degraded mode"}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-1">
-          {mode === "drawer" ? (
-            <Button aria-label="Open Ask AI full page" asChild size="icon-sm" variant="ghost">
-              <Link href="/ask-ai">
-                <Maximize2 />
-              </Link>
-            </Button>
-          ) : null}
-          {onClose ? (
-            <Button aria-label="Close Ask AI" size="icon-sm" variant="ghost" onClick={onClose}>
-              <PanelRightClose />
-            </Button>
-          ) : null}
-        </div>
-      </div>
+      {pageMode ? (
+        <ThreadRail
+          activeThreadId={activeThreadId}
+          threads={threads}
+          onSelect={setActiveThreadId}
+          onNew={handleNewThread}
+          onDelete={(threadId) => void handleDeleteThread(threadId)}
+        />
+      ) : null}
 
-      <div className="border-b bg-muted/30 px-4 py-3">
-        <div className="flex items-start gap-2 rounded-lg border bg-background p-3">
-          <CheckCircle2 className="mt-0.5 size-4 text-primary" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium">{aiStatus.label}</div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">{aiStatus.detail}</p>
-            <div className="mt-2 text-xs text-muted-foreground">Context: {contextLabel}</div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-14 items-center justify-between gap-2 border-b px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Sparkles className="size-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">Ask AI</div>
+              <div className="truncate text-[11px] text-muted-foreground">Viewing: {contextLabel}</div>
+            </div>
+            <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">
+              {aiStatus.mode === "active" ? "Bedrock active" : "Degraded mode"}
+            </Badge>
           </div>
-        </div>
-      </div>
-
-      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={cn(
-              "max-w-[92%] rounded-lg border px-3 py-2 text-sm shadow-xs",
-              message.role === "user"
-                ? "ml-auto bg-primary text-primary-foreground"
-                : "bg-card text-card-foreground",
-              message.pending && "text-muted-foreground",
-            )}
-          >
-            <div>{message.content}</div>
-            {message.answer ? (
-              <AnswerCard
-                answer={message.answer}
-                proposalState={proposalStates[message.id]}
-                onConfirmProposal={
-                  message.answer.kind === "proposal"
-                    ? (answer) => void confirmProposal(message.id, answer)
-                    : undefined
-                }
-              />
+          <div className="flex min-w-0 items-center gap-1.5">
+            <select
+              aria-label="Conversation"
+              className="hidden h-8 max-w-[170px] rounded-[7px] border bg-background px-2 text-xs outline-none ring-ring/30 focus:ring-2 sm:block"
+              value={activeThreadId ?? "new"}
+              onChange={(event) => setActiveThreadId(event.target.value === "new" ? null : event.target.value)}
+            >
+              <option value="new">New conversation</option>
+              {threads.map((thread) => (
+                <option key={thread.threadId} value={thread.threadId}>
+                  {thread.title}
+                </option>
+              ))}
+            </select>
+            <Button
+              aria-label="New Ask AI conversation"
+              className="hidden sm:inline-flex"
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+              onClick={handleNewThread}
+            >
+              <MessageSquarePlus />
+            </Button>
+            {!pageMode ? (
+              <Button aria-label="Open Ask AI full page" asChild className="hidden sm:inline-flex" size="icon-sm" variant="ghost">
+                <Link href="/ask-ai">
+                  <Maximize2 />
+                </Link>
+              </Button>
+            ) : null}
+            {onClose ? (
+              <Button aria-label="Close Ask AI" size="icon-sm" type="button" variant="ghost" onClick={onClose}>
+                <PanelRightClose />
+              </Button>
             ) : null}
           </div>
-        ))}
+        </div>
+
+        <div className="border-b bg-muted/25 px-4 py-3">
+          <div className="flex items-start gap-2 rounded-[8px] border bg-background p-3">
+            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium">{activeThread?.title ?? aiStatus.label}</div>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {aiStatus.mode === "active"
+                  ? "Answers stream from the Convex Agent and every bookkeeping action becomes a confirmation card first."
+                  : "AI is not configured. Messages stay honest and will show the missing-provider state instead of fake answers."}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          {empty ? (
+            <div className="rounded-[8px] border border-dashed bg-card p-4" data-testid="ai-empty-state">
+              <div className="text-sm font-semibold">Ask a plain-English question about the books.</div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Try one of the five flagship prompts. The answer is saved to a durable Convex thread and will survive reload.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {SUGGESTIONS.map((prompt) => (
+                  <Button
+                    key={prompt}
+                    disabled={!booksContextReady || sending}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                    onClick={() => void submitPrompt(prompt)}
+                  >
+                    {prompt}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              proposals={proposalsByMessage.get(message.id) ?? []}
+              actionStates={proposalStates}
+              onConfirm={handleConfirmProposal}
+              onDismiss={handleDismissProposal}
+            />
+          ))}
+
+          {unmatchedProposals.length ? (
+            <div className="max-w-[94%] rounded-[8px] border bg-card px-3 py-2 shadow-xs">
+              <div className="text-sm font-semibold">Open confirmation cards</div>
+              {unmatchedProposals.map((proposal) => (
+                <ProposalCard
+                  key={proposal.id}
+                  proposal={proposal}
+                  state={proposalStates[proposal.id]}
+                  onConfirm={handleConfirmProposal}
+                  onDismiss={handleDismissProposal}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="border-t bg-background p-4">
+          {sendError ? (
+            <div className="mb-3 rounded-[7px] border border-destructive/30 p-2 text-xs text-destructive">
+              {sendError}
+            </div>
+          ) : null}
+          <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+            {SUGGESTIONS.map((prompt) => (
+              <Button
+                key={prompt}
+                className="shrink-0"
+                disabled={!booksContextReady || sending}
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={() => void submitPrompt(prompt)}
+              >
+                {prompt}
+              </Button>
+            ))}
+          </div>
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitPrompt(input);
+            }}
+          >
+            <Input
+              aria-label="Ask about your books"
+              disabled={!booksContextReady || sending}
+              placeholder={booksContextReady ? "Ask about your books" : "Loading books context"}
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+            />
+            <Button aria-label="Send question" disabled={!booksContextReady || sending} size="icon" type="submit">
+              {sending ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
+            </Button>
+          </form>
+        </div>
       </div>
 
-      <div className="border-t bg-background p-4">
-        <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-          {aiSuggestedPrompts.map((prompt) => (
-            <Button
-              key={prompt}
-              className="shrink-0"
-              disabled={!booksContextReady}
-              size="sm"
-              type="button"
-              variant="outline"
-              onClick={() => void submitQuestion(prompt)}
-            >
-              {prompt}
-            </Button>
-          ))}
-        </div>
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submitQuestion(input);
-          }}
-        >
-          <Input
-            aria-label="Ask about your books"
-            disabled={!booksContextReady}
-            placeholder={booksContextReady ? "Ask about your books" : "Loading books context"}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-          />
-          <Button aria-label="Send question" disabled={!booksContextReady} size="icon" type="submit">
-            <ArrowUp className="size-4" />
-          </Button>
-        </form>
-      </div>
+      {pageMode ? (
+        <aside className="hidden w-[280px] shrink-0 border-l bg-muted/20 p-4 xl:block" data-testid="ai-artifacts-panel">
+          <div className="text-sm font-semibold">Pinned artifacts</div>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            Confirmation cards and report links appear in the conversation today. A richer canvas can land after the core thread
+            workflow is proven.
+          </p>
+        </aside>
+      ) : null}
     </div>
   );
 }

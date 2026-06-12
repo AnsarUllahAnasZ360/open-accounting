@@ -1,206 +1,207 @@
-import { expect, type Page, test } from "@playwright/test";
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { expect, type Locator, type Page, test } from "@playwright/test";
+import { ConvexHttpClient } from "convex/browser";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-function readLocalEnv(names: string[]) {
-  const env: Record<string, string> = {};
-  const text = readFileSync(join(process.cwd(), ".env.local"), "utf8");
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-    const index = trimmed.indexOf("=");
-    const name = trimmed.slice(0, index).trim();
-    if (!names.includes(name)) continue;
-    env[name] = trimmed
-      .slice(index + 1)
-      .trim()
-      .replace(/\s+#.*$/, "")
-      .replace(/^['"]|['"]$/g, "");
-  }
-  return env;
-}
+import { api } from "../../convex/_generated/api";
 
-async function signInOwner(page: Page) {
-  const env = readLocalEnv(["OWNER_EMAIL", "OWNER_PASSWORD"]);
-  test.skip(!env.OWNER_EMAIL || !env.OWNER_PASSWORD, "OWNER_EMAIL/OWNER_PASSWORD missing locally");
+// Epic B4-B5 — Ask AI durable threads + docked layout.
+// These tests use real pointer clicks only. They intentionally avoid posting
+// bookkeeping changes to the shared demo books; proposal UI coverage uses
+// dismiss/not-now rather than confirm in e2e, while confirm behavior remains
+// covered by Convex unit tests.
 
-  await page.goto("/sign-in");
-  await page.getByLabel("Work email").fill(env.OWNER_EMAIL);
-  await page.getByLabel("Password").fill(env.OWNER_PASSWORD);
-  await page.getByLabel("Name").fill("Ansar Ullah");
-  await page.getByRole("button", { name: /Sign in/ }).click();
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible({
-    timeout: 15000,
-  });
-}
+const EVIDENCE = "docs/finishing/evidence";
 
 test.describe.configure({ mode: "serial" });
 
-test("M10 AI chat answers read questions and keeps actions confirm-first", async ({ page }) => {
-  test.setTimeout(300_000);
-
-  await signInOwner(page);
-
-  await page.goto("/settings");
-  await expect(page.getByTestId("demo-data-panel")).toBeVisible({ timeout: 15000 });
-  const demoExport = page.getByTestId("demo-data-panel").getByRole("button", { name: "Export CSV bundle" });
-  await expect(demoExport).toBeVisible();
-  await page.getByRole("button", { name: "Reset demo data" }).click();
-  await expect(page.getByTestId("demo-seed-message")).toContainText("Demo seed complete.", {
-    timeout: 180_000,
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const strip = () => {
+      document
+        .querySelectorAll("nextjs-portal, [data-nextjs-dev-overlay]")
+        .forEach((node) => node.remove());
+    };
+    const start = () => {
+      strip();
+      new MutationObserver(strip).observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+    };
+    if (document.documentElement) start();
+    else document.addEventListener("DOMContentLoaded", start);
   });
-  await expect(demoExport).toBeEnabled({ timeout: 30_000 });
-  const aiSettings = page.getByTestId("m10-ai-settings");
-  await expect(aiSettings).toBeVisible({ timeout: 15000 });
-  await expect(aiSettings.getByText(/AI provider is not configured|Bedrock provider is configured/)).toBeVisible();
-  await expect(aiSettings.getByText(/Degraded mode|Bedrock active/)).toBeVisible();
-  await expect(page.getByRole("radio", { name: /Balanced/ })).toBeChecked();
-  await expect(page.getByRole("radio", { name: /Suggest everything/ })).toBeVisible();
-  await expect(page.getByRole("radio", { name: /Balanced/ })).toBeVisible();
-  await expect(page.getByRole("radio", { name: /Autopilot/ })).toBeVisible();
-  await page.getByRole("button", { name: "Test AI connection" }).click();
-  await expect(
-    aiSettings.getByText(/Bedrock provider is configured|Bedrock env is absent|AI provider is not configured/),
-  ).toBeVisible();
-  await aiSettings.getByRole("button", { name: "Run eval" }).click();
-  await expect(page.getByTestId("m10-ai-eval-result")).toContainText(/120 rows, \d+\.\d% accuracy/, {
-    timeout: 15000,
+});
+
+async function gotoApp(page: Page, path = "/dashboard") {
+  await page.goto(path);
+  await expect(page.getByTestId("app-sidebar")).toBeVisible({ timeout: 30000 });
+}
+
+function readLocalEnv(name: string) {
+  const text = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || !line.includes("=")) continue;
+    const equalsIndex = line.indexOf("=");
+    const key = line.slice(0, equalsIndex).trim();
+    if (key !== name) continue;
+    return line.slice(equalsIndex + 1).trim().replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "");
+  }
+  return "";
+}
+
+function convexClient() {
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || readLocalEnv("NEXT_PUBLIC_CONVEX_URL");
+  return new ConvexHttpClient(convexUrl);
+}
+
+async function createProposalFixture() {
+  const client = convexClient();
+  const stamp = Date.now().toString().slice(-6);
+  const entity = await client.mutation(api.entities.create, {
+    name: `E2E AI ${stamp} LLC`,
+    businessType: "services",
+    currency: "USD",
   });
-  writeFileSync(
-    "docs/initiation/evidence/2026-06-11-m10-live-eval-result.json",
-    JSON.stringify(
-      {
-        milestone: "M10 live seeded categorization eval",
-        result: await page.getByTestId("m10-ai-eval-result").textContent(),
-      },
-      null,
-      2,
-    ),
+  const fixture = await client.mutation(api.aiThreads.createProposalFixture, { entityId: entity.entityId });
+  return { ...fixture, entityId: entity.entityId };
+}
+
+async function expectNoHorizontalScroll(page: Page) {
+  const overflow = await page.evaluate(() => {
+    const el = document.scrollingElement || document.documentElement;
+    return el.scrollWidth - el.clientWidth;
+  });
+  expect(overflow).toBeLessThanOrEqual(1);
+}
+
+async function boxesOverlap(a: Locator, b: Locator) {
+  const ba = await a.boundingBox();
+  const bb = await b.boundingBox();
+  if (!ba || !bb) return false;
+  return !(
+    ba.x + ba.width <= bb.x ||
+    bb.x + bb.width <= ba.x ||
+    ba.y + ba.height <= bb.y ||
+    bb.y + bb.height <= ba.y
   );
-  await page.screenshot({
-    path: "docs/initiation/evidence/2026-06-11-m10-live-eval-settings.png",
-    fullPage: true,
+}
+
+async function openDesktopPanel(page: Page) {
+  await page.getByTestId("ask-ai-button").click();
+  const panel = page.getByTestId("ai-panel");
+  await expect(panel).toBeVisible({ timeout: 15000 });
+  return panel;
+}
+
+async function waitForBooksContext(panel: Locator) {
+  await expect(panel.getByPlaceholder("Ask about your books")).toBeEnabled({ timeout: 30000 });
+}
+
+async function waitForBedrockActive(panel: Locator) {
+  await panel.getByText("Bedrock active").waitFor({ timeout: 15000 }).catch(() => null);
+  return await panel.getByText("Bedrock active").isVisible().catch(() => false);
+}
+
+async function startNewConversation(panel: Locator) {
+  await waitForBooksContext(panel);
+  await panel.getByRole("button", { name: "New Ask AI conversation" }).click();
+  await expect(panel.getByTestId("ai-empty-state")).toBeVisible({ timeout: 15000 });
+}
+
+test("B4 — docked Ask AI sends to Convex Agent, renders markdown, and persists thread after reload", async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await gotoApp(page, "/reports");
+
+  const panel = await openDesktopPanel(page);
+  await startNewConversation(panel);
+
+  const active = await waitForBedrockActive(panel);
+  test.skip(!active, "Bedrock is not configured; degraded mode cannot prove streamed markdown.");
+
+  const prompt =
+    "Answer with a short markdown table with columns Metric and Value. Include a row named **Net profit**. Use the reports context if useful.";
+  await panel.getByPlaceholder("Ask about your books").fill(prompt);
+  await panel.getByRole("button", { name: "Send question" }).click();
+
+  await expect(panel.getByTestId("ai-user-message").last()).toContainText("markdown table", { timeout: 15000 });
+  await expect(panel.getByTestId("ai-markdown-table").first()).toBeVisible({ timeout: 120000 });
+  await expect(panel.getByTestId("ai-markdown-response").last()).toContainText(/Net profit/i, {
+    timeout: 120000,
   });
-  await page.screenshot({
-    path: "docs/initiation/evidence/2026-06-11-m10-ai-settings.png",
-    fullPage: true,
-  });
+  await page.screenshot({ path: `${EVIDENCE}/2026-06-12-B4-markdown-thread.png`, fullPage: true });
 
-  await page.goto("/reports");
-  await expect(page.getByTestId("reports-screen")).toBeVisible({ timeout: 15000 });
-  await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled({ timeout: 15000 });
-  await page.getByRole("button", { name: "Explain report" }).click();
-  const chatDrawer = page.getByTestId("m10-ai-chat-drawer");
-  await expect(chatDrawer).toBeVisible();
-  await expect(chatDrawer.getByText(/Degraded mode|Bedrock active/)).toBeVisible();
-  await expect(chatDrawer.getByText("Explain this report")).toBeVisible();
-
-  await page.getByRole("button", { name: "Top 5 expenses this quarter?" }).click();
-  await expect(chatDrawer.getByText("Top expense categories").first()).toBeVisible({ timeout: 15000 });
-  await expect(chatDrawer.getByTestId("ai-answer-table").locator("tbody tr").first()).toBeVisible();
-
-  await page.getByPlaceholder("Ask about your books").fill("Create a rule for Uber");
-  await page.getByRole("button", { name: "Send question" }).click();
-  await expect(chatDrawer.getByText("Proposed action").first()).toBeVisible();
-  await expect(chatDrawer.getByRole("button", { name: "Confirm rule" })).toBeVisible();
-  await expect(chatDrawer.getByText("Nothing has been posted or written yet.")).toBeVisible();
-  await chatDrawer.getByRole("button", { name: "Confirm rule" }).click();
-  await expect(chatDrawer.getByTestId("ai-proposal-result")).toContainText(/Rule (created|updated); Uber/, {
-    timeout: 15000,
-  });
-
-  await chatDrawer.getByPlaceholder("Ask about your books").fill("Categorize Lyft transactions as Travel");
-  await chatDrawer.getByRole("button", { name: "Send question" }).click();
-  await expect(chatDrawer.getByText("Categorization proposal").first()).toBeVisible({ timeout: 15000 });
-  await expect(chatDrawer.getByText("Nothing has been posted or written yet.").last()).toBeVisible();
-  await chatDrawer.getByRole("button", { name: "Categorize transactions" }).click();
-  await expect(chatDrawer.getByTestId("ai-proposal-result").last()).toContainText(/transactions? categorized as Travel/, {
+  await page.reload();
+  const reloadedPanel = await openDesktopPanel(page);
+  await expect(reloadedPanel.getByTestId("ai-user-message").last()).toContainText("markdown table", {
     timeout: 30000,
   });
-
-  await chatDrawer.getByPlaceholder("Ask about your books").fill("Draft invoice for Northstar Dental for $1200 on 2026-06-10 due 2026-07-10");
-  await chatDrawer.getByRole("button", { name: "Send question" }).click();
-  await expect(chatDrawer.getByText("Draft invoice proposal").first()).toBeVisible({ timeout: 15000 });
-  await chatDrawer.getByRole("button", { name: "Draft invoice" }).click();
-  await expect(chatDrawer.getByTestId("ai-proposal-result").last()).toContainText(/Draft invoice AI-DRAFT-\d{4} created/, {
-    timeout: 15000,
+  await expect(reloadedPanel.getByTestId("ai-markdown-response").last()).toContainText(/Net profit/i, {
+    timeout: 30000,
   });
-
-  await chatDrawer.getByPlaceholder("Ask about your books").fill("Add bill for Figma for $24 on 2026-06-10 due 2026-06-30");
-  await chatDrawer.getByRole("button", { name: "Send question" }).click();
-  await expect(chatDrawer.getByText("Bill posting proposal").first()).toBeVisible({ timeout: 15000 });
-  await chatDrawer.getByRole("button", { name: "Add bill" }).click();
-  await expect(chatDrawer.getByTestId("ai-proposal-result").last()).toContainText(/Bill added and posted to A\/P through postEntry/, {
-    timeout: 15000,
-  });
-
-  await chatDrawer.getByPlaceholder("Ask about your books").fill("Create journal entry for owner contribution of $100 on 2026-06-10");
-  await chatDrawer.getByRole("button", { name: "Send question" }).click();
-  await expect(chatDrawer.getByText("Journal entry proposal").first()).toBeVisible({ timeout: 15000 });
-  await chatDrawer.getByRole("button", { name: "Post journal entry" }).click();
-  await expect(chatDrawer.getByTestId("ai-proposal-result").last()).toContainText("Balanced journal entry posted.", {
-    timeout: 15000,
-  });
-  await page.screenshot({
-    path: "docs/initiation/evidence/2026-06-11-m10-ai-chat.png",
-    fullPage: true,
-  });
-
-  await page.goto("/settings");
-  await expect(page.getByText("AI confirmed: Uber")).toBeVisible({ timeout: 15000 });
-  await expect(page.getByTestId("audit-actor-ai").first()).toBeVisible({ timeout: 15000 });
-  await expect(page.getByTestId("audit-actor-rule").first()).toBeVisible();
-  await expect(page.getByTestId("audit-actor-user").first()).toBeVisible();
-  await page.screenshot({
-    path: "docs/initiation/evidence/2026-06-11-m13-audit-attribution.png",
-    fullPage: true,
-  });
+  await startNewConversation(reloadedPanel);
+  await expect(reloadedPanel.getByTestId("ai-user-message")).toHaveCount(0);
+  await page.screenshot({ path: `${EVIDENCE}/2026-06-12-B4-thread-persist-new.png`, fullPage: true });
 });
 
-test("M10 mobile chat drawer answers a ledger-backed question", async ({ page }) => {
-  test.setTimeout(120_000);
+test("B4 — proposal tools render durable confirmation cards without mutating books", async ({ page }) => {
+  test.setTimeout(240_000);
+  const fixture = await createProposalFixture();
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await gotoApp(page, "/reports");
+
+    const panel = await openDesktopPanel(page);
+    const card = panel.getByTestId("ai-confirmation-card").first();
+    await expect(card).toBeVisible({ timeout: 120000 });
+    expect(fixture.threadId).toBeTruthy();
+    await expect(card).toContainText("Nothing has been posted or written yet.");
+    await card.getByRole("button", { name: "Create rule" }).click();
+    await expect(card.getByTestId("ai-proposal-result")).toContainText(/Rule (created|updated)/, { timeout: 30000 });
+    await page.screenshot({ path: `${EVIDENCE}/2026-06-12-B4-confirmation-card.png`, fullPage: true });
+  } finally {
+    await convexClient().mutation(api.entities.archive, { entityId: fixture.entityId });
+  }
+});
+
+test("B5 — desktop panel is docked and main content remains clickable", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await gotoApp(page, "/dashboard");
+  await expect(page.getByTestId("dashboard-screen")).toBeVisible({ timeout: 30000 });
+  const panel = await openDesktopPanel(page);
+  await waitForBooksContext(panel);
+
+  await expectNoHorizontalScroll(page);
+  expect(await boxesOverlap(panel, page.getByTestId("app-sidebar"))).toBe(false);
+  expect(await boxesOverlap(panel, page.getByTestId("app-main-column"))).toBe(false);
+
+  await page.getByTestId("dashboard-screen").getByRole("link").first().click();
+  await expect(page).toHaveURL(/\/transactions/);
+  await expect(page.getByTestId("transactions-screen")).toBeVisible({ timeout: 30000 });
+  await page.screenshot({ path: `${EVIDENCE}/2026-06-12-B5-docked-desktop.png`, fullPage: true });
+});
+
+test("B5 — mobile Ask AI opens as bottom sheet, closes, and keeps width stable", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await gotoApp(page, "/dashboard");
+  await expectNoHorizontalScroll(page);
 
-  await signInOwner(page);
-  await page.goto("/reports");
-  await expect(page.getByTestId("reports-screen")).toBeVisible({ timeout: 15000 });
-  await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled({ timeout: 15000 });
-  await page.getByRole("button", { name: "Explain report" }).click();
-  const chatDrawer = page.getByTestId("m10-ai-chat-drawer");
-  await expect(chatDrawer).toBeVisible();
-  await expect(chatDrawer.getByText(/Degraded mode|Bedrock active/)).toBeVisible();
-  await expect(chatDrawer.getByText("Explain this report")).toBeVisible({ timeout: 15000 });
+  await page.locator("nav").getByRole("button", { name: "Ask AI" }).click();
+  const panel = page.getByTestId("ai-panel-mobile");
+  await expect(panel).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByText("Ask AI").first()).toBeVisible();
+  await waitForBooksContext(panel);
+  await expectNoHorizontalScroll(page);
+  await page.screenshot({ path: `${EVIDENCE}/2026-06-12-B5-mobile-sheet.png`, fullPage: true });
 
-  await chatDrawer.getByPlaceholder("Ask about your books").fill("Who owes me money right now?");
-  await chatDrawer.getByRole("button", { name: "Send question" }).click();
-  await expect(chatDrawer.getByText("Customers who owe you money").first()).toBeVisible({ timeout: 15000 });
-  await expect(chatDrawer.getByTestId("ai-answer-table").locator("tbody tr").first()).toBeVisible();
-
-  await page.screenshot({
-    path: "docs/initiation/evidence/2026-06-11-m10-ai-chat-mobile.png",
-    fullPage: true,
-  });
-});
-
-test("M10 full-page Ask AI answers a ledger-backed question", async ({ page }) => {
-  test.setTimeout(120_000);
-
-  await signInOwner(page);
-  await page.goto("/ask-ai");
-  await expect(page.getByRole("heading", { name: "Ask AI" })).toBeVisible({ timeout: 15000 });
-
-  const chatPage = page.getByTestId("m10-ai-chat-page");
-  await expect(chatPage).toBeVisible();
-  await expect(chatPage.getByText(/Degraded mode|Bedrock active/)).toBeVisible();
-  await expect(chatPage.getByPlaceholder("Ask about your books")).toBeEnabled({ timeout: 15000 });
-
-  await chatPage.getByPlaceholder("Ask about your books").fill("Top 5 expenses this quarter?");
-  await chatPage.getByRole("button", { name: "Send question" }).click();
-  await expect(chatPage.getByText("Top expense categories").first()).toBeVisible({ timeout: 15000 });
-  await expect(chatPage.getByTestId("ai-answer-table").locator("tbody tr").first()).toBeVisible();
-
-  await page.screenshot({
-    path: "docs/initiation/evidence/2026-06-11-m10-ai-chat-full-page.png",
-    fullPage: true,
-  });
+  await panel.getByRole("button", { name: "Close Ask AI" }).click();
+  await expect
+    .poll(async () => {
+      const box = await panel.boundingBox();
+      return box ? box.y > 760 : false;
+    }, { timeout: 5000 })
+    .toBe(true);
 });

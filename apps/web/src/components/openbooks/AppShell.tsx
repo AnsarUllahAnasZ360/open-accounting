@@ -180,10 +180,26 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(OPENBOOKS_AI_EVENT, handleAskAi);
   }, []);
 
+  useEffect(() => {
+    if (!aiOpen) return;
+    const media = window.matchMedia("(max-width: 1023px)");
+    const previous = document.body.style.overflow;
+    const applyLock = () => {
+      document.body.style.overflow = media.matches ? "hidden" : previous;
+    };
+    applyLock();
+    media.addEventListener("change", applyLock);
+    return () => {
+      media.removeEventListener("change", applyLock);
+      document.body.style.overflow = previous;
+    };
+  }, [aiOpen]);
+
   const workspaceName = viewer?.workspace?.name ?? "open books";
   const userName = viewer?.user?.name ?? "You";
   const role = roleLabel(viewer?.role);
   const activeEntityName = reportPack?.entity.name ?? "Your business";
+  const currentRouteLabel = appRoutes.find((route) => route.href === pathname)?.label ?? settingsRoute.label;
 
   const entityOptions: EntityOption[] = useMemo(
     () => {
@@ -276,7 +292,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   return (
     <ActiveEntityProvider value={activeEntityContext}>
       <TooltipProvider delayDuration={150}>
-        <div className="min-h-screen bg-background text-foreground">
+        <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
           {/* Mobile scrim */}
           {sidebarOpen ? (
             <button
@@ -320,63 +336,91 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
             )}
           </aside>
 
-          <div className={cn("min-h-screen pb-16 transition-[padding] duration-150 ease-out lg:pb-0", contentPad, aiOpen && "xl:pr-[380px]")}>
-            <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b bg-background px-4 lg:px-6">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <Button
-                  aria-label="Open navigation"
-                  className="lg:hidden"
-                  size="icon-sm"
-                  variant="outline"
-                  onClick={() => setSidebarOpen(true)}
-                >
-                  <Menu />
-                </Button>
-                <button
-                  type="button"
-                  data-testid="command-search-trigger"
-                  onClick={openPalette}
-                  className="hidden h-[34px] min-w-0 max-w-[460px] flex-1 items-center gap-2 rounded-[10px] border bg-sidebar px-3 text-left text-[13px] text-muted-foreground transition-colors hover:bg-muted md:flex"
-                >
-                  <Search className="size-4 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">Search transactions, contacts, reports…</span>
-                  <span className="money-figures shrink-0 rounded-[5px] border bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                    ⌘K
-                  </span>
-                </button>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <div className="hidden h-[30px] items-center rounded-full bg-muted px-3 text-[12.5px] font-medium text-muted-foreground sm:flex">
-                  Jun 2026
-                </div>
-                <Button
-                  data-testid="ask-ai-button"
-                  className={cn(
-                    "border-[#bbe0a9] bg-[#f1f8ee] text-[#1d6b12] hover:bg-[#dcefd2] hover:text-[#1d6b12]",
-                    aiOpen && "border-[#92cc7a] bg-[#dcefd2]",
-                  )}
-                  variant="outline"
-                  onClick={() => setAiOpen((value) => !value)}
-                >
-                  <Sparkles />
-                  Ask AI
-                  <span className="money-figures hidden text-[11px] text-[#63b347] sm:inline">⌘J</span>
-                </Button>
-              </div>
-            </header>
+          <div className={cn("min-h-screen pb-16 transition-[padding] duration-150 ease-out lg:pb-0", contentPad)}>
+            <div className="flex min-h-screen">
+              <div className="min-w-0 flex-1" data-testid="app-main-column">
+                <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b bg-background px-4 lg:px-6">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <Button
+                      aria-label="Open navigation"
+                      className="lg:hidden"
+                      size="icon-sm"
+                      variant="outline"
+                      onClick={() => setSidebarOpen(true)}
+                    >
+                      <Menu />
+                    </Button>
+                    <button
+                      type="button"
+                      data-testid="command-search-trigger"
+                      onClick={openPalette}
+                      className="hidden h-[34px] min-w-0 max-w-[460px] flex-1 items-center gap-2 rounded-[10px] border bg-sidebar px-3 text-left text-[13px] text-muted-foreground transition-colors hover:bg-muted md:flex"
+                    >
+                      <Search className="size-4 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">Search transactions, contacts, reports…</span>
+                      <span className="money-figures shrink-0 rounded-[5px] border bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        ⌘K
+                      </span>
+                    </button>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <div className="hidden h-[30px] items-center rounded-full bg-muted px-3 text-[12.5px] font-medium text-muted-foreground sm:flex">
+                      Jun 2026
+                    </div>
+                    <Button
+                      data-testid="ask-ai-button"
+                      className={cn(
+                        "border-[#bbe0a9] bg-[#f1f8ee] text-[#1d6b12] hover:bg-[#dcefd2] hover:text-[#1d6b12]",
+                        aiOpen && "border-[#92cc7a] bg-[#dcefd2]",
+                      )}
+                      variant="outline"
+                      onClick={() => setAiOpen((value) => !value)}
+                    >
+                      <Sparkles />
+                      Ask AI
+                      <span className="money-figures hidden text-[11px] text-[#63b347] sm:inline">⌘J</span>
+                    </Button>
+                  </div>
+                </header>
 
-            <main className="mx-auto w-full max-w-[1200px] px-4 py-5 lg:px-6">{children}</main>
+                <main className="mx-auto w-full max-w-[1200px] px-4 py-5 lg:px-6">{children}</main>
+              </div>
+
+              {aiOpen ? (
+                <aside
+                  data-testid="ai-panel"
+                  className="sticky top-0 hidden h-screen w-[380px] shrink-0 overflow-hidden border-l bg-background transition-[width] duration-150 ease-out lg:flex"
+                >
+                  <OpenBooksAIChat
+                    contextLabel={currentRouteLabel}
+                    reportPack={aiReportPack ?? reportPack}
+                    aiStatus={aiStatus}
+                    workspaceId={viewer?.workspace?.id}
+                    pendingPrompt={pendingAiPrompt}
+                    onClose={() => setAiOpen(false)}
+                  />
+                </aside>
+              ) : null}
+            </div>
           </div>
 
+          {aiOpen ? (
+            <button
+              aria-label="Close Ask AI overlay"
+              className="fixed inset-0 z-40 bg-black/30 lg:hidden"
+              onClick={() => setAiOpen(false)}
+            />
+          ) : null}
+
           <aside
-            data-testid="ai-panel"
+            data-testid="ai-panel-mobile"
             className={cn(
-              "fixed inset-y-0 right-0 z-40 w-full max-w-[420px] border-l bg-background transition-transform duration-150 ease-out",
-              aiOpen ? "translate-x-0" : "translate-x-full",
+              "fixed inset-x-0 bottom-0 z-50 h-[88dvh] overflow-hidden rounded-t-[12px] border-t bg-background pb-[env(safe-area-inset-bottom)] shadow-lg transition-transform duration-150 ease-out lg:hidden",
+              aiOpen ? "translate-y-0" : "translate-y-full",
             )}
           >
             <OpenBooksAIChat
-              contextLabel={appRoutes.find((route) => route.href === pathname)?.label ?? settingsRoute.label}
+              contextLabel={currentRouteLabel}
               reportPack={aiReportPack ?? reportPack}
               aiStatus={aiStatus}
               workspaceId={viewer?.workspace?.id}

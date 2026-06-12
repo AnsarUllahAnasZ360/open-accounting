@@ -439,3 +439,73 @@ export const testStreamWithMock = internalAction({
     return { deltaCount, text };
   },
 });
+
+/**
+ * Dev-only e2e fixture for the B4 confirmation-card UI. It creates a durable
+ * thread plus a proposed row without relying on model nondeterminism. Guarded by
+ * the backend dev-auth bypass env and owner role; never enable this in prod.
+ */
+export const createProposalFixture = mutation({
+  args: { entityId: v.optional(v.id("entities")) },
+  handler: async (ctx, args) => {
+    if (process.env.OPENBOOKS_DEV_AUTH_BYPASS !== "1") {
+      throw new ConvexError("AI proposal fixtures are only available in dev-auth mode.");
+    }
+
+    const { userId, membership } = await requireAnyWorkspaceRole(ctx, "owner");
+    const entity = await resolveEntityForWorkspace(ctx, membership.workspaceId, args.entityId);
+    const travelAccount = await ctx.db
+      .query("ledgerAccounts")
+      .withIndex("by_entity_and_number", (q) => q.eq("entityId", entity._id).eq("number", "5900"))
+      .unique();
+    if (!travelAccount) {
+      throw new ConvexError("AI proposal fixture needs the Travel account seeded on this entity.");
+    }
+    const { threadId } = await openBooksAgent.createThread(ctx, {
+      userId,
+      title: "E2E proposal fixture",
+    });
+    const now = Date.now();
+    await ctx.db.insert("chatThreads", {
+      threadId,
+      workspaceId: membership.workspaceId,
+      entityId: entity._id,
+      userId,
+      title: "E2E proposal fixture",
+      lastActiveAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await saveMessage(ctx, components.agent, {
+      threadId,
+      prompt: "Create a rule for Uber rides to Travel. Do not post anything.",
+    });
+    const assistant = await saveMessage(ctx, components.agent, {
+      threadId,
+      message: {
+        role: "assistant",
+        content: "I prepared a rule proposal. Nothing has been posted or written yet.",
+      },
+    });
+    const proposalId = await ctx.db.insert("proposals", {
+      workspaceId: membership.workspaceId,
+      entityId: entity._id,
+      threadId,
+      messageId: assistant.messageId,
+      kind: "rule",
+      payload: {
+        merchantContains: "Uber",
+        categoryAccountId: travelAccount._id,
+        categoryName: travelAccount.name,
+        autoPost: false,
+      },
+      summary: `Create a rule: when a merchant contains "Uber", categorize as ${travelAccount.name}.`,
+      status: "proposed",
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return { threadId, proposalId };
+  },
+});

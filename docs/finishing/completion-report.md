@@ -62,11 +62,11 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots; B5 dock verified in `tests/e2e/ai-chat.spec.ts`; F2 profile verified in `tests/e2e/profile-team.spec.ts` + screenshot; G5 entity switching verified in `tests/e2e/entity-scope-g5.spec.ts` + screenshots | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Profile page now updates sidebar identity live. Entity switching now drives dashboard/register/reports/module reads for Live Sandbox and fresh businesses. Remaining follow-up: global ⌘K server search index. AI panel is docked on desktop and a bottom sheet on mobile. |
 | 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | PARTIAL | `convex/plaid.test.ts` 15/15 + `convex/plaidWebhook.test.ts` 2/2 + `tests/e2e/plaid-link.spec.ts` 3/3 + 3 screenshots | G1 mounts the Plaid Link client and persists exchanged access tokens server-side without leaking them. G2 adds item-level cursor state, `system:sync`, 4h cron, verified Plaid webhook signature handling, real `/transactions/sync`, server-side removal reversal, and a Settings `Sync now` control. Still not WORKING: no completed hosted Plaid Link session + real Plaid sandbox item sync has been proven end-to-end in the browser. |
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | `convex/stripe.test.ts` 6/6 + `convex/stripeWebhook.test.ts` 3/3 + `tests/e2e/stripe-g3.spec.ts` 1/1 + screenshot | G3 code is implemented: Stripe test-mode webhooks dedupe, trigger targeted invoice/charge/payout sync, post through `system:sync`, and persist `stripePayoutLines`; UI reads persisted child rows. Still not WORKING until a real Stripe CLI/Dashboard test webhook is delivered to `/stripe/webhook` on the cloud site and proves invoice/payout update end-to-end. |
-| 5 | Inbox: confirm / correct / rule / batch / keyboard | PARTIAL | `convex/ai.test.ts`, `convex/plaid.test.ts`, `tests/e2e/import-ai-b6.spec.ts` 1/1 + screenshot | Import-triggered AI batch/run-history is now evidenced for CSV and Plaid system sync; Epic H still rewrites general Inbox assertions and keyboard coverage. |
+| 5 | Inbox: confirm / correct / rule / batch / keyboard | PARTIAL | `convex/ai.test.ts`, `convex/plaid.test.ts`, `tests/e2e/import-ai-b6.spec.ts` 1/1 + screenshot; H3 eval JSON + `tests/e2e/ai-eval-h3.spec.ts` screenshot | Import-triggered AI batch/run-history is now evidenced for CSV and Plaid system sync. H3 replaced the old self-scored eval with a label-safe holdout: 45/60 correct (75.0%), below the 80% target, with the gap concentrated in low-confidence income rows routed to review. Epic H still rewrites general Inbox assertions and keyboard coverage. |
 | 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + `tests/e2e/receipts-g4.spec.ts` 2/2 + `convex/receipts.test.ts` 13/13 | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Receipt PDF/text + image upload now creates reviewable evidence, transaction receipt chip, and Create expense → balanced manual-expense posting from an unmatched receipt. Remaining G4 proof gap: true first-page PDF raster-to-Bedrock vision. |
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots; G5 active-entity report proof in `tests/e2e/entity-scope-g5.spec.ts` | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper; reports now compute against the selected entity including Live Sandbox and a fresh empty business. Partial: CSV==screen equality not yet automated (export button works); exhaustive compare-column coverage deferred to H. |
 | 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | WORKING | B1–B3 unit tests + live Bedrock smoke + `tests/e2e/ai-chat.spec.ts` 4/4 + 5 screenshots; B6 scheduling proof in `tests/e2e/import-ai-b6.spec.ts` | Live Bedrock answer renders markdown table and survives reload; New conversation resets thread; durable proposal card confirms through `api.proposals.confirmProposal` on a temporary business, then archives it; desktop dock and mobile sheet verified. B6 import-trigger scheduling/run-history is now implemented and evidenced; real-Bedrock high-confidence/low-confidence import split remains a named open proof. |
-| 9 | Settings: 10-section subnav, all real | WORKING | `tests/e2e/settings.spec.ts` 3/3 + `convex/settings.test.ts` 4/4 + 6 screenshots; F3 invite/staff role path in `tests/e2e/profile-team.spec.ts` + screenshots; G5 active-entity settings scope in `tests/e2e/entity-scope-g5.spec.ts` | 10 sections real-click verified; Add business creates an entity, appears in the switcher, archive hides it while preserving audit history; AI autonomy persists; rule reorder persists; audit filter verified. Team invite copy-link acceptance works; Plunk email delivery remains optional/unconfigured. Entity-scoped settings reads now follow the selected business where applicable. |
+| 9 | Settings: 10-section subnav, all real | WORKING | `tests/e2e/settings.spec.ts` 3/3 + `convex/settings.test.ts` 4/4 + 6 screenshots; F3 invite/staff role path in `tests/e2e/profile-team.spec.ts` + screenshots; G5 active-entity settings scope in `tests/e2e/entity-scope-g5.spec.ts`; H3 eval history in `tests/e2e/ai-eval-h3.spec.ts` | 10 sections real-click verified; Add business creates an entity, appears in the switcher, archive hides it while preserving audit history; AI autonomy persists; rule reorder persists; audit filter verified; Settings -> AI now shows the label-safe categorization eval history. Team invite copy-link acceptance works; Plunk email delivery remains optional/unconfigured. Entity-scoped settings reads now follow the selected business where applicable. |
 | 10 | Mobile genuinely usable at 390px | PARTIAL | `tests/e2e/core-screens.spec.ts` H1 mobile dashboard screenshot + inherited per-screen shots | H1 now proves the dashboard surface at 390px in a disposable business with no horizontal scroll. Still partial until H2 captures dashboard, Inbox, Transactions, and Ask AI mobile surfaces as one acceptance pack. |
 
 ## Batch log (dated, append-only)
@@ -782,6 +782,49 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   until the acceptance pack covers rows 1-18, Inbox keyboard/batch behavior, CSV
   equals screen, report export equality, and all four mobile surfaces.
 - **Next:** run final gates for this batch, then continue H2/H3/H4/H5 or collect
+  external Plaid/Stripe proof if Ansar provides the sessions/secrets.
+
+### 2026-06-12 — Batch H3: honest label-safe categorization eval (lead)
+
+- **Changed:** replaced the inherited self-scored categorization eval path with a
+  label-safe holdout harness. The new cloud action creates a temporary eval
+  business with the same chart of accounts, clones labeled seed transactions
+  **without** `categoryAccountId` or `evalExpectedAccountId`, routes those
+  unlabeled rows through the real Bedrock categorizer, then compares the
+  prediction to the hidden expected account after routing. Temporary eval
+  businesses are archived after recording the run.
+- **Provider/runtime:** the Bedrock invocation path now uses the AWS SDK
+  `BedrockRuntimeClient` instead of the hand-written SigV4 request builder, and
+  supports the configured Moonshot Kimi Bedrock chat payload/response shape
+  (`moonshotai.kimi-k2.5`). The Kimi model ID/payload shape was checked against
+  official AWS Bedrock documentation on 2026-06-12.
+- **Evidence / verification:**
+  - `node scripts/h3-holdout-categorization-eval.mjs` -> **green** and wrote
+    `docs/finishing/evidence/2026-06-12-H3-categorization-holdout-eval.json`.
+    Final result: **45/60 correct (75.0%)**, status `below_target`, target
+    80.0%, provider mode `active`, no secrets in the artifact.
+  - `tests/e2e/ai-eval-h3.spec.ts` -> **1/1 green real-click**. The spec opens
+    Settings -> AI, verifies the latest eval row shows 75%, 45/60 correct, and
+    the below-target finding, then screenshots it at
+    `docs/finishing/evidence/2026-06-12-H3-ai-eval-settings.png`.
+  - `pnpm vitest run convex/ai.test.ts -t "Moonshot Kimi|prepares label-safe holdout|parses Bedrock JSON"`
+    -> **3/3 green**. The tests prove holdout setup does not expose answer keys
+    to routing and that the Bedrock parser handles Kimi responses.
+  - A 120-row live run processed 119 rows and recorded a below-target 88/119
+    eval history entry, but the CLI process failed near the long-action boundary
+    before writing the JSON evidence. The committed script/action cap synchronous
+    evals at **60 rows**; larger benchmarks should be chunked/background jobs,
+    not one long Convex action.
+- **Product finding:** the old apparent 100% was leakage. The honest eval shows
+  the classifier is strong on high-confidence expense rows but routes several
+  income rows to `Uncategorized Income` at low confidence. That is the correct
+  safe behavior for bookkeeping integrity, but it is below the v1 quality target
+  and should be improved before claiming autopilot-quality categorization.
+- **Status:** H3 honest categorization eval is **WORKING and evidenced**, with a
+  below-target product-quality finding. This does **not** upgrade the broader
+  Inbox row #5 to WORKING because H1/H2 still need general Inbox
+  confirm/correct/rule/batch/keyboard coverage.
+- **Next:** H2 acceptance/mobile pack, H4 perf/limits, H5 docs closeout, plus
   external Plaid/Stripe proof if Ansar provides the sessions/secrets.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a

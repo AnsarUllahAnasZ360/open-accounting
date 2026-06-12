@@ -38,6 +38,10 @@ export function AiSection({
     api.ai.latestCategorizationBatchRuns,
     entityId ? { entityId, limit: 5 } : "skip",
   );
+  const evalRuns = useQuery(
+    api.ai.latestCategorizationEvalRuns,
+    entityId ? { entityId, limit: 3 } : "skip",
+  );
   const setConfig = useMutation(api.ai.setConfig);
   const testConnection = useAction(api.ai.testProviderConnection);
 
@@ -217,6 +221,30 @@ export function AiSection({
                 <span className="money-figures text-muted-foreground">{new Date(run.createdAt).toLocaleString("en-US")}</span>
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted-foreground">{run.status}</span>
                 <span className="text-muted-foreground">{run.summary}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Holdout eval history */}
+      <div className="rounded-[14px] border bg-card shadow-xs" data-testid="ai-eval-history">
+        <div className="border-b px-5 py-3 text-[13.5px] font-semibold">Categorization eval</div>
+        <div className="divide-y">
+          {(evalRuns ?? []).length === 0 ? (
+            <div className="px-5 py-4 text-[12.5px] text-muted-foreground">
+              No label-safe eval runs yet. Holdout results appear here after the verification harness runs.
+            </div>
+          ) : (
+            (evalRuns ?? []).map((run) => (
+              <div key={run.id} className="grid gap-1 px-5 py-3 text-[12.5px]" data-testid="ai-eval-row">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="money-figures text-muted-foreground">{new Date(run.createdAt).toLocaleString("en-US")}</span>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted-foreground">{run.status.replaceAll("_", " ")}</span>
+                  <span className="font-medium">{Math.round(run.accuracy * 1000) / 10}%</span>
+                  <span className="text-muted-foreground">{run.correctCount}/{run.evaluatedCount} correct · {run.providerMode}</span>
+                </div>
+                <div className="text-muted-foreground">{run.finding}</div>
               </div>
             ))
           )}

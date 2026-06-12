@@ -33,7 +33,7 @@ closeout.
   deployed route.
 - **Still open:** B6 real-Bedrock high/low import split proof · G4 true PDF
   raster-to-Bedrock proof · Plaid hosted-item proof · Stripe webhook delivery
-  proof · remaining H acceptance evidence/eval/perf/docs closeout · prod
+  proof · remaining H acceptance evidence/perf/docs closeout · prod
   redeploy only if Ansar reauthorizes it.
 
 ---
@@ -109,7 +109,7 @@ e2e green.
 | 2 | Shell: collapse rail, footer profile/settings/logout, ⌘K, switcher, Ask AI ⌘J | ✅ WORKING incl. active-entity data switching |
 | 3 | Plaid sandbox real Link → sync → ledger/inbox | ◑ PARTIAL → G1a UI/exchange + G2 server sync path done; needs hosted Plaid item proof |
 | 4 | Stripe test mode event-driven sync + payout reconcile | ◑ PARTIAL → G3 code verified; needs real Stripe CLI/Dashboard webhook delivery proof |
-| 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → AI batch import trigger + receipt cards now have evidence; Epic H still rewrites general/keyboard assertions |
+| 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → AI batch import trigger + receipt cards now have evidence; H3 label-safe eval is done at 45/60 (75.0%), below the 80% target; Epic H still rewrites general/keyboard assertions |
 | 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING; receipt upload/chip + create-expense posting evidenced, full PDF raster still partial |
 | 7 | Reports home→viewer, sane periods, drill-down, cash⇄accrual | ✅ WORKING incl. active-entity report reads |
 | 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B5; B6 import-trigger scheduling/run history evidenced, real-Bedrock split remains |
@@ -189,11 +189,18 @@ manual import/recategorize/split/CSV/mobile with real clicks, screenshots the
 flow, then archives the throwaway business. Remaining H1/H2: rewrite the rest of
 the acceptance pack to mirror `docs/initiation/acceptance.md` rows 1-18,
 including Inbox keyboard/batch, CSV equals screen, report export equality, and
-all four mobile surfaces. H3 **honest categorization eval** (the old "100%"
-compared the seed to itself — strip labels, run the pipeline + live Bedrock,
-report real accuracy). H4 perf/limits pass. H5 completion-report v2 + refresh
-`how-openbooks-works.md` + README quickstart + `AGENTS.md`. Do **not** deploy to
-Vercel in this run unless Ansar reauthorizes it; the account context changed.
+all four mobile surfaces. H3 **honest categorization eval is done/evidenced**:
+the old "100%" compared the seed to itself; the new harness strips route-visible
+labels, runs the real Bedrock pipeline on a temporary eval business, and reports
+**45/60 correct (75.0%)**, below the 80% target. Evidence:
+`docs/finishing/evidence/2026-06-12-H3-categorization-holdout-eval.json` and
+`docs/finishing/evidence/2026-06-12-H3-ai-eval-settings.png`. A 120-row live run
+recorded 88/119 in Settings but failed before JSON write near the long-action
+boundary, so the committed synchronous cap is 60 rows; bigger evals should be a
+chunked/background job. Remaining: H4 perf/limits pass. H5 completion-report v2
++ refresh `how-openbooks-works.md` + README quickstart + `AGENTS.md`. Do
+**not** deploy to Vercel in this run unless Ansar reauthorizes it; the account
+context changed.
 
 ---
 

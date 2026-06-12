@@ -7,6 +7,7 @@ import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
   buildCategorizationPrompt,
+  extractBedrockResponseText,
   normalizeBedrockCategorizationProposal,
   parseBedrockCategorizationText,
 } from "./bedrockCategorizer";
@@ -190,6 +191,30 @@ const latestCategorizationBatchRuns = makeFunctionReference<
     createdAt: number;
   }>
 >("ai:latestCategorizationBatchRuns");
+const prepareHoldoutCategorizationEval = makeFunctionReference<
+  "mutation",
+  { sourceEntityId: string; limit?: number },
+  {
+    sourceEntityId: string;
+    evalEntityId: string;
+    bankAccountId: string;
+    currency: string;
+    runKey: string;
+    cases: Array<{
+      sourceTransactionId: string;
+      date: string;
+      amountMinor: number;
+      currency: string;
+      merchant: string;
+      rawDescription: string;
+      source: "bank" | "stripe" | "manual";
+      expectedAccountId: string;
+      expectedAccountNumber: string;
+      expectedAccountName: string;
+    }>;
+    skippedNonCategoryCount: number;
+  }
+>("ai:prepareHoldoutCategorizationEval");
 
 async function setupAIBackend(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {
@@ -274,6 +299,7 @@ async function setupAIBackend(t: ReturnType<typeof convexTest>) {
       workspaceId,
       entityId,
       bankAccountId,
+      operatingAccountId,
       softwareAccountId,
       mealsAccountId,
     };
@@ -461,6 +487,19 @@ describe("M10 AI backend", () => {
         reasoning: "Figma is recurring design software.",
       },
     });
+  });
+
+  it("extracts Moonshot Kimi Bedrock chat-completion text", () => {
+    const text = extractBedrockResponseText("moonshotai.kimi-k2.5", {
+      choices: [
+        {
+          message: {
+            content: "{\"accountNumber\":\"5200\",\"confidence\":0.91}",
+          },
+        },
+      ],
+    });
+    expect(text).toContain("\"accountNumber\":\"5200\"");
   });
 
   it("builds bounded semantic memory embedding payloads for Titan", () => {
@@ -996,6 +1035,67 @@ describe("M10 AI backend", () => {
       expect(transaction?.decidedBy).toBe("memory");
       expect(transaction?.reasoning).toContain("Semantic memory matched");
     });
+  });
+
+  it("prepares label-safe holdout eval rows without route-visible answer keys", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const session = authed(t, ids.userId);
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.insert("transactions", {
+        entityId: ids.entityId,
+        bankAccountId: ids.bankAccountId,
+        date: "2026-05-14",
+        amountMinor: -9900,
+        currency: "USD",
+        merchant: "Figma",
+        rawDescription: "Figma monthly subscription",
+        status: "posted",
+        review: "auto",
+        source: "bank",
+        externalId: "eval-expense-1",
+        categoryAccountId: ids.softwareAccountId,
+        decidedBy: "rule",
+        evalExpectedAccountId: ids.softwareAccountId,
+        evalSet: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("transactions", {
+        entityId: ids.entityId,
+        bankAccountId: ids.bankAccountId,
+        date: "2026-05-15",
+        amountMinor: -2500,
+        currency: "USD",
+        merchant: "Owner Transfer",
+        rawDescription: "Owner transfer",
+        status: "posted",
+        review: "auto",
+        source: "bank",
+        externalId: "eval-asset-skip-1",
+        categoryAccountId: ids.operatingAccountId,
+        decidedBy: "transfer",
+        evalExpectedAccountId: ids.operatingAccountId,
+        evalSet: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    const prepared = await session.mutation(prepareHoldoutCategorizationEval, {
+      sourceEntityId: ids.entityId,
+      limit: 5,
+    });
+
+    expect(prepared.cases).toHaveLength(1);
+    expect(prepared.skippedNonCategoryCount).toBe(1);
+    expect(prepared.cases[0]).toMatchObject({
+      merchant: "Figma",
+      expectedAccountNumber: "5200",
+      expectedAccountName: "Software & SaaS",
+    });
+    expect(Object.keys(prepared.cases[0])).not.toContain("categoryAccountId");
   });
 
   it("routes through deterministic stages when Bedrock env is absent", async () => {

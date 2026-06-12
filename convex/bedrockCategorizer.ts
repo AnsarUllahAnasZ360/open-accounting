@@ -1,3 +1,4 @@
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 
@@ -170,46 +171,6 @@ export function bedrockRuntimeEnv(modelFromConfig: string | null): BedrockEnv {
   };
 }
 
-function utf8(value: string) {
-  return new TextEncoder().encode(value);
-}
-
-function hex(bytes: ArrayBuffer | Uint8Array) {
-  const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-async function sha256Hex(value: string) {
-  return hex(await crypto.subtle.digest("SHA-256", utf8(value)));
-}
-
-async function hmacSha256(keyBytes: Uint8Array, value: string) {
-  const rawKey = new Uint8Array(keyBytes);
-  const key = await crypto.subtle.importKey(
-    "raw",
-    rawKey.buffer,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  return new Uint8Array(await crypto.subtle.sign("HMAC", key, utf8(value)));
-}
-
-async function signingKey(secretAccessKey: string, dateStamp: string, region: string) {
-  const kDate = await hmacSha256(utf8(`AWS4${secretAccessKey}`), dateStamp);
-  const kRegion = await hmacSha256(kDate, region);
-  const kService = await hmacSha256(kRegion, "bedrock");
-  return await hmacSha256(kService, "aws4_request");
-}
-
-function amzDateParts(now = new Date()) {
-  const basic = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
-  return {
-    amzDate: basic,
-    dateStamp: basic.slice(0, 8),
-  };
-}
-
 function bedrockPayload(modelId: string, prompt: string): BedrockPayload {
   if (modelId.includes("anthropic.claude")) {
     return {
@@ -231,6 +192,18 @@ function bedrockPayload(modelId: string, prompt: string): BedrockPayload {
       body: JSON.stringify({
         messages: [{ role: "user", content: [{ text: prompt }] }],
         inferenceConfig: { maxTokens: 500, temperature: 0 },
+      }),
+    };
+  }
+
+  if (modelId.includes("moonshotai.kimi")) {
+    return {
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify({
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 500,
+        temperature: 0,
       }),
     };
   }
@@ -306,6 +279,16 @@ export function extractBedrockResponseText(modelId: string, payload: unknown) {
       .join("\n");
   }
 
+  const choices = body.choices;
+  if (Array.isArray(choices)) {
+    const first = asRecord(choices[0]);
+    const choiceMessage = first ? asRecord(first.message) : null;
+    const messageContent = choiceMessage ? stringField(choiceMessage, "content") : null;
+    if (messageContent) return messageContent;
+    const choiceText = first ? stringField(first, "text") : null;
+    if (choiceText) return choiceText;
+  }
+
   const results = body.results;
   if (Array.isArray(results)) {
     const first = asRecord(results[0]);
@@ -327,63 +310,30 @@ export async function invokeBedrockPayload(args: {
     throw new Error("Bedrock environment is incomplete.");
   }
 
-  const host = `bedrock-runtime.${args.env.region}.amazonaws.com`;
-  const canonicalUri = `/model/${encodeURIComponent(args.env.modelId)}/invoke`;
-  const url = `https://${host}${canonicalUri}`;
-  const payloadHash = await sha256Hex(args.payload.body);
-  const { amzDate, dateStamp } = amzDateParts();
-  const signedHeaders = "accept;content-type;host;x-amz-content-sha256;x-amz-date";
-  const canonicalHeaders = [
-    `accept:${args.payload.accept}`,
-    `content-type:${args.payload.contentType}`,
-    `host:${host}`,
-    `x-amz-content-sha256:${payloadHash}`,
-    `x-amz-date:${amzDate}`,
-    "",
-  ].join("\n");
-  const canonicalRequest = [
-    "POST",
-    canonicalUri,
-    "",
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join("\n");
-  const credentialScope = `${dateStamp}/${args.env.region}/bedrock/aws4_request`;
-  const stringToSign = [
-    "AWS4-HMAC-SHA256",
-    amzDate,
-    credentialScope,
-    await sha256Hex(canonicalRequest),
-  ].join("\n");
-  const signature = hex(await hmacSha256(await signingKey(args.env.secretAccessKey, dateStamp, args.env.region), stringToSign));
-  const authorization = `AWS4-HMAC-SHA256 Credential=${args.env.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      accept: args.payload.accept,
-      authorization,
-      "content-type": args.payload.contentType,
-      host,
-      "x-amz-content-sha256": payloadHash,
-      "x-amz-date": amzDate,
-    },
-    body: args.payload.body,
-  });
-
-  if (!response.ok) {
-    let code = `HTTP ${response.status}`;
-    try {
-      const errorPayload = asRecord(await response.json());
-      code = stringField(errorPayload ?? {}, "__type") ?? stringField(errorPayload ?? {}, "message") ?? code;
-    } catch {
-      // Keep status-only error detail.
+  try {
+    const client = new BedrockRuntimeClient({
+      region: args.env.region,
+      credentials: {
+        accessKeyId: args.env.accessKeyId,
+        secretAccessKey: args.env.secretAccessKey,
+      },
+    });
+    const response = await client.send(
+      new InvokeModelCommand({
+        modelId: args.env.modelId,
+        contentType: args.payload.contentType,
+        accept: args.payload.accept,
+        body: new TextEncoder().encode(args.payload.body),
+      }),
+    );
+    if (!response.body) {
+      throw new Error("Bedrock response body was empty.");
     }
-    throw new Error(`Bedrock categorization invoke failed: ${truncate(code, 120)}`);
+    return JSON.parse(new TextDecoder().decode(response.body));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown Bedrock invocation error.";
+    throw new Error(`Bedrock categorization invoke failed: ${truncate(message, 160)}`);
   }
-
-  return await response.json();
 }
 
 async function invokeBedrockText(args: {

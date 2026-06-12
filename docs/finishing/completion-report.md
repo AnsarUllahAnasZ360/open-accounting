@@ -61,7 +61,7 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | 1 | Workspace + business creation via onboarding | NOT STARTED | — | Epic F1. Today: owner still bootstraps into `ansar-workspace`; E2 creates businesses from Settings, but the first-run onboarding stepper is not built. |
 | 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots; B5 dock verified in `tests/e2e/ai-chat.spec.ts`; F2 profile verified in `tests/e2e/profile-team.spec.ts` + screenshot | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Profile page now updates sidebar identity live. Partials downstream: multi-entity data-switch (G5), global ⌘K server search index (follow-up). AI panel is docked on desktop and a bottom sheet on mobile. |
 | 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | PARTIAL | `convex/plaid.test.ts` 15/15 + `convex/plaidWebhook.test.ts` 2/2 + `tests/e2e/plaid-link.spec.ts` 3/3 + 3 screenshots | G1 mounts the Plaid Link client and persists exchanged access tokens server-side without leaking them. G2 adds item-level cursor state, `system:sync`, 4h cron, verified Plaid webhook signature handling, real `/transactions/sync`, server-side removal reversal, and a Settings `Sync now` control. Still not WORKING: no completed hosted Plaid Link session + real Plaid sandbox item sync has been proven end-to-end in the browser. |
-| 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | inherited | Epic G3. Webhook receiver real; events trigger nothing yet. |
+| 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | `convex/stripe.test.ts` 6/6 + `convex/stripeWebhook.test.ts` 3/3 + `tests/e2e/stripe-g3.spec.ts` 1/1 + screenshot | G3 code is implemented: Stripe test-mode webhooks dedupe, trigger targeted invoice/charge/payout sync, post through `system:sync`, and persist `stripePayoutLines`; UI reads persisted child rows. Still not WORKING until a real Stripe CLI/Dashboard test webhook is delivered to `/stripe/webhook` on the cloud site and proves invoice/payout update end-to-end. |
 | 5 | Inbox: confirm / correct / rule / batch / keyboard | PARTIAL | inherited | Epic H rewrites assertions; batch + keyboard unverified. |
 | 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + 41 unit | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Partial: receipt-PDF bill intake (Epic G); seeded-bill auto-match e2e skips when no seeded candidate (unit-proven). |
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper. Partial: CSV==screen equality not yet automated (export button works); exhaustive compare-column coverage deferred to H. |
@@ -481,6 +481,51 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   Fixture and mocked-Plaid tests are green; real Plaid item sync is not overclaimed.
 - **Next:** G3 Stripe event-driven sync + payout lines, then G4 receipt PDF intake
   and G5 entity-scoped read models/pagination.
+
+### 2026-06-12 — Batch G3: Stripe event-driven sync + payout lines (lead)
+
+- **Changed:** added `stripePayoutLines` as a child table instead of storing
+  unbounded payout drill-down arrays on `stripePayouts`; added
+  `entities.by_slug` to let background Stripe webhook sync target the Live
+  Sandbox when no `stripeAccounts` row exists yet.
+- **Webhook/event sync:** `/stripe/webhook` still verifies the Stripe signature
+  and now calls `internal.stripe.syncFromWebhookEvent` only for first-seen
+  test-mode events. Duplicate or live-mode events are recorded/ignored without
+  running sync. The action fetches only the relevant Stripe object family:
+  one invoice, one payout + `balance_transactions?payout=...`, one charge, or a
+  PaymentIntent when supplied. It then applies the projection through
+  `applyProjectionInternal`.
+- **Ledger/invoice behavior:** internal webhook sync uses the same
+  `postLedgerEntryCore` path as manual sync, but with the per-workspace
+  `system:sync` actor and `system.sync.stripe.ledger_entry.posted` audit action.
+  Public `Sync now` keeps human authorization. Existing Stripe invoices now
+  update status/paid amount instead of duplicating rows when an invoice webhook
+  arrives.
+- **UI:** Settings → Connections → Stripe payout reconciliation now reads
+  persisted child rows for recorded payouts and remains backward-compatible with
+  older recorded payout rows that have no child lines yet. Fixture payout rows
+  remain a fallback only when no payouts have been recorded.
+- **Evidence / verification:**
+  - `pnpm exec vitest run convex/stripe.test.ts convex/stripeWebhook.test.ts` ->
+    **9/9 green**. New assertions cover payout-line persistence/idempotency,
+    invoice status updates, webhook-triggered payout sync through mocked Stripe
+    test APIs, system actor audit posting, and live-key refusal before any
+    Stripe call.
+  - `pnpm exec playwright test tests/e2e/stripe-g3.spec.ts --project=chromium`
+    -> **1/1 green real-click**. The spec opens Settings → Connections, clicks
+    only read-only `Validate`, expands payout reconciliation, and avoids Seed,
+    Sync, and Send so shared cloud books are not mutated.
+  - Screenshot:
+    `docs/finishing/evidence/2026-06-12-G3-stripe-payout-lines.png`.
+  - Batch gates: `pnpm verify` -> **green** (typecheck, lint, build,
+    **136/136 unit**); `npx convex dev --once` -> **green** against cloud dev
+    `ceaseless-mandrill-524` and added the new Stripe payout-line indexes.
+- **Status:** G3 implementation is **code-complete and locally/cloud verified**,
+  but acceptance row #4 remains **PARTIAL**. Missing proof: a real Stripe
+  CLI/Dashboard test webhook delivered to the deployed `/stripe/webhook` route
+  with `STRIPE_WEBHOOK_SECRET`, proving external delivery plus end-to-end invoice
+  or payout update. No live Stripe keys were accepted or used.
+- **Next:** G4 receipt PDF intake, then G5 entity-scoped read models/pagination.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

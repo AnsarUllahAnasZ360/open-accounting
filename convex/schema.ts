@@ -53,7 +53,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_workspace", ["workspaceId"])
-    .index("by_workspace_and_slug", ["workspaceId", "slug"]),
+    .index("by_workspace_and_slug", ["workspaceId", "slug"])
+    .index("by_slug", ["slug"]),
   workspaceMembers: defineTable({
     workspaceId: v.id("workspaces"),
     userId: v.id("users"),
@@ -560,10 +561,27 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_entity", ["entityId"]),
+  stripePayoutLines: defineTable({
+    entityId: v.id("entities"),
+    payoutId: v.id("stripePayouts"),
+    stripePayoutId: v.string(),
+    sourceId: v.string(),
+    description: v.string(),
+    grossMinor: v.number(),
+    feeMinor: v.number(),
+    netMinor: v.number(),
+    currency: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_payout", ["payoutId"])
+    .index("by_entity", ["entityId"])
+    .index("by_entity_and_source", ["entityId", "sourceId"]),
   stripeWebhookEvents: defineTable({
     stripeEventId: v.string(),
     type: v.string(),
     objectId: v.optional(v.string()),
+    relatedPaymentIntentId: v.optional(v.string()),
     livemode: v.boolean(),
     apiVersion: v.optional(v.string()),
     status: v.union(v.literal("received"), v.literal("ignored"), v.literal("duplicate")),

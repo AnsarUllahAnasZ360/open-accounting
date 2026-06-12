@@ -18,6 +18,10 @@ type AIChatRuntimeResult = {
   text: string;
   toolsUsed: string[];
 };
+type StripeWebhookSyncResult = {
+  status: "synced" | "ignored" | "skipped" | "error";
+  reason: string;
+};
 const aiChatAnswerRef = makeFunctionReference<
   "action",
   {
@@ -27,6 +31,16 @@ const aiChatAnswerRef = makeFunctionReference<
   },
   AIChatRuntimeResult
 >("aiChatRuntime:answer");
+const stripeWebhookSyncRef = makeFunctionReference<
+  "action",
+  {
+    stripeEventId: string;
+    type: string;
+    objectId?: string;
+    relatedPaymentIntentId?: string;
+  },
+  StripeWebhookSyncResult
+>("stripe:syncFromWebhookEvent");
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
@@ -157,16 +171,26 @@ http.route({
       );
     }
 
-    const result: { status: "received" | "ignored" | "duplicate"; eventId: string } = await ctx.runMutation(
-      internal.stripeWebhook.recordEvent,
-      event,
-    );
-    return jsonResponse({
-      ok: true,
-      status: result.status,
-      event: {
-        id: event.stripeEventId,
-        type: event.type,
+	    const result: { status: "received" | "ignored" | "duplicate"; eventId: string } = await ctx.runMutation(
+	      internal.stripeWebhook.recordEvent,
+	      event,
+	    );
+	    const sync =
+	      result.status === "received"
+	        ? await ctx.runAction(stripeWebhookSyncRef, {
+	            stripeEventId: event.stripeEventId,
+	            type: event.type,
+	            objectId: event.objectId,
+	            relatedPaymentIntentId: event.relatedPaymentIntentId,
+	          })
+	        : { status: "skipped" as const, reason: `Stripe event was ${result.status}; no sync run needed.` };
+	    return jsonResponse({
+	      ok: true,
+	      status: result.status,
+	      sync,
+	      event: {
+	        id: event.stripeEventId,
+	        type: event.type,
         livemode: event.livemode,
       },
     });

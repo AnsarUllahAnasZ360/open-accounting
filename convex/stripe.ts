@@ -1,11 +1,12 @@
 import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 
-import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { action, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { action, internalAction, internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import { postLedgerEntryCore } from "./ledger";
 import { assertNonNegativeMinorUnit } from "./money";
+import { ensureSystemSyncActor } from "./systemActors";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const STRIPE_API_VERSION = "2026-02-25.clover";
@@ -146,16 +147,18 @@ type StripeState = {
   checklist: Array<{ key: string; label: string; status: "pass" | "fail" | "needs_check"; detail: string }>;
   clearingAccount: { id: Id<"ledgerAccounts">; name: string; number: string; currency: string } | null;
   stripeAccount: { id: Id<"stripeAccounts">; label: string; createdAt: number } | null;
-  payouts: Array<{
-    id: Id<"stripePayouts">;
-    payoutId: string;
-    amountMinor: number;
-    grossMinor: number;
-    feesMinor: number;
-    driftMinor: number;
-    arrivalDate: string;
-    status: "pending" | "reconciled" | "mismatch";
-  }>;
+	  payouts: Array<{
+	    id: Id<"stripePayouts">;
+	    payoutId: string;
+	    amountMinor: number;
+	    grossMinor: number;
+	    feesMinor: number;
+	    driftMinor: number;
+	    arrivalDate: string;
+	    status: "pending" | "reconciled" | "mismatch";
+	    currency: string;
+	    lines: StripePayoutProjection["lines"];
+	  }>;
   fixturePreview: StripeProjection;
   integrationGaps: string[];
 };
@@ -167,9 +170,10 @@ type ApplyProjectionResult = {
   clearingAccountId: Id<"ledgerAccounts">;
   contactsCreated: number;
   incomeTransactionsCreated: number;
-  invoicesCreated: number;
-  payoutsCreated: number;
-  inboxItemsCreated: number;
+	  invoicesCreated: number;
+	  payoutsCreated: number;
+	  payoutLinesCreated: number;
+	  inboxItemsCreated: number;
   ledgerEntriesPosted: number;
   skippedDuplicates: number;
   integrationGaps: string[];
@@ -181,7 +185,7 @@ type StripeApiCustomer = {
   email?: string | null;
 };
 
-type StripeApiPaymentIntent = {
+	type StripeApiPaymentIntent = {
   id: string;
   amount_received?: number | null;
   amount?: number | null;
@@ -190,7 +194,20 @@ type StripeApiPaymentIntent = {
   description?: string | null;
   created?: number | null;
   latest_charge?: string | { id: string; balance_transaction?: string | StripeApiBalanceTransaction | null } | null;
-};
+	};
+
+	type StripeApiCharge = {
+	  id: string;
+	  amount?: number | null;
+	  amount_captured?: number | null;
+	  currency?: string | null;
+	  customer?: string | StripeApiCustomer | null;
+	  description?: string | null;
+	  created?: number | null;
+	  paid?: boolean | null;
+	  payment_intent?: string | null;
+	  balance_transaction?: string | StripeApiBalanceTransaction | null;
+	};
 
 type StripeApiInvoice = {
   id: string;
@@ -237,6 +254,11 @@ const applyProjectionRef = makeFunctionReference<
   { entityId: Id<"entities">; projection: StripeProjection },
   ApplyProjectionResult
 >("stripe:applyProjection");
+const applyProjectionInternalRef = makeFunctionReference<
+  "mutation",
+  { entityId?: Id<"entities">; projection: StripeProjection },
+  ApplyProjectionResult
+>("stripe:applyProjectionInternal");
 
 function isoDateFromUnix(seconds?: number | null) {
   if (!seconds) return new Date().toISOString().slice(0, 10);
@@ -592,20 +614,24 @@ async function postStripeIncome(
   args: {
     entity: Doc<"entities">;
     item: StripeIncomeProjection;
-    clearingAccountId: Id<"ledgerAccounts">;
-    salesAccountId: Id<"ledgerAccounts">;
-    feesAccountId: Id<"ledgerAccounts">;
-  },
-) {
-  const gross: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
-    entityId: args.entity._id,
-    date: args.item.date,
-    memo: `${args.item.customerName} Stripe payment gross`,
-    source: "stripe",
-    sourceId: args.item.stripePaymentIntentId,
-    lines: [
-      {
-        accountId: args.clearingAccountId,
+	    clearingAccountId: Id<"ledgerAccounts">;
+	    salesAccountId: Id<"ledgerAccounts">;
+	    feesAccountId: Id<"ledgerAccounts">;
+	    actorUserId: Id<"users">;
+	    auditAction?: string;
+	  },
+	) {
+	  const gross = await postLedgerEntryCore(ctx, {
+	    entity: args.entity,
+	    userId: args.actorUserId,
+	    date: args.item.date,
+	    memo: `${args.item.customerName} Stripe payment gross`,
+	    source: "stripe",
+	    sourceId: args.item.stripePaymentIntentId,
+	    auditAction: args.auditAction,
+	    lines: [
+	      {
+	        accountId: args.clearingAccountId,
         debitMinor: args.item.amountMinor,
         creditMinor: 0,
         currency: args.item.currency,
@@ -619,15 +645,17 @@ async function postStripeIncome(
     ],
   });
 
-  let feeEntryId: Id<"journalEntries"> | null = null;
-  if (args.item.feeMinor > 0) {
-    const fee: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
-      entityId: args.entity._id,
-      date: args.item.date,
-      memo: `${args.item.customerName} Stripe processing fee`,
-      source: "stripe",
-      sourceId: `${args.item.stripePaymentIntentId}:fee`,
-      lines: [
+	  let feeEntryId: Id<"journalEntries"> | null = null;
+	  if (args.item.feeMinor > 0) {
+	    const fee = await postLedgerEntryCore(ctx, {
+	      entity: args.entity,
+	      userId: args.actorUserId,
+	      date: args.item.date,
+	      memo: `${args.item.customerName} Stripe processing fee`,
+	      source: "stripe",
+	      sourceId: `${args.item.stripePaymentIntentId}:fee`,
+	      auditAction: args.auditAction,
+	      lines: [
         {
           accountId: args.feesAccountId,
           debitMinor: args.item.feeMinor,
@@ -674,11 +702,25 @@ export const state = query({
       };
     }
 
-    const [clearingAccount, stripeAccount, payouts] = await Promise.all([
-      findAccountByNumber(ctx, entity._id, "1150"),
-      ctx.db.query("stripeAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).first(),
-      ctx.db.query("stripePayouts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(20),
-    ]);
+	    const [clearingAccount, stripeAccount, payouts, payoutLines] = await Promise.all([
+	      findAccountByNumber(ctx, entity._id, "1150"),
+	      ctx.db.query("stripeAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).first(),
+	      ctx.db.query("stripePayouts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(20),
+	      ctx.db.query("stripePayoutLines").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500),
+	    ]);
+	    const payoutLinesByPayoutId = new Map<Id<"stripePayouts">, StripePayoutProjection["lines"]>();
+	    for (const line of payoutLines) {
+	      const existing = payoutLinesByPayoutId.get(line.payoutId) ?? [];
+	      existing.push({
+	        sourceId: line.sourceId,
+	        description: line.description,
+	        grossMinor: line.grossMinor,
+	        feeMinor: line.feeMinor,
+	        netMinor: line.netMinor,
+	        currency: line.currency,
+	      });
+	      payoutLinesByPayoutId.set(line.payoutId, existing);
+	    }
 
     const checklist: StripeState["checklist"] = [
       { key: "auth", label: "Workspace access", status: "pass", detail: "Current user can read this entity." },
@@ -720,25 +762,350 @@ export const state = query({
       stripeAccount: stripeAccount
         ? { id: stripeAccount._id, label: stripeAccount.label, createdAt: stripeAccount.createdAt }
         : null,
-      payouts: payouts.map((payout) => ({
-        id: payout._id,
-        payoutId: payout.payoutId,
-        amountMinor: payout.amountMinor,
-        grossMinor: payout.grossMinor,
-        feesMinor: payout.feesMinor,
-        driftMinor: payout.grossMinor - payout.feesMinor - payout.amountMinor,
-        arrivalDate: payout.arrivalDate,
-        status: payout.status,
-      })),
-      fixturePreview,
-      integrationGaps: [
-        "Schema needs Stripe-native IDs on contacts and invoices for production-grade dedupe.",
-        "Webhook registration belongs in convex/http.ts or a new HTTP route outside this worker scope.",
-        "Settings must pass the shared Live Sandbox entity once the main thread wires the panel.",
-      ],
+	      payouts: payouts.map((payout) => ({
+	        id: payout._id,
+	        payoutId: payout.payoutId,
+	        amountMinor: payout.amountMinor,
+	        grossMinor: payout.grossMinor,
+	        feesMinor: payout.feesMinor,
+	        driftMinor: payout.grossMinor - payout.feesMinor - payout.amountMinor,
+	        arrivalDate: payout.arrivalDate,
+	        status: payout.status,
+	        currency: entity.currency,
+	        lines: payoutLinesByPayoutId.get(payout._id) ?? [],
+	      })),
+	      fixturePreview,
+	      integrationGaps: [
+	        "Schema needs Stripe-native IDs on contacts and invoices for production-grade dedupe.",
+	        "Connect Stripe Dashboard or Stripe CLI forwarding to /stripe/webhook for end-to-end webhook delivery proof.",
+	      ],
     };
   },
 });
+
+function payoutLineFingerprint(lines: StripePayoutProjection["lines"]) {
+  return JSON.stringify(
+    lines
+      .map((line) => ({
+        sourceId: line.sourceId,
+        description: line.description,
+        grossMinor: line.grossMinor,
+        feeMinor: line.feeMinor,
+        netMinor: line.netMinor,
+        currency: normalizeCurrency(line.currency),
+      }))
+      .sort((left, right) => left.sourceId.localeCompare(right.sourceId)),
+  );
+}
+
+async function replaceStripePayoutLines(
+  ctx: MutationCtx,
+  args: {
+    entityId: Id<"entities">;
+    payout: Doc<"stripePayouts">;
+    lines: StripePayoutProjection["lines"];
+  },
+) {
+  const existing = await ctx.db
+    .query("stripePayoutLines")
+    .withIndex("by_payout", (q) => q.eq("payoutId", args.payout._id))
+    .collect();
+  const existingFingerprint = payoutLineFingerprint(existing);
+  const desiredFingerprint = payoutLineFingerprint(args.lines);
+  if (existingFingerprint === desiredFingerprint) return 0;
+
+  for (const line of existing) {
+    await ctx.db.delete(line._id);
+  }
+
+  const now = Date.now();
+  for (const line of args.lines) {
+    await ctx.db.insert("stripePayoutLines", {
+      entityId: args.entityId,
+      payoutId: args.payout._id,
+      stripePayoutId: args.payout.payoutId,
+      sourceId: line.sourceId,
+      description: line.description,
+      grossMinor: line.grossMinor,
+      feeMinor: line.feeMinor,
+      netMinor: line.netMinor,
+      currency: normalizeCurrency(line.currency),
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+  return args.lines.length;
+}
+
+async function stripeWebhookTargetEntity(ctx: MutationCtx, entityId?: Id<"entities">) {
+  if (entityId) {
+    return await ctx.db.get(entityId);
+  }
+
+  const stripeAccount = await ctx.db.query("stripeAccounts").first();
+  if (stripeAccount) {
+    return await ctx.db.get(stripeAccount.entityId);
+  }
+
+  return await ctx.db
+    .query("entities")
+    .withIndex("by_slug", (q) => q.eq("slug", "live-sandbox"))
+    .first();
+}
+
+async function applyProjectionCore(
+  ctx: MutationCtx,
+  args: {
+    entity: Doc<"entities">;
+    projection: StripeProjection;
+    actorUserId: Id<"users">;
+    auditAction?: string;
+  },
+): Promise<ApplyProjectionResult> {
+  const accounts = await ensureStripeAccounts(ctx, args.entity);
+  const now = Date.now();
+  let contactsCreated = 0;
+  let incomeTransactionsCreated = 0;
+  let invoicesCreated = 0;
+  let payoutsCreated = 0;
+  let payoutLinesCreated = 0;
+  let inboxItemsCreated = 0;
+  let ledgerEntriesPosted = 0;
+  let skippedDuplicates = 0;
+
+  const contacts = await ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", args.entity._id)).take(500);
+  const contactsByStripeId = new Map<string, Doc<"contacts">>();
+  for (const customer of args.projection.customers) {
+    const result = await contactForCustomer(ctx, args.entity._id, customer, contacts);
+    contactsByStripeId.set(customer.stripeCustomerId, result.contact);
+    if (result.created) contactsCreated += 1;
+  }
+
+  for (const item of args.projection.income) {
+    assertNonNegativeMinorUnit(item.amountMinor, "Stripe income amount");
+    assertNonNegativeMinorUnit(item.feeMinor, "Stripe fee amount");
+    const duplicate = await ctx.db
+      .query("transactions")
+      .withIndex("by_external_id", (q) => q.eq("externalId", item.stripePaymentIntentId))
+      .first();
+    if (duplicate && duplicate.entityId === args.entity._id) {
+      skippedDuplicates += 1;
+      continue;
+    }
+
+    const contact = item.customerStripeId ? contactsByStripeId.get(item.customerStripeId) : undefined;
+    const posted = await postStripeIncome(ctx, {
+      entity: args.entity,
+      item,
+      clearingAccountId: accounts.clearingAccount._id,
+      salesAccountId: accounts.salesAccount._id,
+      feesAccountId: accounts.feesAccount._id,
+      actorUserId: args.actorUserId,
+      auditAction: args.auditAction,
+    });
+    ledgerEntriesPosted += posted.feeEntryId ? 2 : 1;
+
+    await ctx.db.insert("transactions", {
+      entityId: args.entity._id,
+      date: item.date,
+      amountMinor: item.amountMinor,
+      currency: item.currency,
+      merchant: item.customerName,
+      rawDescription: item.description,
+      status: "posted",
+      review: item.feeSource === "unavailable" ? "needs_review" : "auto",
+      source: "stripe",
+      categoryAccountId: accounts.salesAccount._id,
+      contactId: contact?._id,
+      entryId: posted.grossEntryId,
+      externalId: item.stripePaymentIntentId,
+      decidedBy: item.feeSource === "unavailable" ? "needs_review" : "match",
+      confidence: item.feeSource === "unavailable" ? 0.72 : 0.99,
+      reasoning:
+        item.feeSource === "unavailable"
+          ? "Stripe payment synced, but no balance transaction fee was available yet."
+          : "Stripe payment projected to Sales and Stripe Clearing with fee breakdown.",
+      evalSet: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    incomeTransactionsCreated += 1;
+  }
+
+  const existingInvoices = await ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", args.entity._id)).take(500);
+  for (const invoice of args.projection.invoices) {
+    assertNonNegativeMinorUnit(invoice.totalMinor, "Stripe invoice total");
+    assertNonNegativeMinorUnit(invoice.amountPaidMinor, "Stripe invoice paid amount");
+    const existingInvoice = existingInvoices.find((row) => row.number === invoice.number);
+    if (existingInvoice) {
+      await ctx.db.patch(existingInvoice._id, {
+        status: invoice.status,
+        amountPaidMinor: invoice.amountPaidMinor,
+        hostedInvoiceUrl: invoice.hostedInvoiceUrl,
+        source: "stripe",
+        updatedAt: now,
+      });
+      skippedDuplicates += 1;
+      continue;
+    }
+
+    const contact =
+      (invoice.customerStripeId ? contactsByStripeId.get(invoice.customerStripeId) : undefined) ??
+      (
+        await contactForCustomer(
+          ctx,
+          args.entity._id,
+          {
+            stripeCustomerId: invoice.customerStripeId ?? `invoice:${invoice.stripeInvoiceId}`,
+            name: invoice.customerName,
+            email: invoice.customerEmail,
+          },
+          contacts,
+        )
+      ).contact;
+
+    const entryIds: Id<"journalEntries">[] = [];
+    const receivableMinor = invoice.totalMinor - invoice.amountPaidMinor;
+    if ((invoice.status === "open" || invoice.status === "overdue") && receivableMinor > 0) {
+      const posted = await postLedgerEntryCore(ctx, {
+        entity: args.entity,
+        userId: args.actorUserId,
+        date: invoice.issueDate,
+        memo: `${invoice.customerName} Stripe invoice ${invoice.number}`,
+        source: "invoice",
+        sourceId: invoice.stripeInvoiceId,
+        auditAction: args.auditAction,
+        lines: [
+          {
+            accountId: accounts.receivableAccount._id,
+            debitMinor: receivableMinor,
+            creditMinor: 0,
+            currency: invoice.currency,
+          },
+          {
+            accountId: accounts.salesAccount._id,
+            debitMinor: 0,
+            creditMinor: receivableMinor,
+            currency: invoice.currency,
+          },
+        ],
+      });
+      entryIds.push(posted.entryId);
+      ledgerEntriesPosted += 1;
+    }
+
+    await ctx.db.insert("invoices", {
+      entityId: args.entity._id,
+      contactId: contact._id,
+      number: invoice.number,
+      status: invoice.status,
+      currency: invoice.currency,
+      issueDate: invoice.issueDate,
+      dueDate: invoice.dueDate,
+      totalMinor: invoice.totalMinor,
+      amountPaidMinor: invoice.amountPaidMinor,
+      entryIds,
+      hostedInvoiceUrl: invoice.hostedInvoiceUrl,
+      source: "stripe",
+      createdAt: now,
+      updatedAt: now,
+    });
+    invoicesCreated += 1;
+  }
+
+  const existingPayouts = await ctx.db.query("stripePayouts").withIndex("by_entity", (q) => q.eq("entityId", args.entity._id)).take(500);
+  for (const payout of args.projection.payouts) {
+    const existingPayout = existingPayouts.find((row) => row.payoutId === payout.payoutId);
+    if (existingPayout) {
+      payoutLinesCreated += await replaceStripePayoutLines(ctx, {
+        entityId: args.entity._id,
+        payout: existingPayout,
+        lines: payout.lines,
+      });
+      skippedDuplicates += 1;
+      continue;
+    }
+
+    const driftMinor = payout.grossMinor - payout.feesMinor - payout.amountMinor;
+    const entryIds: Id<"journalEntries">[] = [];
+    if (driftMinor === 0) {
+      const posted = await postLedgerEntryCore(ctx, {
+        entity: args.entity,
+        userId: args.actorUserId,
+        date: payout.arrivalDate,
+        memo: `Stripe payout ${payout.payoutId}`,
+        source: "stripe",
+        sourceId: payout.payoutId,
+        auditAction: args.auditAction,
+        lines: [
+          {
+            accountId: accounts.checkingAccount._id,
+            debitMinor: payout.amountMinor,
+            creditMinor: 0,
+            currency: payout.currency,
+          },
+          {
+            accountId: accounts.clearingAccount._id,
+            debitMinor: 0,
+            creditMinor: payout.amountMinor,
+            currency: payout.currency,
+          },
+        ],
+      });
+      entryIds.push(posted.entryId);
+      ledgerEntriesPosted += 1;
+    } else {
+      await ctx.db.insert("inboxItems", {
+        entityId: args.entity._id,
+        kind: "payout_mismatch",
+        payloadSummary: `Stripe payout ${payout.payoutId} drift ${driftMinor} ${payout.currency}: gross ${payout.grossMinor} - fees ${payout.feesMinor} != payout ${payout.amountMinor}`,
+        status: "open",
+        createdAt: now,
+        updatedAt: now,
+      });
+      inboxItemsCreated += 1;
+    }
+
+    const payoutId = await ctx.db.insert("stripePayouts", {
+      entityId: args.entity._id,
+      payoutId: payout.payoutId,
+      amountMinor: payout.amountMinor,
+      grossMinor: payout.grossMinor,
+      feesMinor: payout.feesMinor,
+      arrivalDate: payout.arrivalDate,
+      status: driftMinor === 0 ? "reconciled" : "mismatch",
+      entryIds,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const payoutDoc = (await ctx.db.get(payoutId))!;
+    payoutLinesCreated += await replaceStripePayoutLines(ctx, {
+      entityId: args.entity._id,
+      payout: payoutDoc,
+      lines: payout.lines,
+    });
+    payoutsCreated += 1;
+  }
+
+  return {
+    mode: args.projection.mode,
+    reason: args.projection.reason,
+    entityId: args.entity._id,
+    clearingAccountId: accounts.clearingAccount._id,
+    contactsCreated,
+    incomeTransactionsCreated,
+    invoicesCreated,
+    payoutsCreated,
+    payoutLinesCreated,
+    inboxItemsCreated,
+    ledgerEntriesPosted,
+    skippedDuplicates,
+    integrationGaps: [
+      "Existing contacts/invoices schema has no dedicated Stripe object ID fields, so dedupe currently uses email, aliases, and invoice number.",
+      "Stripe webhook delivery still needs Stripe Dashboard or Stripe CLI forwarding configured against this Convex deployment.",
+    ],
+  };
+}
 
 export const applyProjection = mutation({
   args: {
@@ -748,218 +1115,26 @@ export const applyProjection = mutation({
   handler: async (ctx, args): Promise<ApplyProjectionResult> => {
     const entity = await ctx.db.get(args.entityId);
     if (!entity) throw new Error("OpenBooks entity not found.");
-    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    return await applyProjectionCore(ctx, { entity, projection: args.projection, actorUserId: userId });
+  },
+});
 
-    const accounts = await ensureStripeAccounts(ctx, entity);
-    const now = Date.now();
-    let contactsCreated = 0;
-    let incomeTransactionsCreated = 0;
-    let invoicesCreated = 0;
-    let payoutsCreated = 0;
-    let inboxItemsCreated = 0;
-    let ledgerEntriesPosted = 0;
-    let skippedDuplicates = 0;
-
-    const contacts = await ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500);
-    const contactsByStripeId = new Map<string, Doc<"contacts">>();
-    for (const customer of args.projection.customers) {
-      const result = await contactForCustomer(ctx, entity._id, customer, contacts);
-      contactsByStripeId.set(customer.stripeCustomerId, result.contact);
-      if (result.created) contactsCreated += 1;
-    }
-
-    for (const item of args.projection.income) {
-      assertNonNegativeMinorUnit(item.amountMinor, "Stripe income amount");
-      assertNonNegativeMinorUnit(item.feeMinor, "Stripe fee amount");
-      const duplicate = await ctx.db
-        .query("transactions")
-        .withIndex("by_external_id", (q) => q.eq("externalId", item.stripePaymentIntentId))
-        .first();
-      if (duplicate && duplicate.entityId === entity._id) {
-        skippedDuplicates += 1;
-        continue;
-      }
-
-      const contact = item.customerStripeId ? contactsByStripeId.get(item.customerStripeId) : undefined;
-      const posted = await postStripeIncome(ctx, {
-        entity,
-        item,
-        clearingAccountId: accounts.clearingAccount._id,
-        salesAccountId: accounts.salesAccount._id,
-        feesAccountId: accounts.feesAccount._id,
-      });
-      ledgerEntriesPosted += posted.feeEntryId ? 2 : 1;
-
-      await ctx.db.insert("transactions", {
-        entityId: entity._id,
-        date: item.date,
-        amountMinor: item.amountMinor,
-        currency: item.currency,
-        merchant: item.customerName,
-        rawDescription: item.description,
-        status: "posted",
-        review: item.feeSource === "unavailable" ? "needs_review" : "auto",
-        source: "stripe",
-        categoryAccountId: accounts.salesAccount._id,
-        contactId: contact?._id,
-        entryId: posted.grossEntryId,
-        externalId: item.stripePaymentIntentId,
-        decidedBy: item.feeSource === "unavailable" ? "needs_review" : "match",
-        confidence: item.feeSource === "unavailable" ? 0.72 : 0.99,
-        reasoning:
-          item.feeSource === "unavailable"
-            ? "Stripe payment synced, but no balance transaction fee was available yet."
-            : "Stripe payment projected to Sales and Stripe Clearing with fee breakdown.",
-        evalSet: false,
-        createdAt: now,
-        updatedAt: now,
-      });
-      incomeTransactionsCreated += 1;
-    }
-
-    const existingInvoices = await ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500);
-    for (const invoice of args.projection.invoices) {
-      assertNonNegativeMinorUnit(invoice.totalMinor, "Stripe invoice total");
-      assertNonNegativeMinorUnit(invoice.amountPaidMinor, "Stripe invoice paid amount");
-      if (existingInvoices.some((row) => row.number === invoice.number)) {
-        skippedDuplicates += 1;
-        continue;
-      }
-      const contact =
-        (invoice.customerStripeId ? contactsByStripeId.get(invoice.customerStripeId) : undefined) ??
-        (
-          await contactForCustomer(
-            ctx,
-            entity._id,
-            {
-              stripeCustomerId: invoice.customerStripeId ?? `invoice:${invoice.stripeInvoiceId}`,
-              name: invoice.customerName,
-              email: invoice.customerEmail,
-            },
-            contacts,
-          )
-        ).contact;
-
-      const entryIds: Id<"journalEntries">[] = [];
-      if (invoice.status === "open" || invoice.status === "overdue") {
-        const posted: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
-          entityId: entity._id,
-          date: invoice.issueDate,
-          memo: `${invoice.customerName} Stripe invoice ${invoice.number}`,
-          source: "invoice",
-          sourceId: invoice.stripeInvoiceId,
-          lines: [
-            {
-              accountId: accounts.receivableAccount._id,
-              debitMinor: invoice.totalMinor - invoice.amountPaidMinor,
-              creditMinor: 0,
-              currency: invoice.currency,
-            },
-            {
-              accountId: accounts.salesAccount._id,
-              debitMinor: 0,
-              creditMinor: invoice.totalMinor - invoice.amountPaidMinor,
-              currency: invoice.currency,
-            },
-          ],
-        });
-        entryIds.push(posted.entryId);
-        ledgerEntriesPosted += 1;
-      }
-
-      await ctx.db.insert("invoices", {
-        entityId: entity._id,
-        contactId: contact._id,
-        number: invoice.number,
-        status: invoice.status,
-        currency: invoice.currency,
-        issueDate: invoice.issueDate,
-        dueDate: invoice.dueDate,
-        totalMinor: invoice.totalMinor,
-        amountPaidMinor: invoice.amountPaidMinor,
-        entryIds,
-        createdAt: now,
-        updatedAt: now,
-      });
-      invoicesCreated += 1;
-    }
-
-    const existingPayouts = await ctx.db.query("stripePayouts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500);
-    for (const payout of args.projection.payouts) {
-      if (existingPayouts.some((row) => row.payoutId === payout.payoutId)) {
-        skippedDuplicates += 1;
-        continue;
-      }
-      const driftMinor = payout.grossMinor - payout.feesMinor - payout.amountMinor;
-      const entryIds: Id<"journalEntries">[] = [];
-      if (driftMinor === 0) {
-        const posted: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
-          entityId: entity._id,
-          date: payout.arrivalDate,
-          memo: `Stripe payout ${payout.payoutId}`,
-          source: "stripe",
-          sourceId: payout.payoutId,
-          lines: [
-            {
-              accountId: accounts.checkingAccount._id,
-              debitMinor: payout.amountMinor,
-              creditMinor: 0,
-              currency: payout.currency,
-            },
-            {
-              accountId: accounts.clearingAccount._id,
-              debitMinor: 0,
-              creditMinor: payout.amountMinor,
-              currency: payout.currency,
-            },
-          ],
-        });
-        entryIds.push(posted.entryId);
-        ledgerEntriesPosted += 1;
-      } else {
-        await ctx.db.insert("inboxItems", {
-          entityId: entity._id,
-          kind: "payout_mismatch",
-          payloadSummary: `Stripe payout ${payout.payoutId} drift ${driftMinor} ${payout.currency}: gross ${payout.grossMinor} - fees ${payout.feesMinor} != payout ${payout.amountMinor}`,
-          status: "open",
-          createdAt: now,
-          updatedAt: now,
-        });
-        inboxItemsCreated += 1;
-      }
-
-      await ctx.db.insert("stripePayouts", {
-        entityId: entity._id,
-        payoutId: payout.payoutId,
-        amountMinor: payout.amountMinor,
-        grossMinor: payout.grossMinor,
-        feesMinor: payout.feesMinor,
-        arrivalDate: payout.arrivalDate,
-        status: driftMinor === 0 ? "reconciled" : "mismatch",
-        entryIds,
-        createdAt: now,
-        updatedAt: now,
-      });
-      payoutsCreated += 1;
-    }
-
-    return {
-      mode: args.projection.mode,
-      reason: args.projection.reason,
-      entityId: entity._id,
-      clearingAccountId: accounts.clearingAccount._id,
-      contactsCreated,
-      incomeTransactionsCreated,
-      invoicesCreated,
-      payoutsCreated,
-      inboxItemsCreated,
-      ledgerEntriesPosted,
-      skippedDuplicates,
-      integrationGaps: [
-        "Existing contacts/invoices schema has no dedicated Stripe object ID fields, so dedupe currently uses email, aliases, and invoice number.",
-        "Stripe payout drill-down line items are returned in action results and fixture previews; persistence needs a child table to avoid unbounded arrays on stripePayouts.",
-      ],
-    };
+export const applyProjectionInternal = internalMutation({
+  args: {
+    entityId: v.optional(v.id("entities")),
+    projection: stripeProjectionValidator,
+  },
+  handler: async (ctx, args): Promise<ApplyProjectionResult> => {
+    const entity = await stripeWebhookTargetEntity(ctx, args.entityId);
+    if (!entity) throw new Error("No OpenBooks entity is available for Stripe webhook sync.");
+    const actorUserId = await ensureSystemSyncActor(ctx, entity.workspaceId);
+    return await applyProjectionCore(ctx, {
+      entity,
+      projection: args.projection,
+      actorUserId,
+      auditAction: "system.sync.stripe.ledger_entry.posted",
+    });
   },
 });
 
@@ -1018,12 +1193,19 @@ function balanceTransactionFromPaymentIntent(paymentIntent: StripeApiPaymentInte
   return balanceTransaction;
 }
 
+function balanceTransactionFromCharge(charge: StripeApiCharge) {
+  const balanceTransaction = charge.balance_transaction;
+  if (!balanceTransaction || typeof balanceTransaction === "string") return null;
+  return balanceTransaction;
+}
+
 function projectionFromStripeLists(args: {
   reason: string;
   customers: StripeApiCustomer[];
   paymentIntents: StripeApiPaymentIntent[];
   invoices: StripeApiInvoice[];
   payouts: Array<{ payout: StripeApiPayout; balanceTransactions: StripeApiBalanceTransaction[] }>;
+  includeFixturePayoutFallback?: boolean;
 }): StripeProjection {
   const customerRows = args.customers.map((customer) => ({
     stripeCustomerId: customer.id,
@@ -1111,14 +1293,14 @@ function projectionFromStripeLists(args: {
   });
 
   return {
-    mode: "stripe_test",
-    reason: args.reason,
-    customers: customerRows,
-    income,
-    invoices,
-    payouts: payouts.length > 0 ? payouts : buildFixtureProjection().payouts,
-  };
-}
+	    mode: "stripe_test",
+	    reason: args.reason,
+	    customers: customerRows,
+	    income,
+	    invoices,
+	    payouts: payouts.length > 0 ? payouts : args.includeFixturePayoutFallback ? buildFixtureProjection().payouts : [],
+	  };
+	}
 
 async function fetchStripeProjection(key: string, reason: string): Promise<StripeProjection> {
   const [customers, paymentIntents, invoices, payouts] = await Promise.all([
@@ -1139,13 +1321,134 @@ async function fetchStripeProjection(key: string, reason: string): Promise<Strip
     payoutRows.push({ payout, balanceTransactions: balanceTransactions.data ?? [] });
   }
 
-  return projectionFromStripeLists({
-    reason,
-    customers: customers.data ?? [],
-    paymentIntents: paymentIntents.data ?? [],
-    invoices: invoices.data ?? [],
-    payouts: payoutRows,
-  });
+	  return projectionFromStripeLists({
+	    reason,
+	    customers: customers.data ?? [],
+	    paymentIntents: paymentIntents.data ?? [],
+	    invoices: invoices.data ?? [],
+	    payouts: payoutRows,
+	    includeFixturePayoutFallback: true,
+	  });
+	}
+
+function customerProjectionFromObject(customer: string | StripeApiCustomer | null | undefined) {
+  if (!customer || typeof customer === "string") return [];
+  return [
+    {
+      stripeCustomerId: customer.id,
+      name: customer.name ?? customer.email ?? customer.id,
+      email: customer.email ?? undefined,
+    },
+  ] satisfies StripeCustomerProjection[];
+}
+
+function apiCustomerFromObject(customer: string | StripeApiCustomer | null | undefined) {
+  if (!customer || typeof customer === "string") return [];
+  return [customer];
+}
+
+function projectionFromStripeCharge(args: {
+  reason: string;
+  charge: StripeApiCharge;
+}): StripeProjection {
+  const stripeCustomerId = customerId(args.charge.customer);
+  const balanceTransaction = balanceTransactionFromCharge(args.charge);
+  const amountMinor = args.charge.amount_captured ?? args.charge.amount ?? 0;
+  const paymentIntentId = args.charge.payment_intent ?? `charge:${args.charge.id}`;
+  const income =
+    amountMinor > 0 && args.charge.paid !== false
+      ? [
+          {
+            stripePaymentIntentId: paymentIntentId,
+            stripeChargeId: args.charge.id,
+            customerStripeId: stripeCustomerId,
+            customerName: customerName(args.charge.customer, "Stripe customer"),
+            description: args.charge.description ?? "Stripe charge",
+            date: isoDateFromUnix(args.charge.created),
+            amountMinor,
+            feeMinor: balanceTransaction?.fee ?? 0,
+            currency: normalizeCurrency(args.charge.currency),
+            feeSource: balanceTransaction?.fee ? ("stripe_balance_transaction" as const) : ("unavailable" as const),
+          },
+        ]
+      : [];
+
+  return {
+    mode: "stripe_test",
+    reason: args.reason,
+    customers: customerProjectionFromObject(args.charge.customer),
+    income,
+    invoices: [],
+    payouts: [],
+  };
+}
+
+async function fetchStripeProjectionForWebhook(
+  key: string,
+  args: {
+    type: string;
+    objectId?: string;
+    relatedPaymentIntentId?: string;
+  },
+): Promise<StripeProjection | null> {
+  const reason = `Stripe webhook ${args.type} triggered a targeted sync for ${args.objectId ?? args.relatedPaymentIntentId ?? "the related object"}.`;
+  if (args.type.startsWith("invoice.")) {
+    if (!args.objectId) return null;
+    const invoice = await stripeRequest<StripeApiInvoice>(
+      key,
+      `/invoices/${encodeURIComponent(args.objectId)}?expand[]=customer`,
+    );
+	    return projectionFromStripeLists({
+	      reason,
+	      customers: apiCustomerFromObject(invoice.customer),
+	      paymentIntents: [],
+	      invoices: [invoice],
+	      payouts: [],
+    });
+  }
+
+  if (args.type.startsWith("payout.")) {
+    if (!args.objectId) return null;
+    const payout = await stripeRequest<StripeApiPayout>(key, `/payouts/${encodeURIComponent(args.objectId)}`);
+    const balanceTransactions = await stripeRequest<StripeList<StripeApiBalanceTransaction>>(
+      key,
+      `/balance_transactions?limit=100&payout=${encodeURIComponent(payout.id)}`,
+    );
+    return projectionFromStripeLists({
+      reason,
+      customers: [],
+      paymentIntents: [],
+      invoices: [],
+      payouts: [{ payout, balanceTransactions: balanceTransactions.data ?? [] }],
+    });
+  }
+
+  if (args.type.startsWith("charge.")) {
+    if (!args.objectId) return null;
+    const charge = await stripeRequest<StripeApiCharge>(
+      key,
+      `/charges/${encodeURIComponent(args.objectId)}?expand[]=customer&expand[]=balance_transaction`,
+    );
+    return projectionFromStripeCharge({ reason, charge });
+  }
+
+	  if (args.type.startsWith("payment_intent.")) {
+	    const paymentIntentId = args.relatedPaymentIntentId ?? args.objectId;
+	    if (!paymentIntentId) return null;
+	    const paymentIntent = await stripeRequest<StripeApiPaymentIntent>(
+	      key,
+	      `/payment_intents/${encodeURIComponent(paymentIntentId)}?expand[]=customer&expand[]=latest_charge.balance_transaction`,
+	    );
+	    return projectionFromStripeLists({
+	      reason,
+	      customers: apiCustomerFromObject(paymentIntent.customer),
+	      paymentIntents: [paymentIntent],
+      invoices: [],
+      payouts: [],
+    });
+  }
+
+  return null;
 }
 
 export const validateEnvironment = action({
@@ -1216,6 +1519,44 @@ export const syncNow = action({
       entityId: args.entityId,
       projection: key.safeToCallStripe ? projection : { ...projection, mode: "fixture", reason: key.reason },
     });
+  },
+});
+
+export const syncFromWebhookEvent = internalAction({
+  args: {
+    stripeEventId: v.string(),
+    type: v.string(),
+    objectId: v.optional(v.string()),
+    relatedPaymentIntentId: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ status: "synced" | "ignored" | "skipped" | "error"; reason: string; result?: ApplyProjectionResult }> => {
+    const supported =
+      args.type.startsWith("invoice.") ||
+      args.type.startsWith("charge.") ||
+      args.type.startsWith("payout.") ||
+      args.type.startsWith("payment_intent.");
+    if (!supported) {
+      return { status: "ignored", reason: `Stripe event type ${args.type} does not change OpenBooks ledger state.` };
+    }
+
+    const key = stripeKeyState(process.env.STRIPE_SECRET_KEY);
+    if (!key.safeToCallStripe) {
+      return { status: "skipped", reason: key.reason };
+    }
+
+    try {
+      const projection = await fetchStripeProjectionForWebhook(process.env.STRIPE_SECRET_KEY!.trim(), args);
+      if (!projection) {
+        return { status: "skipped", reason: `Stripe event ${args.stripeEventId} did not include an object id OpenBooks can sync.` };
+      }
+      const result = await ctx.runMutation(applyProjectionInternalRef, { projection });
+      return { status: "synced", reason: projection.reason, result };
+    } catch (error) {
+      return {
+        status: "error",
+        reason: error instanceof Error ? error.message : `Stripe event ${args.stripeEventId} could not be synced.`,
+      };
+    }
   },
 });
 

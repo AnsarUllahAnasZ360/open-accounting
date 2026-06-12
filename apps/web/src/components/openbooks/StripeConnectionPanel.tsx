@@ -50,10 +50,19 @@ type StripeState = {
     amountMinor: number;
     grossMinor: number;
     feesMinor: number;
-    driftMinor: number;
-    arrivalDate: string;
-    status: "pending" | "reconciled" | "mismatch";
-  }>;
+	    driftMinor: number;
+	    arrivalDate: string;
+	    status: "pending" | "reconciled" | "mismatch";
+	    currency: string;
+	    lines: Array<{
+	      sourceId: string;
+	      description: string;
+	      grossMinor: number;
+	      feeMinor: number;
+	      netMinor: number;
+	      currency: string;
+	    }>;
+	  }>;
   fixturePreview: {
     payouts: Array<{
       payoutId: string;
@@ -85,9 +94,10 @@ type SyncResult = {
   mode: "stripe_test" | "fixture";
   contactsCreated: number;
   incomeTransactionsCreated: number;
-  invoicesCreated: number;
-  payoutsCreated: number;
-  inboxItemsCreated: number;
+	  invoicesCreated: number;
+	  payoutsCreated: number;
+	  payoutLinesCreated: number;
+	  inboxItemsCreated: number;
   ledgerEntriesPosted: number;
   skippedDuplicates: number;
   integrationGaps: string[];
@@ -146,10 +156,11 @@ function ResultBlock({ result }: { result: SyncResult | null }) {
   if (!result) return null;
   const rows = [
     ["Contacts", result.contactsCreated],
-    ["Income transactions", result.incomeTransactionsCreated],
-    ["Invoices", result.invoicesCreated],
-    ["Payouts", result.payoutsCreated],
-    ["Inbox mismatch cards", result.inboxItemsCreated],
+	    ["Income transactions", result.incomeTransactionsCreated],
+	    ["Invoices", result.invoicesCreated],
+	    ["Payouts", result.payoutsCreated],
+	    ["Payout lines", result.payoutLinesCreated],
+	    ["Inbox mismatch cards", result.inboxItemsCreated],
     ["Ledger entries", result.ledgerEntriesPosted],
     ["Duplicates skipped", result.skippedDuplicates],
   ];
@@ -179,9 +190,9 @@ function PayoutRows({ state }: { state: StripeState }) {
     state.payouts.length > 0
       ? state.payouts.map((payout) => ({
           ...payout,
-          currency: state.entity?.currency ?? "USD",
+          currency: payout.currency,
           source: "recorded",
-          lines: preview.find((item) => item.payoutId === payout.payoutId)?.lines ?? [],
+          lines: payout.lines ?? [],
         }))
       : preview.map((payout) => ({
           id: payout.payoutId,
@@ -251,10 +262,10 @@ function PayoutRows({ state }: { state: StripeState }) {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-sm text-muted-foreground">
-                      Drill-down rows are available from fixture previews today; persistent real payout line storage needs a child table.
-                    </TableCell>
+	                  <TableRow>
+	                    <TableCell colSpan={5} className="text-sm text-muted-foreground">
+	                      Stripe has not returned balance-transaction lines for this payout yet.
+	                    </TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -462,10 +473,10 @@ export function StripeConnectionPanel({ entityId }: { entityId?: Id<"entities"> 
               <CardTitle className="text-base">Payout reconciliation</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-                {state.payouts.length > 0
-                  ? "Recorded Stripe payouts are shown first. Fixture line details remain visible for drill-down until payout child rows are added."
-                  : "No recorded Stripe payouts yet. Fixture payouts prove the $0 drift and mismatch card behavior without chasing cross-sandbox bank deposits."}
+	              <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+	                {state.payouts.length > 0
+	                  ? "Recorded Stripe payouts are shown first. Drill-down rows now come from persisted Stripe balance-transaction child rows."
+	                  : "No recorded Stripe payouts yet. Fixture payouts prove the $0 drift and mismatch card behavior without chasing cross-sandbox bank deposits."}
               </div>
               <PayoutRows state={state} />
             </CardContent>

@@ -65,18 +65,19 @@ describe("Stripe webhook helpers", () => {
   it("normalizes event metadata without storing the raw Stripe payload", () => {
     expect(
       normalizeStripeWebhookEvent({
-        id: "evt_test_webhook",
-        type: "invoice.paid",
-        livemode: false,
-        api_version: "2026-02-25.clover",
-        data: { object: { id: "in_test_webhook" } },
-      }),
-    ).toEqual({
-      stripeEventId: "evt_test_webhook",
-      type: "invoice.paid",
-      objectId: "in_test_webhook",
-      livemode: false,
-      apiVersion: "2026-02-25.clover",
-    });
+	        id: "evt_test_webhook",
+	        type: "invoice.paid",
+	        livemode: false,
+	        api_version: "2026-02-25.clover",
+	        data: { object: { id: "in_test_webhook", payment_intent: "pi_test_related" } },
+	      }),
+	    ).toEqual({
+	      stripeEventId: "evt_test_webhook",
+	      type: "invoice.paid",
+	      objectId: "in_test_webhook",
+	      relatedPaymentIntentId: "pi_test_related",
+	      livemode: false,
+	      apiVersion: "2026-02-25.clover",
+	    });
   });
 });

@@ -9,12 +9,13 @@ type StripeWebhookEvent = {
   type?: unknown;
   livemode?: unknown;
   api_version?: unknown;
-  data?: {
-    object?: {
-      id?: unknown;
-    };
-  };
-};
+	  data?: {
+	    object?: {
+	      id?: unknown;
+	      payment_intent?: unknown;
+	    };
+	  };
+	};
 
 function utf8(value: string) {
   return new TextEncoder().encode(value);
@@ -91,28 +92,34 @@ export function normalizeStripeWebhookEvent(raw: unknown) {
   if (typeof event.id !== "string" || typeof event.type !== "string") {
     throw new Error("Stripe webhook payload is missing id or type.");
   }
-  const objectId = event.data?.object && typeof event.data.object.id === "string"
-    ? event.data.object.id
-    : undefined;
-  const apiVersion = typeof event.api_version === "string" ? event.api_version : undefined;
-  const livemode = event.livemode === true;
-  return {
-    stripeEventId: event.id,
-    type: event.type,
-    objectId,
-    apiVersion,
-    livemode,
-  };
-}
+	  const objectId = event.data?.object && typeof event.data.object.id === "string"
+	    ? event.data.object.id
+	    : undefined;
+	  const relatedPaymentIntentId =
+	    event.data?.object && typeof event.data.object.payment_intent === "string"
+	      ? event.data.object.payment_intent
+	      : undefined;
+	  const apiVersion = typeof event.api_version === "string" ? event.api_version : undefined;
+	  const livemode = event.livemode === true;
+	  return {
+	    stripeEventId: event.id,
+	    type: event.type,
+	    objectId,
+	    relatedPaymentIntentId,
+	    apiVersion,
+	    livemode,
+	  };
+	}
 
 export const recordEvent = internalMutation({
   args: {
     stripeEventId: v.string(),
-    type: v.string(),
-    objectId: v.optional(v.string()),
-    livemode: v.boolean(),
-    apiVersion: v.optional(v.string()),
-  },
+	    type: v.string(),
+	    objectId: v.optional(v.string()),
+	    relatedPaymentIntentId: v.optional(v.string()),
+	    livemode: v.boolean(),
+	    apiVersion: v.optional(v.string()),
+	  },
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("stripeWebhookEvents")
@@ -127,10 +134,11 @@ export const recordEvent = internalMutation({
       ? `Ignored live-mode Stripe event ${args.type}.`
       : `Received Stripe test-mode event ${args.type}${args.objectId ? ` for ${args.objectId}` : ""}.`;
     const eventId = await ctx.db.insert("stripeWebhookEvents", {
-      stripeEventId: args.stripeEventId,
-      type: args.type,
-      objectId: args.objectId,
-      livemode: args.livemode,
+	      stripeEventId: args.stripeEventId,
+	      type: args.type,
+	      objectId: args.objectId,
+	      relatedPaymentIntentId: args.relatedPaymentIntentId,
+	      livemode: args.livemode,
       apiVersion: args.apiVersion,
       status,
       summary,

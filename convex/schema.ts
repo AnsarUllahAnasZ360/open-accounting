@@ -374,6 +374,39 @@ export default defineSchema({
     totalMinor: v.number(),
     amountPaidMinor: v.number(),
     entryIds: v.array(v.id("journalEntries")),
+    // Composer fields (Epic C). Line items are a small bounded list per invoice
+    // (a handful of services), so an array is safe — it never grows unbounded
+    // like an audit feed would. Money is integer minor units, never floats.
+    lineItems: v.optional(
+      v.array(
+        v.object({
+          description: v.string(),
+          quantity: v.number(),
+          unitAmountMinor: v.number(),
+        }),
+      ),
+    ),
+    memo: v.optional(v.string()),
+    terms: v.optional(v.string()),
+    // Stripe hosted invoice link + lifecycle timeline (Created -> Sent ->
+    // Viewed -> Paid). A fixed-cardinality event list, also safe as an array.
+    hostedInvoiceUrl: v.optional(v.string()),
+    timeline: v.optional(
+      v.array(
+        v.object({
+          kind: v.union(
+            v.literal("created"),
+            v.literal("sent"),
+            v.literal("viewed"),
+            v.literal("paid"),
+            v.literal("voided"),
+          ),
+          label: v.string(),
+          at: v.number(),
+        }),
+      ),
+    ),
+    source: v.optional(v.union(v.literal("manual"), v.literal("stripe"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_entity", ["entityId"]),

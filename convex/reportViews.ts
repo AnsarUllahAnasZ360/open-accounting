@@ -323,7 +323,13 @@ function buildStatementRows({
     }));
 }
 
-function buildAgingRows({
+/**
+ * AR/AP aging matrix by contact. Buckets: current (not past due), 1–30, 31–60,
+ * 61–90, 90+. EXPORTED so the Income/Expenses read models (incomeViews) reuse
+ * this exact bucket math instead of duplicating it (Epic C). `endDate` is the
+ * as-of date the days-past-due is measured against.
+ */
+export function buildAgingRows({
   contactsById,
   rows,
   endDate,

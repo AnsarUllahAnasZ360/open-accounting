@@ -63,7 +63,7 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | NOT STARTED | — | Epic G1/G2. Today: fixture mode only. |
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | inherited | Epic G3. Webhook receiver real; events trigger nothing yet. |
 | 5 | Inbox: confirm / correct / rule / batch / keyboard | PARTIAL | inherited | Epic H rewrites assertions; batch + keyboard unverified. |
-| 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | NOT STARTED | — | Epics C, D4. Today: invoice save / bill mark-paid / payroll approve-pay absent. |
+| 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + 41 unit | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Partial: receipt-PDF bill intake (Epic G); seeded-bill auto-match e2e skips when no seeded candidate (unit-proven). |
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper. Partial: CSV==screen equality not yet automated (export button works); exhaustive compare-column coverage deferred to H. |
 | 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | PARTIAL (backend WORKING) | B1–B3 unit tests + live Bedrock smoke | Engine done + verified (durable threads, real streaming, 5 read tools, propose→confirm through the ledger). UI is B4 — no screenshot yet, so capability stays PARTIAL until the docked panel renders it. |
 | 9 | Settings: 10-section subnav, all real | NOT STARTED | — | Epic E. Today: one mega-scroll page. |
@@ -195,6 +195,42 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   yet automated; per-widget dashboard drill coverage and the FX-settlement unit
   case (USD path tested; FX path code-reviewed) deferred to Epic H.
 - **Next:** Epic C (Income/Expenses/Bills + invoice-save & bill-mark-paid).
+
+### 2026-06-12 — Batch C: Income, Expenses, Bills (subagent `money-screens`, integrated by lead)
+
+- **Changed:** new `convex/invoices.ts` (saveDraft/finalize/void/recordStripeSend/
+  sendReminder/detail), `convex/bills.ts` (markPaid/createBill/matchCandidates),
+  `convex/categories.ts` (createCategory/recategorize), `convex/incomeViews.ts`,
+  `convex/expensesViews.ts` + 4 test files; new `IncomeScreen.tsx`,
+  `ExpensesScreen.tsx`; `ModuleScreens.tsx` Bills settlement + match picker;
+  `AppScreen.tsx` routes `/income`→IncomeScreen, `/expenses`→ExpensesScreen;
+  `schema.ts` (+invoice lineItems/timeline/hosted-url, optional); `reportViews.ts`
+  (exported `buildAgingRows` for reuse — additive). `tests/e2e/modules.spec.ts`
+  updated to the new screens.
+- **Evidence / verification:**
+  - `pnpm verify` green; **121/121 unit** (24 files; +20 C tests: draft posts
+    nothing, finalize balanced AR, void reverses, bill settlement balanced + AP
+    cleared + double-settle rejected + matched txn consumed, Expenses category
+    totals == reportPack P&L, recurring detector, aging boundaries).
+  - `tests/e2e/income-expenses-bills.spec.ts` **5 passed / 1 skipped** (real
+    clicks): Income tabs + KPIs; compose→Save draft (posts nothing)→Finalize→
+    receivables; Expenses + Add category creates a usable account; **add bill→
+    Mark paid→AP open total decreases**. Seeded-bill auto-match case skips when
+    no seeded bank candidate is offered (behavior unit-proven). `modules.spec.ts`
+    regression green. 8 screenshots `docs/finishing/evidence/2026-06-12-C*.png`.
+  - `npx convex dev --once` green.
+- **Integration fixes by lead (gate-breakers the agent left or surfaced):**
+  - convex `tsc` (backend gate) failed: test helpers typed
+    `ReturnType<typeof convexTest>` lose the schema's DataModel, so
+    `ctx.db.query(...).withIndex("by_entry"…)` only saw system indexes. Fixed in
+    `bills/invoices/expensesViews/payroll.test.ts` → `TestConvex<typeof schema>`
+    (also corrects a latent error in the D-batch `payroll.test.ts`).
+  - `pnpm lint` failed: `ReportsScreen.tsx` had a `set-state-in-effect` **error**
+    (D's file) + an unused import. Converted the init tracker to a `useRef`,
+    scoped-disabled the rule on the intentional sync-to-selection effect, dropped
+    the unused import. `pnpm verify` now genuinely green.
+- **Status:** row #6 **WORKING**. Partial: receipt-PDF bill intake (Epic G).
+- **Next:** Epic E (Settings) — then B4–B6 (chat UI), F, G, H.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

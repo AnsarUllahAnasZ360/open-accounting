@@ -4,7 +4,9 @@ import { AccountingPanel } from "@/components/openbooks/AccountingPanel";
 import { DashboardScreen, InboxScreen, TransactionsScreen } from "@/components/openbooks/CoreScreens";
 import { DemoDataPanel } from "@/components/openbooks/DemoDataPanel";
 import { LeadsPanel } from "@/components/openbooks/LeadsPanel";
-import { BillsScreen, ContactsScreen, InvoicesScreen, PayrollScreen, RemainingSettingsScreens } from "@/components/openbooks/ModuleScreens";
+import { BillsScreen, ContactsScreen, PayrollScreen, RemainingSettingsScreens } from "@/components/openbooks/ModuleScreens";
+import { ExpensesScreen } from "@/components/openbooks/ExpensesScreen";
+import { IncomeScreen } from "@/components/openbooks/IncomeScreen";
 import { CategoryChip, EmptyState, PageHeader } from "@/components/openbooks/primitives";
 import { ReportsScreen } from "@/components/openbooks/ReportsScreen";
 import { useActiveEntity } from "@/lib/openbooks/active-entity";
@@ -46,13 +48,8 @@ export function AppScreen({ route }: { route: ScreenRoute }) {
       {route.href === "/dashboard" ? <DashboardScreen /> : null}
       {route.href === "/inbox" ? <InboxScreen /> : null}
       {route.href === "/transactions" ? <TransactionsScreen /> : null}
-      {route.href === "/income" ? <InvoicesScreen /> : null}
-      {route.href === "/expenses" ? (
-        <EmptyState
-          title="Expenses screen lands in Epic C"
-          description="The Income/Expenses split is wired in the shell. The full Expenses surface (spend by category and vendor, recurring detection, add-category) is built in Epic C; until then nothing here is mislabeled as Bills."
-        />
-      ) : null}
+      {route.href === "/income" ? <IncomeScreen /> : null}
+      {route.href === "/expenses" ? <ExpensesScreen /> : null}
       {route.href === "/bills" ? <BillsScreen /> : null}
       {route.href === "/contacts" ? <ContactsScreen /> : null}
       {route.href === "/payroll" ? <PayrollScreen /> : null}

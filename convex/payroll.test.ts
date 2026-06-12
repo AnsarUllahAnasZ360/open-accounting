@@ -1,4 +1,4 @@
-import { convexTest } from "convex-test";
+import { convexTest, type TestConvex } from "convex-test";
 import { describe, expect, it } from "vitest";
 
 import { api } from "./_generated/api";
@@ -12,7 +12,7 @@ const modules = import.meta.glob("./**/*.ts");
  * employee. USD-in-USD means fxRate = 1, so settlement has no FX line — the
  * cleanest path to assert the ledger stays balanced across the run lifecycle.
  */
-async function setupPayroll(t: ReturnType<typeof convexTest>) {
+async function setupPayroll(t: TestConvex<typeof schema>) {
   return await t.run(async (ctx) => {
     const now = Date.now();
     const userId = await ctx.db.insert("users", { email: "owner@example.com", name: "Owner" });
@@ -81,7 +81,7 @@ async function setupPayroll(t: ReturnType<typeof convexTest>) {
   });
 }
 
-function authed(t: ReturnType<typeof convexTest>, userId: string) {
+function authed(t: TestConvex<typeof schema>, userId: string) {
   return t.withIdentity({
     subject: `${userId}|test-session`,
     tokenIdentifier: "test|owner",
@@ -90,7 +90,7 @@ function authed(t: ReturnType<typeof convexTest>, userId: string) {
   });
 }
 
-async function entryLines(t: ReturnType<typeof convexTest>, entryId: string) {
+async function entryLines(t: TestConvex<typeof schema>, entryId: string) {
   return await t.run(async (ctx) =>
     ctx.db
       .query("journalLines")
@@ -99,7 +99,7 @@ async function entryLines(t: ReturnType<typeof convexTest>, entryId: string) {
   );
 }
 
-async function trialBalance(t: ReturnType<typeof convexTest>, entityId: string) {
+async function trialBalance(t: TestConvex<typeof schema>, entityId: string) {
   return await t.run(async (ctx) => {
     const lines = await ctx.db
       .query("journalLines")

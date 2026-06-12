@@ -24,7 +24,7 @@ import {
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
-import { Amount, AgingMiniBar, CategoryChip, EmptyState, StatCard } from "@/components/openbooks/primitives";
+import { Amount, AgingMiniBar, CategoryChip, EmptyState, StatCard, formatMinorMoney } from "@/components/openbooks/primitives";
 import {
   type BillRow,
   type ContactRow,
@@ -39,6 +39,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -471,6 +472,8 @@ export function BillsScreen() {
   const manualMatchReceipt = useMutation(api.receipts.manualMatch);
   const extractReceiptWithBedrock = useAction(api.receipts.extractWithBedrock);
   const [selectedBill, setSelectedBill] = useState<BillRow | null>(null);
+  // C5 — mark-paid settlement: the bill whose match picker is open.
+  const [payBill, setPayBill] = useState<BillRow | null>(null);
   const [documentKind, setDocumentKind] = useState<"receipt" | "bill">("receipt");
   const [vendor, setVendor] = useState("");
   const [receiptDate, setReceiptDate] = useState("");
@@ -554,7 +557,7 @@ export function BillsScreen() {
     <div className="space-y-5" data-testid="m6-bills-screen">
       <ModuleIntro
         title="Bills and money you owe"
-        description="Bills are grouped by due window and carry A/P posting status. Upload now stores receipt or bill files, extracts reviewable metadata, and matches evidence to bank transactions."
+        description="What you owe and when it's due — grouped by due window. Mark a bill paid to match it to a bank transaction (the payable clears and the transaction is consumed). Upload a PDF or receipt to extract a prefilled bill."
         action={
           <div className="flex gap-2">
             <Button asChild variant="outline" size="sm">
@@ -563,16 +566,13 @@ export function BillsScreen() {
                 Upload file
               </label>
             </Button>
-            <Button size="sm">
-              <Plus className="size-4" />
-              Add bill
-            </Button>
+            <AddBillModal entityId={entity.id as Id<"entities">} />
           </div>
         }
       />
 
       <section className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Open total" value={<Amount amountMinor={data.bills.kpis.openMinor} currency={data.entity.currency} />} />
+        <StatCard label="Open total" value={<span data-testid="bills-open-total"><Amount amountMinor={data.bills.kpis.openMinor} currency={data.entity.currency} /></span>} />
         <StatCard label="Due this week" value={<Amount amountMinor={data.bills.kpis.dueThisWeekMinor} currency={data.entity.currency} />} />
         <StatCard label="Overdue" value={<Amount amountMinor={data.bills.kpis.overdueMinor} currency={data.entity.currency} />} />
       </section>
@@ -698,20 +698,27 @@ export function BillsScreen() {
               <CardContent>
                 <div className="divide-y rounded-lg border">
                   {group.rows.map((bill) => (
-                    <button
+                    <div
                       key={bill.id}
-                      type="button"
-                      className="grid w-full gap-2 px-3 py-3 text-left text-sm hover:bg-muted/50 md:grid-cols-[1fr_auto_auto] md:items-center"
-                      onClick={() => setSelectedBill(bill)}
+                      className="grid gap-2 px-3 py-3 text-sm md:grid-cols-[1fr_auto_auto_auto] md:items-center"
                       data-testid="bill-row"
                     >
-                      <span>
+                      <button type="button" className="text-left" onClick={() => setSelectedBill(bill)}>
                         <span className="block font-medium">{bill.vendorName}</span>
                         <span className="text-xs text-muted-foreground">Due {bill.dueDate} · {statusLabel(bill.postingAffordance)}</span>
-                      </span>
+                      </button>
                       {statusChip(bill.status)}
                       <Amount amountMinor={bill.totalMinor} currency={bill.currency} />
-                    </button>
+                      {bill.status === "open" ? (
+                        <Button size="sm" variant="outline" data-testid="bill-mark-paid" onClick={() => setPayBill(bill)}>
+                          <CheckCircle2 className="size-3.5" /> Mark paid
+                        </Button>
+                      ) : bill.status === "paid" ? (
+                        <span className="inline-flex h-7 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 text-[11.5px] font-medium text-primary">
+                          <CheckCircle2 className="size-3" /> Paid
+                        </span>
+                      ) : <span />}
+                    </div>
                   ))}
                   {group.rows.length === 0 ? <div className="p-3 text-sm text-muted-foreground">No bills in this group.</div> : null}
                 </div>
@@ -722,43 +729,168 @@ export function BillsScreen() {
 
         <Card className="shadow-xs">
           <CardHeader>
-            <CardTitle className="text-base">Mark paid and match</CardTitle>
+            <CardTitle className="text-base">Selected bill</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-lg border p-3">
               <div className="flex items-start gap-2">
                 <ReceiptText className="mt-0.5 size-4 text-muted-foreground" />
-                <div>
-                  <div className="text-sm font-medium">Selected bill</div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{selectedBill ? selectedBill.vendorName : "No bill selected"}</div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {selectedBill ? `${selectedBill.vendorName} due ${selectedBill.dueDate}` : "Choose a bill to review settlement candidates."}
+                    {selectedBill
+                      ? `Due ${selectedBill.dueDate} · ${statusLabel(selectedBill.status)}`
+                      : "Choose a bill to review it, or hit Mark paid on an open bill to settle it against a bank transaction."}
                   </p>
                 </div>
               </div>
             </div>
-            <div>
-              <div className="mb-2 text-sm font-medium">Suggested bank matches</div>
-              <div className="divide-y rounded-lg border">
-                {data.bills.matchCandidates.slice(0, 6).map((candidate) => (
-                  <div key={candidate.id} className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-sm">
-                    <div>
-                      <div className="font-medium">{candidate.merchant}</div>
-                      <div className="money-figures text-xs text-muted-foreground">{candidate.date}</div>
-                    </div>
-                    <Amount amountMinor={candidate.amountMinor} currency={candidate.currency} tone="expense" />
-                  </div>
-                ))}
-              </div>
-            </div>
-            <Button disabled className="w-full">
-              <CheckCircle2 className="size-4" />
-              Post settlement after integration
-            </Button>
-            <p className="text-xs text-muted-foreground">{data.bills.uploadPdf.reason}</p>
+            {selectedBill && selectedBill.status === "open" ? (
+              <Button className="w-full" data-testid="bill-detail-mark-paid" onClick={() => setPayBill(selectedBill)}>
+                <CheckCircle2 className="size-4" /> Mark paid &amp; match
+              </Button>
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              Bills post as money you owe the moment you add them, and clear when the payment shows up in your bank feed — true accrual books without the homework.
+            </p>
+            <p className="text-xs text-muted-foreground">Partial payments are out of scope in this version — settle the full balance.</p>
           </CardContent>
         </Card>
       </section>
+
+      {payBill ? (
+        <BillMatchPicker
+          billId={payBill.id as Id<"bills">}
+          vendorName={payBill.vendorName}
+          onClose={() => setPayBill(null)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function BillMatchPicker({ billId, vendorName, onClose }: { billId: Id<"bills">; vendorName: string; onClose: () => void }) {
+  const picker = useQuery(api.bills.matchCandidates, { billId });
+  const markPaid = useMutation(api.bills.markPaid);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function settle(transactionId?: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await markPaid({ billId, transactionId: transactionId ? (transactionId as Id<"transactions">) : undefined, scheduleExpected: transactionId ? undefined : true });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not settle the bill.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent data-testid="bill-match-picker">
+        <DialogHeader>
+          <DialogTitle>Match to a bank transaction</DialogTitle>
+          <DialogDescription>
+            {picker
+              ? `Paying ${picker.vendorName} · ${formatMinorMoney(picker.totalMinor, { currency: picker.currency })} — pick the bank transaction that settles it.`
+              : `Paying ${vendorName} — loading candidates…`}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          {picker?.candidates.map((candidate) => (
+            <button
+              key={candidate.id}
+              type="button"
+              data-testid="bill-match-candidate"
+              disabled={busy}
+              onClick={() => settle(candidate.id)}
+              className={`flex w-full items-center gap-3 rounded-[11px] border p-3 text-left transition hover:border-primary/40 ${candidate.suggested ? "border-primary/30 bg-primary/5" : ""}`}
+            >
+              <span className="inline-flex size-6 items-center justify-center rounded-md bg-foreground text-[9px] font-bold text-background">{candidate.merchant.slice(0, 2).toUpperCase()}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">{candidate.merchant}</span>
+                <span className="money-figures block text-[11.5px] text-muted-foreground">{candidate.date}</span>
+              </span>
+              <Amount amountMinor={candidate.amountMinor} currency={candidate.currency} tone="expense" />
+              {candidate.suggested ? <Badge variant="outline" className="border-primary/30 bg-primary/10 text-[10px] text-primary">best match</Badge> : null}
+            </button>
+          ))}
+          {picker && picker.candidates.length === 0 ? (
+            <p className="rounded-[11px] border border-dashed p-3 text-sm text-muted-foreground">No matching bank transaction yet. Schedule an expected match and it settles when the payment arrives.</p>
+          ) : null}
+          {error ? <p className="text-sm text-destructive" data-testid="bill-match-error">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" size="sm" data-testid="bill-schedule-expected" disabled={busy} onClick={() => settle()}>No match yet — expect one</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddBillModal({ entityId }: { entityId: Id<"entities"> }) {
+  const createBill = useMutation(api.bills.createBill);
+  const [open, setOpen] = useState(false);
+  const [vendorName, setVendorName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleCreate() {
+    const totalMinor = moneyInputToMinor(amount);
+    if (!vendorName.trim()) { setError("Who do you owe?"); return; }
+    if (!totalMinor || totalMinor <= 0) { setError("Enter a positive amount."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { setError("Pick a due date."); return; }
+    setBusy(true); setError("");
+    try {
+      await createBill({ entityId, vendorName: vendorName.trim(), totalMinor, dueDate });
+      setOpen(false);
+      setVendorName(""); setAmount(""); setDueDate("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not add the bill.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" data-testid="bills-add-bill"><Plus className="size-4" /> Add bill</Button>
+      </DialogTrigger>
+      <DialogContent data-testid="add-bill-modal">
+        <DialogHeader>
+          <DialogTitle>New bill</DialogTitle>
+          <DialogDescription>Type it in below. To extract a bill from a PDF, use Upload file — image uploads work today; PDF text extraction lands in a later epic.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid gap-2">
+            <Label>Vendor</Label>
+            <Input data-testid="bill-vendor" value={vendorName} onChange={(e) => setVendorName(e.target.value)} placeholder="Who do you owe?" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Amount</Label>
+              <Input data-testid="bill-amount" value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} placeholder="$0.00" className="money-figures" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Due date</Label>
+              <Input data-testid="bill-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button size="sm" data-testid="bill-create" disabled={busy} onClick={handleCreate}>{busy ? "Adding…" : "Add bill"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

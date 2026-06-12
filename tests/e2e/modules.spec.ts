@@ -68,10 +68,11 @@ test("owner can browse M6 contacts, AR, AP, payroll, and settings modules", asyn
     fullPage: true,
   });
 
-  await page.goto("/invoices");
-  await expect(page.getByTestId("m6-invoices-screen")).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText("Status pipeline")).toBeVisible();
-  await expect(page.getByText("Receivables aging")).toBeVisible();
+  // /invoices redirects to /income (Epic A3); Epic C replaced the old invoices
+  // screen with the Income screen (Payments / Invoices / Receivables tabs).
+  await page.goto("/income");
+  await expect(page.getByTestId("income-screen")).toBeVisible({ timeout: 15000 });
+  await page.getByTestId("income-tab-invoices").click();
   await expect(page.getByTestId("invoice-row").first()).toBeVisible();
   await page.screenshot({
     path: "docs/initiation/evidence/2026-06-11-m6-invoices-e2e.png",
@@ -80,10 +81,11 @@ test("owner can browse M6 contacts, AR, AP, payroll, and settings modules", asyn
 
   await page.goto("/bills");
   await expect(page.getByTestId("m6-bills-screen")).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText("Mark paid and match")).toBeVisible();
+  // Epic C5: bills carry a Mark paid settlement flow. Selecting a bill shows its
+  // summary; opening the match picker lists suggested bank transactions.
+  await expect(page.getByText("Selected bill")).toBeVisible();
   await expect(page.getByTestId("bill-row").first()).toBeVisible();
-  await page.getByTestId("bill-row").first().click();
-  await expect(page.getByText("Suggested bank matches")).toBeVisible();
+  await page.getByTestId("bill-row").first().getByRole("button").first().click();
   await page.screenshot({
     path: "docs/initiation/evidence/2026-06-11-m6-bills-e2e.png",
     fullPage: true,

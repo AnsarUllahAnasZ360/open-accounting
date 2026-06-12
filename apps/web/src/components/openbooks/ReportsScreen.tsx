@@ -17,10 +17,9 @@ import {
   Scale,
   Sparkles,
   Table2,
-  X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Amount, AgingMiniBar, CategoryChip, EmptyState } from "@/components/openbooks/primitives";
 import { Button } from "@/components/ui/button";
@@ -1140,17 +1139,21 @@ export function ReportsScreen() {
   const [compare, setCompare] = useState<CompareMode>("none");
   const [columnMode, setColumnMode] = useState<ColumnMode>("total");
   const [drill, setDrill] = useState<{ title: string; rows: DrillLine[]; open: boolean }>({ title: "", rows: [], open: false });
-  const [initializedFor, setInitializedFor] = useState<string | null>(null);
+  // Tracks which report we've applied the default period for. A ref (not state)
+  // so resetting it never triggers a re-render or a cascading effect.
+  const initializedForRef = useRef<string | null>(null);
 
   // When a report opens, set its sane default period (unless the URL carried an
-  // explicit range from a dashboard drill-through). Re-runs only when the
-  // selected report changes.
+  // explicit range from a dashboard drill-through). Intentionally syncs toolbar
+  // state to the selected report; the ref guard makes it run once per change, so
+  // it cannot cascade — hence the scoped rule disable.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!selectedReport) {
-      setInitializedFor(null);
+      initializedForRef.current = null;
       return;
     }
-    if (initializedFor === selectedReport) return;
+    if (initializedForRef.current === selectedReport) return;
     const today = todayIso();
     if (urlStart && urlEnd) {
       setPreset("custom");
@@ -1163,8 +1166,9 @@ export function ReportsScreen() {
     setColumnMode(selectedReport === "profit-and-loss" ? "monthly" : "total");
     setCompare("none");
     setBasis("accrual");
-    setInitializedFor(selectedReport);
-  }, [selectedReport, urlStart, urlEnd, initializedFor]);
+    initializedForRef.current = selectedReport;
+  }, [selectedReport, urlStart, urlEnd]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const queryArgs = useMemo(
     () => ({ startDate: range.startDate, endDate: range.endDate, basis, compare, columnMode }),

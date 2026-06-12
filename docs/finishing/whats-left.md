@@ -32,9 +32,8 @@ closeout.
   sandbox item and that item sync is proven end to end; row #4 is still
   **PARTIAL** until a real Stripe CLI/Dashboard test webhook is delivered to the
   deployed route.
-- **Still open:** B6 real-Bedrock high/low import split proof · Plaid
-  hosted-item proof · Stripe webhook delivery proof · H2 remaining AI import
-  split and final evidence-index cross-check ·
+- **Still open:** Plaid hosted-item proof · Stripe webhook delivery proof · H2
+  final evidence-index cross-check ·
   prod redeploy only if Ansar reauthorizes it.
 
 ---
@@ -110,10 +109,10 @@ e2e green.
 | 2 | Shell: collapse rail, footer profile/settings/logout, ⌘K, switcher, Ask AI ⌘J | ✅ WORKING incl. active-entity data switching |
 | 3 | Plaid sandbox real Link → sync → ledger/inbox | ◑ PARTIAL → G1a UI/exchange + G2 server sync path done; needs hosted Plaid item proof |
 | 4 | Stripe test mode event-driven sync + payout reconcile | ◑ PARTIAL → G3 code verified; needs real Stripe CLI/Dashboard webhook delivery proof |
-| 5 | Inbox: confirm/correct/rule/batch/keyboard | ✅ WORKING → disposable-business H2 spec covers keyboard J/K, category correction, rule save, confirm/post, and batch confirm; AI import split remains row #14 |
+| 5 | Inbox: confirm/correct/rule/batch/keyboard | ✅ WORKING → disposable-business H2 spec covers keyboard J/K, category correction, rule save, confirm/post, batch confirm, and B6 live AI import split |
 | 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING; receipt upload/chip + create-expense posting + text-PDF raster-to-Bedrock match evidenced |
 | 7 | Reports home→viewer, sane periods, drill-down, cash⇄accrual | ✅ WORKING incl. active-entity report reads |
-| 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B5; B6 import-trigger scheduling/run history evidenced, real-Bedrock split remains |
+| 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B6, including live Bedrock import high/low split |
 | 9 | Settings: 10-section subnav | ✅ WORKING |
 | 10 | Mobile usable at 390px | ✅ WORKING → H2 real-click pass covers Dashboard, Inbox, Transactions, and Ask AI at 390px with screenshots |
 
@@ -129,7 +128,7 @@ Row #9 is **WORKING** with `tests/e2e/settings.spec.ts` 3/3,
 `convex/settings.test.ts` 4/4, screenshots, and gates. Remaining
 settings-adjacent active-entity read switching is now covered by G5.
 
-### B. Ask AI panel UI — B4-B5 DONE; B6 scheduling/run-history DONE, live split remains
+### B. Ask AI panel UI — B4-B6 DONE
 B4-B5 are **WORKING** with `tests/e2e/ai-chat.spec.ts` 4/4 and screenshots:
 durable threads, markdown, proposal confirmation cards, docked desktop panel,
 full-page `/ask-ai`, and mobile sheet. B6 now schedules/import-invokes
@@ -137,14 +136,16 @@ categorization for CSV and Plaid paths, records Settings-visible run history,
 and uses the `system:sync` actor for background Plaid jobs. Evidence:
 `convex/ai.test.ts`, `convex/plaid.test.ts`, and
 `tests/e2e/import-ai-b6.spec.ts` with
-`docs/finishing/evidence/2026-06-12-B6-csv-ai-batch-history.png`. H2
-five-question Ask AI parity is now evidenced by
+`docs/finishing/evidence/2026-06-12-B6-csv-ai-batch-history.png`,
+`docs/finishing/evidence/2026-06-12-B6-import-split-posted.png`, and
+`docs/finishing/evidence/2026-06-12-B6-import-split-inbox.png`: the live
+Bedrock proof imports two CSV rows on a disposable business, posts the clear
+Adobe software row as `decidedBy: ai`, and keeps the ambiguous adjustment row in
+Inbox with reasoning. H2 five-question Ask AI parity is now evidenced by
 `tests/e2e/ask-ai-parity-h2.spec.ts` and
 `docs/finishing/evidence/2026-06-12-H2-ask-ai-five-question-parity.png`: the
 panel answers the five flagship prompts through read-tool traces and reconciles
-to independently queried report values. Remaining B6 gap: a real-Bedrock import
-split with high-confidence rows posting as
-`decidedBy: ai` and low-confidence rows staying in Inbox with AI reasoning.
+to independently queried report values.
 
 ### C. Epic F — Identity (onboarding, profile, invites, dev-mode) — MOSTLY DONE
 F1-F4 are evidenced: new owners can self-register into a full first-run
@@ -184,8 +185,7 @@ future hardening, not proven by this batch. G5 is **WORKING/evidenced** with
 Live Sandbox data now appears in the main dashboard/register/reports, fresh
 businesses render empty states, and core read models have bounded `take()` guards
 plus dashboard read-count stats. Next: collect real Plaid/Stripe external proof
-if inputs are available, finish the B6 real-Bedrock import split proof, then run
-the final H2/H5 evidence cross-check.
+if inputs are available, then run the final H2/H5 evidence cross-check.
 
 ### E. Epic H — Verification, honest eval, closeout  _(last)_
 H1 first integrity pass is **done/committed in progress**: `tests/e2e` now has
@@ -214,10 +214,10 @@ are bounded to 120, and no truncation flags are set. H2 now has a **partial
 evidence index** at
 `docs/finishing/evidence/2026-06-12-H2-acceptance-evidence-index.md`, and rows
 #5 Inbox, #8 Contacts, #10 Reports export equality, #11 Data export, #16 Mobile,
-#17 Audit log, row #14 five-question Ask AI report-answer path, and row #15
-Receipts text-PDF raster-to-Bedrock path are now evidenced. H2 still needs the
-B6 AI import split, Plaid hosted item proof, Stripe
-webhook delivery, and a final H5 evidence-index cross-check before the whole
+#17 Audit log, row #14 five-question Ask AI report-answer path + B6 live import
+split, and row #15 Receipts text-PDF raster-to-Bedrock path are now evidenced.
+H2 still needs Plaid hosted item proof, Stripe webhook delivery, and a final H5
+evidence-index cross-check before the whole
 acceptance pack can close. H5 docs refresh is **partially done/evidenced**: `README.md`,
 `docs/finishing/how-openbooks-works.md`, and `AGENTS.md` now match shipped
 reality, but final H5 closeout still needs the completed H2 evidence pack. Do

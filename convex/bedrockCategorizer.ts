@@ -461,6 +461,9 @@ export function buildCategorizationPrompt(args: {
   return [
     "You are the categorization stage for OpenBooks, a double-entry bookkeeping app.",
     "Choose exactly one category from the candidate account list. Do not invent categories.",
+    "Use needsHuman=false only when the merchant and raw description clearly point to one category.",
+    "If the merchant or raw description is generic, ambiguous, an adjustment, or says unknown/review/needs human, set needsHuman=true, use confidence <=0.65, and explain what is missing.",
+    "For clear recurring software, cloud, rent, utilities, payroll, meals, travel, bank fee, tax, or professional-service vendors, set needsHuman=false and use confidence that reflects the evidence.",
     "Return only JSON. No markdown. No explanation outside JSON.",
     "",
     `Entity: ${args.entityName}`,

@@ -62,10 +62,10 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 | 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots; B5 dock verified in `tests/e2e/ai-chat.spec.ts`; F2 profile verified in `tests/e2e/profile-team.spec.ts` + screenshot; G5 entity switching verified in `tests/e2e/entity-scope-g5.spec.ts` + screenshots | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Profile page now updates sidebar identity live. Entity switching now drives dashboard/register/reports/module reads for Live Sandbox and fresh businesses. Remaining follow-up: global ⌘K server search index. AI panel is docked on desktop and a bottom sheet on mobile. |
 | 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | PARTIAL | `convex/plaid.test.ts` 15/15 + `convex/plaidWebhook.test.ts` 2/2 + `tests/e2e/plaid-link.spec.ts` 3/3 + 3 screenshots | G1 mounts the Plaid Link client and persists exchanged access tokens server-side without leaking them. G2 adds item-level cursor state, `system:sync`, 4h cron, verified Plaid webhook signature handling, real `/transactions/sync`, server-side removal reversal, and a Settings `Sync now` control. Still not WORKING: no completed hosted Plaid Link session + real Plaid sandbox item sync has been proven end-to-end in the browser. |
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | `convex/stripe.test.ts` 6/6 + `convex/stripeWebhook.test.ts` 3/3 + `tests/e2e/stripe-g3.spec.ts` 1/1 + screenshot | G3 code is implemented: Stripe test-mode webhooks dedupe, trigger targeted invoice/charge/payout sync, post through `system:sync`, and persist `stripePayoutLines`; UI reads persisted child rows. Still not WORKING until a real Stripe CLI/Dashboard test webhook is delivered to `/stripe/webhook` on the cloud site and proves invoice/payout update end-to-end. |
-| 5 | Inbox: confirm / correct / rule / batch / keyboard | WORKING | `tests/e2e/inbox-h2.spec.ts` 1/1 + 3 screenshots; `convex/ai.test.ts`, `convex/plaid.test.ts`, `tests/e2e/import-ai-b6.spec.ts` 1/1 + screenshot; H3 eval JSON + `tests/e2e/ai-eval-h3.spec.ts` screenshot | Disposable-business H2 coverage now proves keyboard J/K, category correction, rule save, single confirm/post, and batch confirm without mutating shared demo books. Import-triggered AI batch/run-history is evidenced for CSV and Plaid system sync. B6 real-Bedrock high/low import split remains row #14, not a blocker for this general Inbox row. |
+| 5 | Inbox: confirm / correct / rule / batch / keyboard | WORKING | `tests/e2e/inbox-h2.spec.ts` 1/1 + 3 screenshots; `convex/ai.test.ts`, `convex/plaid.test.ts`, `tests/e2e/import-ai-b6.spec.ts` 1/1 + screenshots; H3 eval JSON + `tests/e2e/ai-eval-h3.spec.ts` screenshot | Disposable-business H2 coverage now proves keyboard J/K, category correction, rule save, single confirm/post, and batch confirm without mutating shared demo books. Import-triggered AI batch/run-history is evidenced for CSV and Plaid system sync, and B6 live Bedrock now proves a high-confidence AI post plus a low-confidence Inbox review card. |
 | 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + `tests/e2e/receipts-g4.spec.ts` 2/2 + `convex/receipts.test.ts` 14/14 | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Receipt PDF/text + image upload now creates reviewable evidence, Bedrock text-PDF raster extraction, transaction receipt chip, and Create expense → balanced manual-expense posting from an unmatched receipt. Scanned/image-only PDF rendering is future hardening, not proven here. |
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots; `tests/e2e/reports-export-h2.spec.ts` + screenshot; G5 active-entity report proof in `tests/e2e/entity-scope-g5.spec.ts` | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper; reports now compute against the selected entity including Live Sandbox and a fresh empty business. P&L CSV export equality is automated against visible report totals; exhaustive per-report CSV parity is future hardening. |
-| 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | WORKING | B1–B3 unit tests + live Bedrock smoke + `tests/e2e/ai-chat.spec.ts` 4/4 + 5 screenshots; `tests/e2e/ask-ai-parity-h2.spec.ts` 1/1 + screenshot; B6 scheduling proof in `tests/e2e/import-ai-b6.spec.ts` | Live Bedrock answer renders markdown table and survives reload; New conversation resets thread; durable proposal card confirms through `api.proposals.confirmProposal` on a temporary business, then archives it; desktop dock and mobile sheet verified. H2 five-question Ask AI parity now proves the flagship prompts use read-tool traces and match independently queried ledger/report values. B6 import-trigger scheduling/run-history is implemented/evidenced; real-Bedrock high-confidence/low-confidence import split remains a named open proof. |
+| 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | WORKING | B1–B3 unit tests + live Bedrock smoke + `tests/e2e/ai-chat.spec.ts` 4/4 + 5 screenshots; `tests/e2e/ask-ai-parity-h2.spec.ts` 1/1 + screenshot; B6 live split proof in `tests/e2e/import-ai-b6.spec.ts` + 3 screenshots | Live Bedrock answer renders markdown table and survives reload; New conversation resets thread; durable proposal card confirms through `api.proposals.confirmProposal` on a temporary business, then archives it; desktop dock and mobile sheet verified. H2 five-question Ask AI parity now proves the flagship prompts use read-tool traces and match independently queried ledger/report values. B6 import-trigger scheduling/run-history and real-Bedrock high-confidence/low-confidence import split are implemented/evidenced. |
 | 9 | Settings: 10-section subnav, all real | WORKING | `tests/e2e/settings.spec.ts` 3/3 + `convex/settings.test.ts` 4/4 + 6 screenshots; F3 invite/staff role path in `tests/e2e/profile-team.spec.ts` + screenshots; G5 active-entity settings scope in `tests/e2e/entity-scope-g5.spec.ts`; H3 eval history in `tests/e2e/ai-eval-h3.spec.ts` | 10 sections real-click verified; Add business creates an entity, appears in the switcher, archive hides it while preserving audit history; AI autonomy persists; rule reorder persists; audit filter verified; Settings -> AI now shows the label-safe categorization eval history. Team invite copy-link acceptance works; Plunk email delivery remains optional/unconfigured. Entity-scoped settings reads now follow the selected business where applicable. |
 | 10 | Mobile genuinely usable at 390px | WORKING | `tests/e2e/acceptance-h2-pack.spec.ts` 2/2 + four mobile screenshots; `tests/e2e/core-screens.spec.ts` H1 mobile dashboard screenshot | H2 now proves Dashboard, Inbox, Transactions, and Ask AI at 390px with no horizontal scroll. Broader module-by-module mobile hardening can continue later, but the required acceptance row is evidenced. |
 
@@ -707,10 +707,10 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   - Batch gates: `pnpm verify` -> **green** (typecheck, lint, build,
     **146/146 unit**); `npx convex dev --once` -> **green** against cloud dev
     `ceaseless-mandrill-524`.
-- **Status:** import-triggered AI scheduling/run history is **WORKING and
-  evidenced** for CSV and Plaid sync paths. Full B6 acceptance remains
-  **PARTIAL** until a real-Bedrock import proves the high-confidence
-  `decidedBy: ai` post path and low-confidence Inbox-with-reasoning split.
+- **Status at this checkpoint:** import-triggered AI scheduling/run history was
+  **WORKING and evidenced** for CSV and Plaid sync paths. The live high/low
+  Bedrock split was still open here and is closed in the B6 completion entry
+  below.
 - **Next:** G4 create-expense completion pass, hosted Plaid Link item proof,
   real Stripe webhook delivery proof, then Epic H closeout.
 
@@ -1087,6 +1087,43 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 - **Next:** continue the remaining H2/H5 rows: B6 real-Bedrock import high/low
   split, Plaid hosted-item proof, Stripe webhook proof, and the final
   evidence-index cross-check. Do not deploy unless Ansar reauthorizes it.
+
+### 2026-06-12 — Batch B6 completion: live Bedrock import high/low split (lead)
+
+- **Changed:** tightened the Bedrock categorization prompt so the model has an
+  explicit uncertainty brake: obvious vendors can return `needsHuman=false`,
+  while generic, ambiguous, adjustment, unknown, review, or needs-human
+  descriptions must return `needsHuman=true`, confidence <= 0.65, and a short
+  missing-context explanation.
+- **Proof flow:** upgraded `tests/e2e/import-ai-b6.spec.ts` from "batch history
+  exists" to a real split proof. The spec creates a disposable business, switches
+  AI autonomy to Autopilot, imports two CSV rows, and requires the same live
+  Bedrock batch to produce `2 checked, 1 posted, 1 updated for review`.
+- **User-visible behavior:** the clear Adobe software row posts through the
+  ledger as `bank - ai`, lands on 5200 Software & SaaS with 98% confidence, and
+  shows balanced journal lines. The ambiguous adjustment row stays in Inbox with
+  an LLM reasoning note and a human confirmation path. The test restores
+  autonomy to Balanced and archives the disposable business in `finally`.
+- **Evidence / verification:**
+  - `pnpm test:unit convex/ai.test.ts` -> **22/22 green**. The prompt unit now
+    asserts the ambiguity/`needsHuman=true` instruction stays present.
+  - `pnpm test:e2e tests/e2e/import-ai-b6.spec.ts` -> **1/1 green real-click**.
+  - Screenshots:
+    `docs/finishing/evidence/2026-06-12-B6-import-split-posted.png`,
+    `docs/finishing/evidence/2026-06-12-B6-import-split-inbox.png`,
+    `docs/finishing/evidence/2026-06-12-B6-csv-ai-batch-history.png`.
+  - Batch gates: `git diff --check` -> **green**; e2e shortcut scan found no
+    `dispatchEvent` / `force: true`; `pnpm verify` -> **green** (typecheck,
+    lint, build, **151/151 unit**); `npx convex dev --once` -> **green** against
+    cloud dev `ceaseless-mandrill-524`.
+- **Status:** B6 is now **WORKING/evidenced** for CSV import-triggered live
+  Bedrock split: high-confidence AI posts through the shared ledger path with
+  `decidedBy: ai`, and low-confidence/needs-human rows remain in Inbox with
+  reasoning. Plaid-triggered scheduling was already unit/e2e evidenced; external
+  hosted Plaid item proof remains row #3, not B6.
+- **Next:** do the final H5 evidence-index cross-check with Plaid and Stripe
+  left blocked unless external sessions are provided. Do not deploy unless Ansar
+  reauthorizes it.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

@@ -450,6 +450,8 @@ describe("M10 AI backend", () => {
 
     expect(prompt).toContain("Figma monthly subscription");
     expect(prompt).toContain("5200 | Software & SaaS | expense/software");
+    expect(prompt).toContain("generic, ambiguous, an adjustment");
+    expect(prompt).toContain("needsHuman=true");
     expect(prompt).toContain("Return only JSON");
     expect(prompt).not.toContain("AWS_SECRET_ACCESS_KEY");
   });

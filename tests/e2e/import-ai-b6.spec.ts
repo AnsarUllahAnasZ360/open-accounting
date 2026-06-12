@@ -57,8 +57,20 @@ async function selectEntity(page: Page, name: string) {
   await expect(menu).toBeVisible();
   const option = menu.locator('[role="menuitem"]').filter({ hasText: name }).first();
   await expect(option).toBeVisible({ timeout: 15000 });
+  if ((await option.getAttribute("aria-disabled")) === "true") {
+    await page.keyboard.press("Escape");
+    return;
+  }
   await option.click();
   await expect(switcher).toContainText(name, { timeout: 15000 });
+}
+
+async function setAiAutonomy(page: Page, mode: "balanced" | "autopilot") {
+  await gotoApp(page, "/settings/ai");
+  await expect(visibleByTestId(page, "ai-section")).toBeVisible({ timeout: 30000 });
+  const button = visibleByTestId(page, `ai-autonomy-${mode}`);
+  await button.click();
+  await expect(button).toHaveAttribute("data-active", "true", { timeout: 15000 });
 }
 
 async function archiveBusiness(page: Page, businessName: string) {
@@ -70,36 +82,73 @@ async function archiveBusiness(page: Page, businessName: string) {
   await expect(card).toContainText("Archived", { timeout: 15000 });
 }
 
-test("B6 — CSV import triggers AI batch history without mutating shared demo books", async ({ page }) => {
-  test.setTimeout(240_000);
+test("B6 — CSV import produces live Bedrock high/low split without mutating shared demo books", async ({ page }) => {
+  test.setTimeout(300_000);
   await page.setViewportSize({ width: 1440, height: 900 });
 
   const stamp = Date.now().toString().slice(-6);
-  const businessName = `B6 CSV ${stamp} LLC`;
-  const firstMerchant = `B6 Review Software ${stamp}`;
-  const secondMerchant = `B6 Review Supplies ${stamp}`;
+  const businessName = `B6 Split ${stamp} LLC`;
+  const highMerchant = `B6 Adobe Creative Cloud ${stamp}`;
+  const lowMerchant = `B6 Unknown Ambiguous Adjustment Needs Human ${stamp}`;
+  let touchedAutonomy = false;
 
-  await createBusiness(page, businessName);
-  await gotoApp(page, "/transactions");
-  await selectEntity(page, businessName);
-  await expect(visibleByTestId(page, "transactions-screen")).toBeVisible({ timeout: 30000 });
+  try {
+    await createBusiness(page, businessName);
+    await setAiAutonomy(page, "autopilot");
+    touchedAutonomy = true;
 
-  await visibleByTestId(page, "csv-text").fill(
-    `date,description,amount\n2026-06-30,${firstMerchant},-25.00\n2026-06-30,${secondMerchant},-18.00`,
-  );
-  await visibleByTestId(page, "csv-import").click();
-  await expect(visibleByTestId(page, "transaction-message")).toContainText(/AI batch/i, { timeout: 60000 });
-  await expect(page.getByTestId("transaction-row").filter({ hasText: secondMerchant }).first()).toBeVisible({
-    timeout: 15000,
-  });
+    await gotoApp(page, "/transactions");
+    await selectEntity(page, businessName);
+    await expect(visibleByTestId(page, "transactions-screen")).toBeVisible({ timeout: 30000 });
 
-  await page.getByTestId("app-sidebar").getByRole("link", { name: "Settings", exact: true }).click();
-  await page.getByTestId("settings-nav-ai").click();
-  await expect(visibleByTestId(page, "ai-section")).toBeVisible({ timeout: 30000 });
-  const batchHistory = visibleByTestId(page, "ai-batch-history");
-  await expect(batchHistory).toContainText(/checked/i, { timeout: 30000 });
-  await expect(batchHistory).toContainText(/degraded|completed|partial/i);
-  await page.screenshot({ path: `${EVIDENCE}/2026-06-12-B6-csv-ai-batch-history.png`, fullPage: true });
+    await visibleByTestId(page, "csv-text").fill(
+      [
+        "date,description,amount",
+        `2026-06-30,${highMerchant} monthly software subscription,-82.00`,
+        `2026-06-30,${lowMerchant},-19.37`,
+      ].join("\n"),
+    );
+    await visibleByTestId(page, "csv-import").click();
+    const message = visibleByTestId(page, "transaction-message");
+    await expect(message).toContainText(/AI batch/i, { timeout: 180000 });
+    await expect(message).toContainText(/2 checked, 1 posted, 1 updated for review/i);
 
-  await archiveBusiness(page, businessName);
+    await page.getByPlaceholder("Search merchant or memo").fill(highMerchant);
+    const postedRow = page.getByTestId("transaction-row").filter({ hasText: highMerchant }).first();
+    await expect(postedRow).toBeVisible({ timeout: 30000 });
+    await expect(postedRow).toContainText(/bank - ai/i);
+    await expect(postedRow).toContainText(/auto/i);
+    await expect(postedRow).toContainText(/Software & SaaS/i);
+    await postedRow.locator("td").nth(2).click();
+    const drawer = visibleByTestId(page, "transaction-drawer");
+    await expect(drawer).toContainText("Balanced lines", { timeout: 30000 });
+    await expect(drawer).toContainText("Software & SaaS");
+    await page.screenshot({ path: `${EVIDENCE}/2026-06-12-B6-import-split-posted.png`, fullPage: true });
+
+    await gotoApp(page, "/inbox");
+    await selectEntity(page, businessName);
+    await expect(visibleByTestId(page, "inbox-list")).toBeVisible({ timeout: 30000 });
+    const reviewItem = page.getByTestId("inbox-item").filter({ hasText: lowMerchant }).first();
+    await expect(reviewItem).toBeVisible({ timeout: 30000 });
+    await reviewItem.click();
+    await expect(visibleByTestId(page, "inbox-detail-title")).toHaveText(lowMerchant, { timeout: 15000 });
+    await expect(page.getByText(/Pipeline stage 6 LLM proposal|ambiguous|needs human|missing/i).first()).toBeVisible({
+      timeout: 15000,
+    });
+    await page.screenshot({ path: `${EVIDENCE}/2026-06-12-B6-import-split-inbox.png`, fullPage: true });
+
+    await gotoApp(page, "/settings/ai");
+    await expect(visibleByTestId(page, "ai-section")).toBeVisible({ timeout: 30000 });
+    const batchHistory = visibleByTestId(page, "ai-batch-history");
+    await expect(batchHistory).toContainText(/2 checked. 1 posted, 1 updated for review, 0 skipped/i, {
+      timeout: 30000,
+    });
+    await expect(batchHistory).toContainText(/completed/i);
+    await page.screenshot({ path: `${EVIDENCE}/2026-06-12-B6-csv-ai-batch-history.png`, fullPage: true });
+  } finally {
+    if (touchedAutonomy) {
+      await setAiAutonomy(page, "balanced").catch(() => undefined);
+    }
+    await archiveBusiness(page, businessName).catch(() => undefined);
+  }
 });

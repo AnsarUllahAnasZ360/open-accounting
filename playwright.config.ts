@@ -60,6 +60,13 @@ export default defineConfig({
         env: {
           ...process.env,
           NEXT_PUBLIC_CONVEX_URL: playwrightConvexUrl(),
+          // `next dev` runs from apps/web and does NOT auto-load the root
+          // .env.local, so forward the localhost-gated dev auth bypass here.
+          // Without it the shell boots to the sign-in gate instead of the
+          // owner session ("Continue as owner (dev)"), and every shell spec
+          // times out waiting for the app to mount.
+          NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS:
+            readPublicEnv("NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS") ?? "1",
         },
         url: baseURL,
         reuseExistingServer: !process.env.CI,

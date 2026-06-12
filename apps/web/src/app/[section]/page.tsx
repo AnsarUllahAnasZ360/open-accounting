@@ -2,10 +2,10 @@ import { notFound } from "next/navigation";
 
 import { AppScreen } from "@/components/openbooks/AppScreen";
 import { AppShell } from "@/components/openbooks/AppShell";
-import { appRoutes } from "@/lib/openbooks/content";
+import { allAppRoutes } from "@/lib/openbooks/content";
 
 export function generateStaticParams() {
-  return appRoutes.map((route) => ({ section: route.href.slice(1) }));
+  return allAppRoutes.map((route) => ({ section: route.href.slice(1) }));
 }
 
 export default async function SectionPage({
@@ -14,15 +14,17 @@ export default async function SectionPage({
   params: Promise<{ section: string }>;
 }) {
   const { section } = await params;
-  const route = appRoutes.find((item) => item.href === `/${section}`);
+  const route = allAppRoutes.find((item) => item.href === `/${section}`);
 
   if (!route) {
     notFound();
   }
 
+  // Pass only serializable fields across the server→client boundary (the route's
+  // lucide icon is a function component and cannot cross it).
   return (
     <AppShell>
-      <AppScreen route={route} />
+      <AppScreen route={{ href: route.href, label: route.label, summary: route.summary }} />
     </AppShell>
   );
 }

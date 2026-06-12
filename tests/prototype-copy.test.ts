@@ -33,13 +33,20 @@ describe("prototype copy guardrails", () => {
 
     [
       "open books",
-      "Acme Studio LLC",
       "Search transactions, contacts, reports",
       "Jun 2026",
       "Ask AI",
-      "All accounts synced 12 minutes ago.",
     ].forEach((text) => {
       expect(shell).toContain(text);
     });
+  });
+
+  it("removes the hardcoded entity name from the app shell (Epic A5)", () => {
+    // The active entity name now flows from the viewer/report context — the
+    // sidebar and page headers must not hardcode "Acme Studio LLC".
+    const shell = readWorkspaceFile("apps/web/src/components/openbooks/AppShell.tsx");
+    const appScreen = readWorkspaceFile("apps/web/src/components/openbooks/AppScreen.tsx");
+    expect(shell).not.toContain("Acme Studio LLC");
+    expect(appScreen).not.toContain("Acme Studio LLC");
   });
 });

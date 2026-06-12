@@ -1,10 +1,11 @@
 import {
   BarChart3,
   Building2,
-  FileText,
+  CircleDollarSign,
   Inbox,
   Landmark,
   LayoutDashboard,
+  PieChart,
   ReceiptText,
   Settings,
   UsersRound,
@@ -19,6 +20,10 @@ export type AppRoute = {
   summary: string;
 };
 
+// Primary navigation, in the exact order of the prototype shell
+// (OpenBook - Prototype/OpenBooks.dc.html): Dashboard · Inbox · Transactions ·
+// Income · Expenses · Bills · Contacts · Payroll · Reports. Settings is rendered
+// separately after a divider in the sidebar, so it lives in `settingsRoute`.
 export const appRoutes: AppRoute[] = [
   {
     href: "/dashboard",
@@ -39,10 +44,16 @@ export const appRoutes: AppRoute[] = [
     summary: "The register for bank, card, Stripe, CSV, manual, split, and excluded items.",
   },
   {
-    href: "/invoices",
-    label: "Invoices",
-    icon: FileText,
-    summary: "Customer invoices, open balances, aging, and Stripe-hosted send flow.",
+    href: "/income",
+    label: "Income",
+    icon: CircleDollarSign,
+    summary: "Money in: payments received, invoices out, and what's still owed.",
+  },
+  {
+    href: "/expenses",
+    label: "Expenses",
+    icon: PieChart,
+    summary: "Where money goes, by category and vendor, including recurring spend.",
   },
   {
     href: "/bills",
@@ -68,13 +79,17 @@ export const appRoutes: AppRoute[] = [
     icon: BarChart3,
     summary: "Monthly Review, P&L, Balance Sheet, Cash Flow, aging, GL, and Trial Balance.",
   },
-  {
-    href: "/settings",
-    label: "Settings",
-    icon: Settings,
-    summary: "Businesses, connections, rules, AI, accounting, audit log, and exports.",
-  },
 ];
+
+export const settingsRoute: AppRoute = {
+  href: "/settings",
+  label: "Settings",
+  icon: Settings,
+  summary: "Businesses, connections, rules, AI, accounting, audit log, and exports.",
+};
+
+// Every route the section dispatcher must resolve (primary nav + settings).
+export const allAppRoutes: AppRoute[] = [...appRoutes, settingsRoute];
 
 export const mobileRoutes = appRoutes.filter((route) =>
   ["/dashboard", "/inbox", "/transactions"].includes(route.href),

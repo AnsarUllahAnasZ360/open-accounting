@@ -31,6 +31,10 @@ yarn-error.log*
 # local browser verification artifacts
 .playwright-mcp/
 
+# Playwright transient run outputs (curated evidence lives in docs/**/evidence/*.png)
+**/playwright-results/
+**/playwright-report/
+
 # OS/editor
 .DS_Store
 .idea/

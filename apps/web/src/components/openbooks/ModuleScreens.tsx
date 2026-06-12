@@ -19,6 +19,7 @@ import {
   ToggleLeft,
   UserPlus,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Amount, AgingMiniBar, CategoryChip, EmptyState, StatCard } from "@/components/openbooks/primitives";
@@ -132,9 +133,13 @@ function ModuleIntro({
 
 export function ContactsScreen() {
   const data = useModuleOverview();
+  const searchParams = useSearchParams();
+  const focusContactId = searchParams.get("contact");
   const [role, setRole] = useState<"all" | "customer" | "vendor">("all");
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Seed selection from the ⌘K deep-link (/contacts?contact=<id>); later clicks
+  // override it.
+  const [selectedId, setSelectedId] = useState<string | null>(focusContactId);
 
   if (data === undefined) return <LoadingBlock label="contacts" />;
   if (!data.entity) return <NoEntityState />;

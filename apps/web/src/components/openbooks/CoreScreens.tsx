@@ -2,6 +2,7 @@
 
 import { useAction, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Check, Download, FileText, FileUp, History, Layers2, ReceiptText, Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -527,9 +528,13 @@ export function InboxScreen() {
 }
 
 export function TransactionsScreen() {
+  const searchParams = useSearchParams();
+  const focusId = searchParams.get("focus");
   const [review, setReview] = useState<ReviewFilter>("all");
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Seed selection from the ⌘K deep-link (/transactions?focus=<txnId>) so the
+  // row's drawer is open on first render; later clicks override it.
+  const [selectedId, setSelectedId] = useState<string | null>(focusId);
   const [manualAmount, setManualAmount] = useState("-42.00");
   const [manualMerchant, setManualMerchant] = useState("Manual import");
   const [csvText, setCsvText] = useState("date,description,amount\n2026-06-30,Sample CSV expense,-25.00");
@@ -553,6 +558,15 @@ export function TransactionsScreen() {
     },
     [data, selectedId],
   );
+
+  // Deep-link from the ⌘K palette: once the register loads, scroll the focused
+  // row into view (DOM side-effect only; selection is seeded in useState above).
+  useEffect(() => {
+    if (!focusId || !data?.rows.length) return;
+    if (!data.rows.some((row) => row.id === focusId)) return;
+    const node = document.querySelector<HTMLElement>(`[data-transaction-id="${focusId}"]`);
+    node?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusId, data]);
   const defaultBankAccountId = data?.bankAccounts[0]?.id ?? "";
   const defaultCategoryId = data?.categoryOptions.find((option) => option.type === "expense")?.id ?? data?.categoryOptions[0]?.id ?? "";
   const otherIncomeCategoryId =
@@ -784,7 +798,7 @@ export function TransactionsScreen() {
             </TableHeader>
             <TableBody>
               {data.rows.map((row) => (
-                <TableRow key={row.id} className="cursor-pointer" data-testid="transaction-row" onClick={() => selectTransaction(row.id)}>
+                <TableRow key={row.id} className="cursor-pointer" data-testid="transaction-row" data-transaction-id={row.id} onClick={() => selectTransaction(row.id)}>
                   <TableCell onClick={(event) => event.stopPropagation()}>
                     <input
                       aria-label={`Select ${row.merchant}`}

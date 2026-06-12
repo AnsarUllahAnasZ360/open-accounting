@@ -451,6 +451,51 @@ export default defineSchema({
     trialBalanceDifferenceMinor: v.number(),
     createdAt: v.number(),
   }).index("by_entity", ["entityId"]),
+  chatThreads: defineTable({
+    threadId: v.string(),
+    workspaceId: v.id("workspaces"),
+    entityId: v.id("entities"),
+    userId: v.id("users"),
+    title: v.string(),
+    lastActiveAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_thread", ["threadId"])
+    .index("by_workspace", ["workspaceId"])
+    .index("by_user", ["userId"])
+    .index("by_workspace_and_user", ["workspaceId", "userId"]),
+  proposals: defineTable({
+    workspaceId: v.id("workspaces"),
+    entityId: v.id("entities"),
+    threadId: v.string(),
+    messageId: v.optional(v.string()),
+    kind: v.union(
+      v.literal("categorize"),
+      v.literal("rule"),
+      v.literal("invoiceDraft"),
+      v.literal("bill"),
+      v.literal("journalEntry"),
+    ),
+    payload: v.any(),
+    summary: v.string(),
+    status: v.union(
+      v.literal("proposed"),
+      v.literal("confirmed"),
+      v.literal("dismissed"),
+      v.literal("expired"),
+    ),
+    createdBy: v.id("users"),
+    decidedBy: v.optional(v.id("users")),
+    decidedAt: v.optional(v.number()),
+    resultSummary: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_thread", ["threadId"])
+    .index("by_thread_and_status", ["threadId", "status"])
+    .index("by_entity", ["entityId"])
+    .index("by_workspace", ["workspaceId"]),
   demoSeedJobs: defineTable({
     workspaceId: v.id("workspaces"),
     kind: v.literal("demo"),

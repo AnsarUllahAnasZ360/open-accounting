@@ -8,12 +8,16 @@
  * @module
  */
 
+import type * as agent from "../agent.js";
+import type * as agentToolQueries from "../agentToolQueries.js";
+import type * as agentTools from "../agentTools.js";
 import type * as ai from "../ai.js";
 import type * as aiChatActions from "../aiChatActions.js";
 import type * as aiChatRuntime from "../aiChatRuntime.js";
 import type * as aiChatTools from "../aiChatTools.js";
 import type * as aiProviderRegistry from "../aiProviderRegistry.js";
 import type * as aiSdkRuntime from "../aiSdkRuntime.js";
+import type * as aiThreads from "../aiThreads.js";
 import type * as auth from "../auth.js";
 import type * as authAdmin from "../authAdmin.js";
 import type * as authz from "../authz.js";
@@ -25,6 +29,7 @@ import type * as moduleViews from "../moduleViews.js";
 import type * as money from "../money.js";
 import type * as pipeline from "../pipeline.js";
 import type * as plaid from "../plaid.js";
+import type * as proposals from "../proposals.js";
 import type * as receipts from "../receipts.js";
 import type * as reportViews from "../reportViews.js";
 import type * as reports from "../reports.js";
@@ -42,12 +47,16 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  agent: typeof agent;
+  agentToolQueries: typeof agentToolQueries;
+  agentTools: typeof agentTools;
   ai: typeof ai;
   aiChatActions: typeof aiChatActions;
   aiChatRuntime: typeof aiChatRuntime;
   aiChatTools: typeof aiChatTools;
   aiProviderRegistry: typeof aiProviderRegistry;
   aiSdkRuntime: typeof aiSdkRuntime;
+  aiThreads: typeof aiThreads;
   auth: typeof auth;
   authAdmin: typeof authAdmin;
   authz: typeof authz;
@@ -59,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   money: typeof money;
   pipeline: typeof pipeline;
   plaid: typeof plaid;
+  proposals: typeof proposals;
   receipts: typeof receipts;
   reportViews: typeof reportViews;
   reports: typeof reports;
@@ -96,4 +106,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  agent: import("@convex-dev/agent/_generated/component.js").ComponentApi<"agent">;
+};

@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
-import { query, type QueryCtx } from "./_generated/server";
+import { internalQuery, query, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
 
 const reportBasisValidator = v.union(v.literal("accrual"), v.literal("cash"));
@@ -441,6 +441,31 @@ export const reportPack = query({
     if (!entity) {
       return emptyReportPack(args);
     }
+    return await buildReportPackForEntity(ctx, entity, args);
+  },
+});
+
+type ReportPackArgs = {
+  startDate: string;
+  endDate: string;
+  basis: ReportBasis;
+  compare: CompareMode;
+  columnMode: ColumnMode;
+};
+
+/**
+ * Compute the full report pack for an already-resolved entity. The public
+ * `reportPack` query resolves + authorizes the entity via the user session;
+ * `reportPackForEntity` (internal) is used by the Ask AI agent's read tools
+ * where authorization is re-derived from the thread's ownership row (no user
+ * session in the scheduled streaming action).
+ */
+async function buildReportPackForEntity(
+  ctx: QueryCtx,
+  entity: Doc<"entities">,
+  args: ReportPackArgs,
+) {
+  {
     const [accounts, entries, lines, transactions, invoices, bills, payrollRuns, contacts, bankAccounts] =
       await Promise.all([
         ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(REPORT_LIMIT),
@@ -818,5 +843,31 @@ export const reportPack = query({
           transactions.length >= REPORT_LIMIT,
       },
     };
+  }
+}
+
+/**
+ * Internal report pack keyed by an explicit entityId, with no user-session
+ * check. Only the Ask AI agent's read tools call this, passing the entityId
+ * resolved from the thread's ownership row (the authorization boundary).
+ */
+export const reportPackForEntity = internalQuery({
+  args: {
+    entityId: v.id("entities"),
+    startDate: v.string(),
+    endDate: v.string(),
+    basis: reportBasisValidator,
+    compare: compareValidator,
+    columnMode: columnModeValidator,
+  },
+  handler: async (ctx, args) => {
+    if (args.startDate > args.endDate) {
+      throw new Error("Report start date must be before the end date.");
+    }
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      return emptyReportPack(args);
+    }
+    return await buildReportPackForEntity(ctx, entity, args);
   },
 });

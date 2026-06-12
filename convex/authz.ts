@@ -81,6 +81,32 @@ export async function requireWorkspaceRole(
   return { userId, membership };
 }
 
+/**
+ * Authorize access to an OpenBooks AI chat thread.
+ *
+ * Thread ownership is app-owned via the `chatThreads` table (the agent
+ * component does not enforce workspace authz). This re-derives the caller's
+ * identity from `ctx` and re-checks workspace membership for the thread's
+ * workspace, then returns the ownership row plus its workspace/entity so
+ * callers never trust client-supplied workspace/entity args.
+ */
+export async function authorizeThreadAccess(
+  ctx: QueryCtx | MutationCtx,
+  threadId: string,
+  minimumRole: WorkspaceRole = "member",
+) {
+  const userId = await requireUserId(ctx);
+  const record = await ctx.db
+    .query("chatThreads")
+    .withIndex("by_thread", (q) => q.eq("threadId", threadId))
+    .unique();
+  if (!record) {
+    throw new Error("OpenBooks chat thread not found.");
+  }
+  const { membership } = await requireWorkspaceRole(ctx, record.workspaceId, minimumRole);
+  return { userId, membership, record };
+}
+
 export async function requireAnyWorkspaceRole(
   ctx: QueryCtx | MutationCtx,
   minimumRole: WorkspaceRole = "member",

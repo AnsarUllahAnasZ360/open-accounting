@@ -372,10 +372,13 @@ export async function findSemanticMemoryProposal(
     limit: 5,
     filter: (q) => q.eq("entityId", args.entityId),
   });
-  const hydrated = await ctx.runQuery(internal.semanticMemory.hydrateSemanticMemoryMatches, {
-    entityId: args.entityId,
-    memoryEmbeddingIds: matches.map((match) => match._id),
-  });
+  const hydrated: HydratedSemanticMemory[] = await ctx.runQuery(
+    internal.semanticMemory.hydrateSemanticMemoryMatches,
+    {
+      entityId: args.entityId,
+      memoryEmbeddingIds: matches.map((match) => match._id),
+    },
+  );
   const byId = new Map(hydrated.map((memory) => [memory.id, memory]));
   for (const match of matches) {
     if (match._score < SEMANTIC_MEMORY_MIN_SCORE) continue;

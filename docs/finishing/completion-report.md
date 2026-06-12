@@ -999,5 +999,29 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   split, PDF raster vision, Plaid/Stripe external proof, and final H5
   cross-check. Do not deploy unless Ansar reauthorizes it.
 
+### 2026-06-12 — Batch H2 partial: Inbox disposable workflow (lead)
+
+- **Changed:** added stable Inbox test hooks and
+  `tests/e2e/inbox-h2.spec.ts`. The spec creates a disposable business, imports
+  four CSV rows through the real Transactions UI, opens Inbox, clicks an item to
+  establish selection, uses keyboard `J/K`, changes the category, saves a rule,
+  confirms/posts one card, selects the remaining cards, and batch-confirms them.
+  The business is archived afterward.
+- **Evidence / verification:**
+  - `pnpm test:e2e tests/e2e/inbox-h2.spec.ts` -> **1/1 green**.
+  - Correction/rule screenshot:
+    `docs/finishing/evidence/2026-06-12-H2-inbox-correction-rule.png`.
+  - Batch-selected screenshot:
+    `docs/finishing/evidence/2026-06-12-H2-inbox-batch-selected.png`.
+  - Post-batch Inbox-zero screenshot:
+    `docs/finishing/evidence/2026-06-12-H2-inbox-keyboard-batch.png`.
+- **Status:** H2 row #5 Inbox is now **WORKING/evidenced** for the general
+  confirm/correct/rule/batch/keyboard workflow. This does **not** close the
+  separate row #14/B6 real-Bedrock high/low import split proof.
+- **Next:** run both gates for this Inbox batch, commit it, then continue the
+  remaining H2/H5 rows: AI parity/import split, PDF raster vision, Plaid/Stripe
+  external proof, and final H5 cross-check. Do not deploy unless Ansar
+  reauthorizes it.
+
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

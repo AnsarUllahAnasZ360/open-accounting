@@ -33,7 +33,7 @@ closeout.
   deployed route.
 - **Still open:** B6 real-Bedrock high/low import split proof · G4 true PDF
   raster-to-Bedrock proof · Plaid hosted-item proof · Stripe webhook delivery
-  proof · H2 remaining Inbox keyboard/batch, AI parity/import split, and final
+  proof · H2 remaining AI parity/import split and final
   evidence-index cross-check ·
   prod redeploy only if Ansar reauthorizes it.
 
@@ -110,7 +110,7 @@ e2e green.
 | 2 | Shell: collapse rail, footer profile/settings/logout, ⌘K, switcher, Ask AI ⌘J | ✅ WORKING incl. active-entity data switching |
 | 3 | Plaid sandbox real Link → sync → ledger/inbox | ◑ PARTIAL → G1a UI/exchange + G2 server sync path done; needs hosted Plaid item proof |
 | 4 | Stripe test mode event-driven sync + payout reconcile | ◑ PARTIAL → G3 code verified; needs real Stripe CLI/Dashboard webhook delivery proof |
-| 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → AI batch import trigger + receipt cards now have evidence; H3 label-safe eval is done at 45/60 (75.0%), below the 80% target; Epic H still rewrites general/keyboard assertions |
+| 5 | Inbox: confirm/correct/rule/batch/keyboard | ✅ WORKING → disposable-business H2 spec covers keyboard J/K, category correction, rule save, confirm/post, and batch confirm; AI import split remains row #14 |
 | 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING; receipt upload/chip + create-expense posting evidenced, full PDF raster still partial |
 | 7 | Reports home→viewer, sane periods, drill-down, cash⇄accrual | ✅ WORKING incl. active-entity report reads |
 | 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B5; B6 import-trigger scheduling/run history evidenced, real-Bedrock split remains |
@@ -207,9 +207,9 @@ dashboard reads 3,948/5,000 rows, report pack reads 3,920/5,000, register rows
 are bounded to 120, and no truncation flags are set. H2 now has a **partial
 evidence index** at
 `docs/finishing/evidence/2026-06-12-H2-acceptance-evidence-index.md`, and rows
-#8 Contacts, #10 Reports export equality, #11 Data export, #16 Mobile, and #17
-Audit log are now WORKING/evidenced. H2 still needs Inbox keyboard/batch, AI
-parity / import split, true PDF raster vision, Plaid hosted item proof, Stripe
+#5 Inbox, #8 Contacts, #10 Reports export equality, #11 Data export, #16 Mobile,
+and #17 Audit log are now WORKING/evidenced. H2 still needs AI parity / import
+split, true PDF raster vision, Plaid hosted item proof, Stripe
 webhook delivery, and a final H5 evidence-index cross-check before the whole
 acceptance pack can close. H5 docs refresh is **partially done/evidenced**: `README.md`,
 `docs/finishing/how-openbooks-works.md`, and `AGENTS.md` now match shipped

@@ -12,7 +12,7 @@ coverage stay PARTIAL/BLOCKED.
 | 2 | No public sign-up | SUPERSEDED | `docs/finishing/evidence/2026-06-12-F1-onboarding-dashboard-checklist.png` | Product changed: open-source first-run owner onboarding is now intentional. |
 | 3 | Owner login | WORKING | Dev-auth harness green across current e2e; F1 no-bypass signup proof in `tests/e2e/onboarding.spec.ts`. | Production/password login is not re-proven in this no-deploy run. |
 | 4 | Dashboard | WORKING | `docs/finishing/evidence/2026-06-11-D5-dashboard.png`, `docs/finishing/evidence/2026-06-12-H1-core-dashboard-disposable.png`, `docs/finishing/evidence/2026-06-12-H2-mobile-dashboard.png`, `docs/finishing/evidence/2026-06-12-H4-performance-limits.json` | Broader final pass should still cross-check row links, but dashboard behavior has current desktop + mobile evidence. |
-| 5 | Inbox | PARTIAL | `docs/finishing/evidence/2026-06-12-B6-csv-ai-batch-history.png`, `docs/finishing/evidence/2026-06-12-G4-receipts-pdf-image-chip.png`, `docs/finishing/evidence/2026-06-12-H2-mobile-inbox.png` | General confirm/correct/rule/batch/keyboard flow still needs a disposable-business real-click acceptance spec. |
+| 5 | Inbox | WORKING | `tests/e2e/inbox-h2.spec.ts`, `docs/finishing/evidence/2026-06-12-B6-csv-ai-batch-history.png`, `docs/finishing/evidence/2026-06-12-G4-receipts-pdf-image-chip.png`, `docs/finishing/evidence/2026-06-12-H2-mobile-inbox.png`, `docs/finishing/evidence/2026-06-12-H2-inbox-correction-rule.png`, `docs/finishing/evidence/2026-06-12-H2-inbox-batch-selected.png`, `docs/finishing/evidence/2026-06-12-H2-inbox-keyboard-batch.png` | Disposable-business spec covers keyboard J/K, category correction, rule save, confirm/post, and batch confirm. AI import high/low split remains row #14, not this general Inbox row. |
 | 6 | Transactions | WORKING | `docs/finishing/evidence/2026-06-12-H1-core-register-real-clicks.png`, `docs/finishing/evidence/2026-06-12-H2-mobile-transactions.png` | H2 should still add filter/search/account/category screenshots if the final acceptance pack wants those as separate assertions. |
 | 7 | Invoices & Bills | WORKING | `docs/finishing/evidence/2026-06-12-C1-income-invoices.png`, `docs/finishing/evidence/2026-06-12-C2-composer.png`, `docs/finishing/evidence/2026-06-12-C5-bill-match-picker.png`, `docs/finishing/evidence/2026-06-12-G4-create-expense-receipt.png` | Stripe-hosted invoice proof remains external-test-mode dependent. |
 | 8 | Contacts | WORKING | `tests/e2e/acceptance-h2-pack.spec.ts`, `docs/finishing/evidence/2026-06-12-H2-contacts-profile.png` | Refreshed finishing evidence selects a directory row and asserts the matching profile, default-category rule, and merge affordance. |
@@ -27,7 +27,7 @@ coverage stay PARTIAL/BLOCKED.
 | 17 | Audit log | WORKING | `tests/e2e/audit-h2.spec.ts`, `docs/finishing/evidence/2026-06-12-E5-audit-filter.png`, `docs/finishing/evidence/2026-06-12-H2-audit-posting-trace.png` | Disposable-business posting proof filters the audit log by the unique merchant and shows the user-visible posting summary. |
 | 18 | Honesty check | WORKING/PARTIAL | `docs/finishing/completion-report.md`, `docs/finishing/whats-left.md`, this index. | Final H5 can close only after H2 screenshots and external Plaid/Stripe rows are resolved or explicitly left blocked. |
 
-Summary: A-C are mostly working, but H2 is still PARTIAL because rows 5,
+Summary: A-C are mostly working, but H2 is still PARTIAL because rows
 12, 13, 14, 15, and 18 need either stronger finishing evidence, final
 cross-checking, or external Plaid/Stripe inputs. Rows 8, 11, and 16 were upgraded
 only after `tests/e2e/acceptance-h2-pack.spec.ts` passed with real clicks and
@@ -35,4 +35,6 @@ fresh screenshots; row 17 was upgraded after `tests/e2e/audit-h2.spec.ts`
 proved a real posting action in the audit log; row 1 was upgraded after
 `tests/e2e/landing.spec.ts` was refreshed away from the stale invite-only
 assumption; row 10 was upgraded after `tests/e2e/reports-export-h2.spec.ts`
-proved a downloaded P&L CSV matches visible report totals.
+proved a downloaded P&L CSV matches visible report totals; row 5 was upgraded
+after `tests/e2e/inbox-h2.spec.ts` proved the general review workflow on a
+disposable business.

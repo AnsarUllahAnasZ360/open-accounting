@@ -507,7 +507,7 @@ export function InboxScreen() {
           <CategoryChip active label={`${inbox.items.length} open`} />
         </div>
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-          <Button size="sm" onClick={confirmBatch} disabled={pending || selectedBatchItems.length === 0}>
+          <Button size="sm" onClick={confirmBatch} disabled={pending || selectedBatchItems.length === 0} data-testid="inbox-confirm-selected">
             <Check className="size-3.5" />
             Confirm selected
           </Button>
@@ -569,7 +569,7 @@ export function InboxScreen() {
           <div className="grid gap-4 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <h2 className="text-lg font-semibold">{selected.merchant}</h2>
+                <h2 className="text-lg font-semibold" data-testid="inbox-detail-title">{selected.merchant}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">{selected.summary}</p>
               </div>
               {selected.confidence ? <ConfidenceRing value={Math.round(selected.confidence * 100)} /> : null}
@@ -650,12 +650,12 @@ export function InboxScreen() {
                 <div className="grid gap-1.5">
                   <Label>Category</Label>
                   <Select value={chosenCategoryId} onValueChange={setCategoryId}>
-                    <SelectTrigger>
+                    <SelectTrigger data-testid="inbox-category-select">
                       <SelectValue placeholder="Choose category" />
                     </SelectTrigger>
                     <SelectContent>
                       {inbox.categoryOptions.map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
+                        <SelectItem key={option.id} value={option.id} data-testid={`inbox-category-option-${option.number}`}>
                           {option.number} - {option.name}
                         </SelectItem>
                       ))}
@@ -696,7 +696,7 @@ export function InboxScreen() {
                     <Check className="size-4" />
                     Confirm and post
                   </Button>
-                  <Button variant="outline" onClick={saveRuleFromSelected} disabled={pending || !selected.transactionId || !chosenCategoryId}>
+                  <Button variant="outline" onClick={saveRuleFromSelected} disabled={pending || !selected.transactionId || !chosenCategoryId} data-testid="inbox-save-rule">
                     <Layers2 className="size-4" />
                     Always do this
                   </Button>

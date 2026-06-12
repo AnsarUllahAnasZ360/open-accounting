@@ -11,7 +11,8 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePlaidLink, type PlaidLinkError, type PlaidLinkOnSuccessMetadata } from "react-plaid-link";
 
 import { api } from "../../../../../convex/_generated/api";
 import { Amount } from "@/components/openbooks/primitives";
@@ -164,6 +165,50 @@ function StepRow({
   );
 }
 
+function PlaidOpenButton({
+  token,
+  disabled,
+  onSuccess,
+  onExit,
+  onOpen,
+  onLoadError,
+}: {
+  token: string;
+  disabled?: boolean;
+  onSuccess: (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => void;
+  onExit: (error: PlaidLinkError | null) => void;
+  onOpen: () => void;
+  onLoadError: () => void;
+}) {
+  const {
+    open: openPlaidLink,
+    ready,
+    error,
+  } = usePlaidLink({
+    token,
+    onSuccess,
+    onExit,
+  });
+
+  useEffect(() => {
+    if (error) onLoadError();
+  }, [error, onLoadError]);
+
+  return (
+    <Button
+      disabled={disabled || !ready}
+      onClick={() => {
+        onOpen();
+        openPlaidLink();
+      }}
+      data-testid="plaid-open-link"
+    >
+      <Banknote className="size-4" />
+      Open Plaid Link
+    </Button>
+  );
+}
+
 export function PlaidConnectionPanel({
   entityId,
   className,
@@ -186,6 +231,7 @@ export function PlaidConnectionPanel({
   const [state, setState] = useState<ActionState>("idle");
   const [message, setMessage] = useState("");
   const [linkTokenMode, setLinkTokenMode] = useState<"sandbox" | "fixture" | null>(null);
+  const [linkToken, setLinkToken] = useState<string | null>(null);
   const [previewAccounts, setPreviewAccounts] = useState<PlaidSelectableAccount[]>([]);
   const [createdBankAccountId, setCreatedBankAccountId] = useState<string | null>(null);
 
@@ -219,6 +265,50 @@ export function PlaidConnectionPanel({
     );
   }
 
+  const handlePlaidSuccess = useCallback(
+    (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
+      if (!entityId) return;
+      setState("working");
+      setMessage("Plaid Link succeeded. Exchanging the temporary token with Convex.");
+      void exchangePublicToken({
+        entityId,
+        publicToken,
+      })
+        .then((preview) => {
+          setPreviewAccounts(preview.accounts);
+          setLinkTokenMode(preview.mode);
+          setLinkToken(null);
+          setState("success");
+          const institution = metadata.institution?.name ?? "Plaid sandbox bank";
+          if (preview.mode === "sandbox" && preview.accessTokenPersisted) {
+            setMessage(`${institution} connected. Access token is stored server-side; choose the accounts to add.`);
+            return;
+          }
+          setMessage(preview.persistenceBlocker ?? "Plaid exchange fell back to fixture mode; choose fixture accounts to continue.");
+        })
+        .catch((error) => {
+          setState("error");
+          setMessage(readableError(error, "Plaid Link completed, but token exchange failed."));
+        });
+    },
+    [entityId, exchangePublicToken],
+  );
+
+  const handlePlaidExit = useCallback((error: PlaidLinkError | null) => {
+    if (!error) {
+      setState("idle");
+      setMessage("Plaid Link was closed before a bank was connected.");
+      return;
+    }
+    setState("error");
+    setMessage(error.display_message || error.error_message || error.error_code || "Plaid Link exited with an error.");
+  }, []);
+
+  const handlePlaidLoadError = useCallback(() => {
+    setState("error");
+    setMessage("Plaid Link could not load in this browser session. Use sandbox bypass or retry after checking the network.");
+  }, []);
+
   const env = connectionState?.env ?? envState;
 
   return (
@@ -250,7 +340,7 @@ export function PlaidConnectionPanel({
           <StepRow
             icon={Link}
             title="Link launch"
-            detail={linkTokenMode ? `${linkTokenMode} token prepared` : "Create a sandbox Link token or use fixture bypass."}
+            detail={linkTokenMode ? `${linkTokenMode} token prepared` : "Open Plaid Link from a sandbox token or use fixture bypass."}
             complete={Boolean(linkTokenMode)}
           />
           <StepRow
@@ -286,8 +376,9 @@ export function PlaidConnectionPanel({
               runStep("Create Link token", async () => {
                 const result = await createLinkToken({ entityId: entityId!, clientName: "OpenBooks" });
                 setLinkTokenMode(result.mode);
+                setLinkToken(result.mode === "sandbox" ? result.linkToken : null);
                 return result.mode === "sandbox"
-                  ? "Sandbox Link token is ready for the Plaid Link client."
+                  ? "Sandbox Link token is ready. Open Plaid Link to connect a bank."
                   : "Fixture Link token is ready because Plaid sandbox env is absent.";
               })
             }
@@ -295,6 +386,24 @@ export function PlaidConnectionPanel({
             <Link className="size-4" />
             Prepare Link
           </Button>
+          {linkToken && linkTokenMode === "sandbox" ? (
+            <PlaidOpenButton
+              token={linkToken}
+              disabled={!entityId || state === "working"}
+              onSuccess={handlePlaidSuccess}
+              onExit={handlePlaidExit}
+              onOpen={() => {
+                setState("working");
+                setMessage("Opening Plaid Link.");
+              }}
+              onLoadError={handlePlaidLoadError}
+            />
+          ) : (
+            <Button disabled data-testid="plaid-open-link">
+              <Banknote className="size-4" />
+              Open Plaid Link
+            </Button>
+          )}
           <Button
             disabled={!entityId || state === "working"}
             onClick={() =>
@@ -306,9 +415,12 @@ export function PlaidConnectionPanel({
                 });
                 setPreviewAccounts(preview.accounts);
                 setLinkTokenMode(token.mode);
-                return preview.mode === "sandbox"
-                  ? "Sandbox accounts are ready for selection. Persisted access-token storage remains a main integration task."
-                  : "Fixture accounts are ready for selection.";
+                if (preview.mode === "sandbox") {
+                  return preview.accessTokenPersisted
+                    ? "Sandbox public token exchanged. Access token is stored server-side; accounts are ready for selection."
+                    : (preview.persistenceBlocker ?? "Sandbox public token exchanged, but access-token storage was not confirmed.");
+                }
+                return "Fixture accounts are ready for selection.";
               })
             }
           >

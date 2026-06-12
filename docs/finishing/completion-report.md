@@ -60,7 +60,7 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 |---|---|---|---|---|
 | 1 | Workspace + business creation via onboarding | NOT STARTED | — | Epic F1. Today: owner still bootstraps into `ansar-workspace`; E2 creates businesses from Settings, but the first-run onboarding stepper is not built. |
 | 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots; B5 dock verified in `tests/e2e/ai-chat.spec.ts`; F2 profile verified in `tests/e2e/profile-team.spec.ts` + screenshot | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Profile page now updates sidebar identity live. Partials downstream: multi-entity data-switch (G5), sync-now action (G2), ⌘K server search index (follow-up). AI panel is docked on desktop and a bottom sheet on mobile. |
-| 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | NOT STARTED | — | Epic G1/G2. Today: fixture mode only. |
+| 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | PARTIAL | `convex/plaid.test.ts` 13/13 + `tests/e2e/plaid-link.spec.ts` 2/2 + 2 screenshots | G1 now mounts the Plaid Link client surface, prepares a sandbox link token, keeps fixture fallback, and unit-proves public-token exchange stores the access token server-side without returning it. Still not WORKING: no completed hosted Plaid Link session with fresh sandbox keys; transaction sync remains fixture/client-driven until G2 system actor + crons/webhook. |
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | inherited | Epic G3. Webhook receiver real; events trigger nothing yet. |
 | 5 | Inbox: confirm / correct / rule / batch / keyboard | PARTIAL | inherited | Epic H rewrites assertions; batch + keyboard unverified. |
 | 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + 41 unit | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Partial: receipt-PDF bill intake (Epic G); seeded-bill auto-match e2e skips when no seeded candidate (unit-proven). |
@@ -390,6 +390,48 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   onboarding remains **NOT STARTED** and is not claimed by this batch.
 - **Next:** Epic G integrations, split into small batches (Plaid Link/crons,
   Stripe event sync/payout lines, receipt PDFs, entity-scoped read models).
+
+### 2026-06-12 — Batch G1a: Plaid Link client surface + exchange proof (lead)
+
+- **Changed:** installed `react-plaid-link` in `apps/web`; wired the Settings →
+  Connections Plaid panel so `Prepare Link` stores the one-time sandbox link
+  token in component state and `Open Plaid Link` mounts the official Plaid Link
+  client only after a token exists. The `onSuccess` callback exchanges the
+  temporary public token through Convex and shows account selection only after the
+  server response; fixture fallback remains available when sandbox keys are
+  absent or rejected.
+- **Backend proof:** extended `convex/plaid.test.ts` to use
+  `TestConvex<typeof schema>` and added action-level exchange coverage with a
+  mocked Plaid API: `/item/public_token/exchange` returns a fake access token,
+  `/accounts/get` returns account previews, Convex persists the token in
+  `plaidItems`, and the public action response does not include the access token.
+  Also asserted Plaid item persistence is idempotent/rotates the stored token
+  without leaking it in public results.
+- **Verification/evidence:**
+  - `pnpm exec vitest run convex/plaid.test.ts` -> **13/13 green**.
+  - `pnpm exec playwright test tests/e2e/plaid-link.spec.ts --project=chromium`
+    -> **2/2 green real-click**: desktop token-prep surface and mobile panel
+    usability. This spec intentionally stops before transaction sync so e2e does
+    not mutate shared books.
+  - Screenshots:
+    `docs/finishing/evidence/2026-06-12-G1-plaid-link-surface.png`,
+    `docs/finishing/evidence/2026-06-12-G1-plaid-mobile.png`.
+  - Batch gates: `pnpm verify` -> **green** (typecheck, lint, build,
+    **129/129 unit**); `npx convex dev --once` -> **green** against cloud dev
+    `ceaseless-mandrill-524`.
+  - Dev-mode note: after link-token preparation, Next dev logs Plaid's warning
+    that the Link script was embedded more than once. The test still passes and
+    the hook now mounts only after a token exists; this should be rechecked in a
+    production build or after Settings stops mounting hidden responsive section
+    bodies.
+- **Status:** acceptance row #3 remains **PARTIAL**. G1's UI/exchange plumbing is
+  in place and evidenced, but **full Plaid real Link is BLOCKED on a fresh Plaid
+  sandbox `client_id` + `secret` and a completed hosted Link session**. G2 is
+  still **NOT STARTED**: crons, Plaid webhook handling, internal/system-actor
+  transaction sync, and removal of client-submitted Plaid transaction sync are
+  still required before row #3 can become WORKING.
+- **Next:** G2 system actor + Plaid cron/webhook sync, then G3 Stripe webhooks
+  and payout lines.
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

@@ -44,8 +44,8 @@ function playwrightConvexUrl() {
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  outputDir: "docs/initiation/evidence/playwright-results",
-  reporter: [["list"], ["html", { outputFolder: "docs/initiation/evidence/playwright-report", open: "never" }]],
+  outputDir: "docs/finishing/evidence/playwright-results",
+  reporter: [["list"], ["html", { outputFolder: "docs/finishing/evidence/playwright-report", open: "never" }]],
   fullyParallel: false,
   workers: 1,
   use: {

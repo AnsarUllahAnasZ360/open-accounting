@@ -1,6 +1,6 @@
 # OpenBooks `finishing` — What's Left (handoff for a fresh session)
 
-Date: 2026-06-12 · Branch: `finishing` · Author: Claude (Opus 4.8), prior session
+Date: 2026-06-12 · Branch: `finishing` · Author: Codex continuation
 
 This is the **single source of truth for picking the work back up in a new chat.**
 Read it with `docs/finishing/implementation-plan.md` (the full epic contract) and
@@ -10,19 +10,20 @@ Read it with `docs/finishing/implementation-plan.md` (the full epic contract) an
 
 ## 0. TL;DR
 
-~Half the finishing plan is **committed and green**. The hard accounting-integrity
-work is done. What remains is mostly **product surface + the live money rails +
-the verification closeout.**
+The accounting-integrity half and most product-shell work are **committed and
+green**. What remains is the first-run onboarding surface, the live money rails,
+and the final verification closeout.
 
-- **Committed & verified:** app shell · Ask AI **engine** (B1–B3) · Reports ·
-  Payroll · Income/Expenses/Bills (incl. the invoice-save & bill-mark-paid
-  mutations).
-- **In the working tree, uncommitted-or-WIP:** **Epic E (Settings)** — all 10
-  section components + backend written; compiles + builds + lints + existing
-  121 unit tests pass; **no E-specific tests / e2e / screenshots yet.** (This
-  session committed it as a clearly-labeled checkpoint — see the git log.)
-- **Not started:** Ask AI **panel UI** (B4–B6) · Onboarding/Profile/Dev-mode (F)
-  · Plaid/Stripe/Receipts rails (G) · Verification closeout (H) · prod redeploy.
+- **Committed & verified:** app shell · Ask AI engine + docked panel (B1–B5) ·
+  Settings (E) · profile/invite/dev-full pieces of F · Reports · Payroll ·
+  Income/Expenses/Bills (incl. invoice-save & bill-mark-paid).
+- **Current G status:** Plaid G1a now has the real Link client surface and
+  action-level exchange/persist proof, but row #3 is still **PARTIAL** until
+  fresh Plaid sandbox keys complete a hosted Link session and G2 moves sync to
+  crons/webhooks/system actor.
+- **Still open:** F1 onboarding stepper · B6 post-import AI run history · G2-G5
+  Plaid/Stripe/Receipts/entity read models · H verification closeout · prod
+  redeploy only if Ansar reauthorizes it.
 
 ---
 
@@ -95,7 +96,7 @@ e2e green.
 |---|---|---|
 | 1 | Workspace + business creation via onboarding | ❌ Epic F1 (E2 adds `entities.create`) |
 | 2 | Shell: collapse rail, footer profile/settings/logout, ⌘K, switcher, Ask AI ⌘J | ✅ WORKING |
-| 3 | Plaid sandbox real Link → sync → ledger/inbox | ❌ Epic G1/G2 (fixture mode today) |
+| 3 | Plaid sandbox real Link → sync → ledger/inbox | ◑ PARTIAL → G1a UI/exchange proof done; G2 sync still |
 | 4 | Stripe test mode event-driven sync + payout reconcile | ◑ PARTIAL → Epic G3 |
 | 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → Epic H rewrites assertions |
 | 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING |
@@ -134,14 +135,16 @@ F1 first-run onboarding stepper is **NOT STARTED**; password reset from `/profil
 is **PARTIAL** until Convex Auth reset email is configured; Plunk email delivery
 is optional/unconfigured, so invites use copy-link mode.
 
-### D. Epic G — Money rails  _(split into sub-batches; needs an input — see §4)_
-Plan Epic G. **G1 real Plaid Link needs fresh Plaid *sandbox* keys from Ansar**
-(current ones are invalid → fixture mode). Build everything and keep fixture mode
-working if keys are absent. G2 crons + Plaid webhook + **system actor**. G3
-Stripe event-driven sync + persist `stripePayoutLines` (needs
-`STRIPE_WEBHOOK_SECRET` on the deployment for live webhooks). G4 receipts PDF +
-persisted vectors + inbox card. G5 entity-scoped read models (make Live Sandbox a
-real citizen) + the pagination/`take()` guards.
+### D. Epic G — Money rails  _(split into sub-batches; needs inputs — see §4)_
+G1a is **PARTIAL and committed/evidenced**: Settings now prepares a Plaid sandbox
+Link token, mounts the official `react-plaid-link` client only after that token
+exists, keeps fixture fallback, and unit-proves exchange/persist without leaking
+the access token. It is **not WORKING** yet because no hosted Plaid Link session
+was completed with fresh sandbox keys. Next: G2 crons + Plaid webhook +
+**system actor** and real `/transactions/sync` action. Then G3 Stripe
+event-driven sync + persist `stripePayoutLines` (needs `STRIPE_WEBHOOK_SECRET` on
+the deployment for live webhooks), G4 receipts PDF + persisted vectors + inbox
+card, and G5 entity-scoped read models + pagination/`take()` guards.
 
 ### E. Epic H — Verification, honest eval, closeout  _(last)_
 Plan Epic H. H1 rewrite the legacy e2e specs to real clicks (remove the

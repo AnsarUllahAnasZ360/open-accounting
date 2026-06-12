@@ -1,8 +1,9 @@
 /// <reference types="vite/client" />
 import { makeFunctionReference } from "convex/server";
-import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { convexTest, type TestConvex } from "convex-test";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import {
   buildItemLoginRequiredInboxPayload,
@@ -37,6 +38,11 @@ const persistPlaidItem = makeFunctionReference<"mutation", PersistPlaidItemArgs,
 const selectSandboxFixtureAccounts = makeFunctionReference<"mutation", SelectAccountsArgs, SelectAccountsResult>(
   "plaid:selectSandboxFixtureAccounts",
 );
+const exchangePublicTokenAndPreviewAccounts = makeFunctionReference<
+  "action",
+  ExchangePublicTokenArgs,
+  ExchangePublicTokenResult
+>("plaid:exchangePublicTokenAndPreviewAccounts");
 
 type PlaidEnvState = {
   environment: "sandbox" | "missing" | "unsupported";
@@ -118,6 +124,27 @@ type PersistPlaidItemResult = {
   status: "created" | "updated";
 };
 
+type ExchangePublicTokenArgs = {
+  entityId: Id<"entities">;
+  publicToken: string;
+};
+
+type ExchangePublicTokenResult = {
+  mode: "sandbox" | "fixture";
+  accessTokenPersisted: boolean;
+  persistenceBlocker?: string;
+  accounts: Array<{
+    plaidAccountId: string;
+    plaidItemId?: string;
+    name: string;
+    mask: string;
+    subtype: string;
+    balanceMinor: number;
+    currency: string;
+    include: boolean;
+  }>;
+};
+
 type SelectAccountsArgs = {
   entityId: string;
   accounts: Array<{
@@ -137,7 +164,7 @@ type SelectAccountsResult = {
   accounts: Array<{ bankAccountId: string; ledgerAccountId: string; plaidAccountId: string }>;
 };
 
-async function setupPlaidTest(t: ReturnType<typeof convexTest>) {
+async function setupPlaidTest(t: TestConvex<typeof schema>) {
   return await t.run(async (ctx) => {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
@@ -221,7 +248,7 @@ async function setupPlaidTest(t: ReturnType<typeof convexTest>) {
   });
 }
 
-function authed(t: ReturnType<typeof convexTest>, userId: string) {
+function authed(t: TestConvex<typeof schema>, userId: Id<"users">) {
   return t.withIdentity({
     subject: `${userId}|test-session`,
     tokenIdentifier: "test|owner",
@@ -229,6 +256,11 @@ function authed(t: ReturnType<typeof convexTest>, userId: string) {
     email: "owner@example.com",
   });
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 describe("Plaid sandbox helpers", () => {
   it("reports sandbox env-key readiness without exposing values", () => {
@@ -498,6 +530,12 @@ describe("Plaid Convex primitives", () => {
       accessToken,
       institutionName: "Plaid Sandbox Bank",
     });
+    const updated = await session.mutation(persistPlaidItem, {
+      entityId: ids.entityId,
+      plaidItemId: "item-sandbox-1",
+      accessToken: "sandbox-access-token-rotated",
+      institutionName: "Plaid Sandbox Bank",
+    });
     await session.mutation(selectSandboxFixtureAccounts, {
       entityId: ids.entityId,
       accounts: [
@@ -515,19 +553,94 @@ describe("Plaid Convex primitives", () => {
     });
 
     expect(persisted).toMatchObject({ status: "created" });
+    expect(updated).toMatchObject({ plaidItemRecordId: persisted.plaidItemRecordId, status: "updated" });
     expect(JSON.stringify(persisted)).not.toContain(accessToken);
+    expect(JSON.stringify(updated)).not.toContain("sandbox-access-token-rotated");
     const state = await session.query(listConnectionState, { entityId: ids.entityId });
     expect(state.accounts.some((account) => account.plaidItemId === "item-sandbox-1")).toBe(true);
     expect(JSON.stringify(state)).not.toContain(accessToken);
     await t.run(async (ctx) => {
-      const item = await ctx.db
+      const items = await ctx.db
         .query("plaidItems")
         .withIndex("by_item", (q) => q.eq("plaidItemId", "item-sandbox-1"))
-        .first();
+        .collect();
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        entityId: ids.entityId,
+        accessToken: "sandbox-access-token-rotated",
+        environment: "sandbox",
+        status: "active",
+      });
+    });
+  });
+
+  it("exchanges a Plaid public token server-side and returns only account previews", async () => {
+    vi.stubEnv("PLAID_CLIENT_ID", "client-id-test");
+    vi.stubEnv("PLAID_SECRET", "sandbox-secret-test");
+    vi.stubEnv("PLAID_ENV", "sandbox");
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const path = String(url);
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      expect(body.client_id).toBe("client-id-test");
+      expect(body.secret).toBe("sandbox-secret-test");
+      if (path.endsWith("/item/public_token/exchange")) {
+        expect(body.public_token).toBe("public-sandbox-test");
+        return new Response(JSON.stringify({
+          access_token: "sandbox-access-token-from-exchange",
+          item_id: "item-sandbox-action",
+        }), { status: 200 });
+      }
+      if (path.endsWith("/accounts/get")) {
+        expect(body.access_token).toBe("sandbox-access-token-from-exchange");
+        return new Response(JSON.stringify({
+          accounts: [
+            {
+              account_id: "sandbox-action-checking",
+              name: "Plaid Action Checking",
+              mask: "9999",
+              subtype: "checking",
+              balances: {
+                current: 1234.56,
+                iso_currency_code: "USD",
+              },
+            },
+          ],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error_code: "UNEXPECTED_PATH" }), { status: 400 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+
+    const result = await session.action(exchangePublicTokenAndPreviewAccounts, {
+      entityId: ids.entityId,
+      publicToken: "public-sandbox-test",
+    });
+
+    expect(result).toMatchObject({
+      mode: "sandbox",
+      accessTokenPersisted: true,
+      accounts: [
+        {
+          plaidAccountId: "sandbox-action-checking",
+          plaidItemId: "item-sandbox-action",
+          balanceMinor: 123456,
+          include: true,
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("sandbox-access-token-from-exchange");
+    await t.run(async (ctx) => {
+      const item = await ctx.db
+        .query("plaidItems")
+        .withIndex("by_item", (q) => q.eq("plaidItemId", "item-sandbox-action"))
+        .unique();
       expect(item).toMatchObject({
         entityId: ids.entityId,
-        accessToken,
-        environment: "sandbox",
+        accessToken: "sandbox-access-token-from-exchange",
         status: "active",
       });
     });

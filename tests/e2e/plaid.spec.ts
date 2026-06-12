@@ -10,7 +10,7 @@ import {
 } from "../../apps/web/src/lib/openbooks/plaid";
 
 function writeEvidence(name: string, payload: unknown) {
-  const evidenceDir = join(process.cwd(), "docs/initiation/evidence");
+  const evidenceDir = join(process.cwd(), "docs/finishing/evidence");
   mkdirSync(evidenceDir, { recursive: true });
   writeFileSync(join(evidenceDir, name), `${JSON.stringify(payload, null, 2)}\n`);
 }
@@ -124,7 +124,7 @@ test("owner can connect Plaid sandbox bypass, select accounts, sync, and simulat
   });
 
   await page.screenshot({
-    path: "docs/initiation/evidence/2026-06-11-m9-plaid-settings-e2e.png",
+    path: "docs/finishing/evidence/2026-06-11-m9-plaid-settings-e2e.png",
     fullPage: true,
   });
 });

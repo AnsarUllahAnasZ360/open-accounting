@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { requireAnyWorkspaceRole } from "./authz";
+import { profileSnapshot } from "./profile";
 
 export const viewer = query({
   args: {},
@@ -10,12 +11,15 @@ export const viewer = query({
       ctx.db.get(membership.workspaceId),
     ]);
 
+    const profile = user ? await profileSnapshot(ctx, user, userId) : null;
+
     return {
       user: user
         ? {
             id: user._id,
             email: user.email ?? null,
             name: user.name ?? null,
+            profile,
           }
         : null,
       workspace: workspace

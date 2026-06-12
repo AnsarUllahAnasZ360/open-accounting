@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, LockKeyhole } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useMemo } from "react";
 
@@ -73,7 +73,30 @@ export function SettingsScreen({ section }: { section?: string }) {
   // Active entity for the entity-scoped sections. The workspace's primary
   // (demo) entity is the report subject; sections that need an entity use it.
   const viewer = useQuery(api.session.viewer, {});
-  const moduleEntityId = useQuery(api.moduleViews.activeEntityId, {}) as Id<"entities"> | null | undefined;
+  const canAccessSettings = viewer?.role === "owner" || viewer?.role === "admin";
+  const moduleEntityId = useQuery(api.moduleViews.activeEntityId, canAccessSettings ? {} : "skip") as Id<"entities"> | null | undefined;
+
+  if (viewer && !canAccessSettings) {
+    return (
+      <div
+        data-testid="settings-access-denied"
+        className="rounded-[14px] border bg-card p-5 shadow-xs"
+      >
+        <div className="flex items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <LockKeyhole className="size-4" />
+          </span>
+          <div>
+            <h2 className="text-[18px] font-semibold tracking-tight">Settings require Owner or Accountant access</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Staff users can work transactions, payroll, and bills, but workspace settings, keys, team access, and
+              accounting controls stay with Owners and Accountants.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div data-testid="settings-screen">

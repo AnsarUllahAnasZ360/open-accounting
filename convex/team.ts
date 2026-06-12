@@ -15,6 +15,22 @@ const ROLE_LABEL: Record<string, string> = {
   member: "Staff",
 };
 
+function siteUrl() {
+  return (process.env.SITE_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
+}
+
+function createInviteToken() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashInviteToken(token: string) {
+  const data = new TextEncoder().encode(token);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function initials(name: string | null | undefined, email: string) {
   const base = name?.trim() || email;
   const parts = base.split(/\s+/).filter(Boolean);
@@ -73,9 +89,7 @@ export const list = query({
       members: [...memberRows, ...inviteRows],
       myRole: membership.role,
       canManage: membership.role === "owner" || membership.role === "admin",
-      // Honest delivery state: invites create a pending record; email send is an
-      // Epic F3 concern wired to Plunk when configured.
-      emailDeliveryConfigured: Boolean(process.env.PLUNK_API_KEY),
+      emailDeliveryConfigured: Boolean(process.env.PLUNK_SECRET_KEY || process.env.PLUNK_API_KEY),
       workspaceName: workspace?.name ?? "this workspace",
     };
   },
@@ -105,9 +119,13 @@ export const invite = mutation({
       .take(20);
     const pending = existing.find((invite) => invite.status === "pending" && invite.workspaceId === membership.workspaceId);
     const now = Date.now();
+    const token = createInviteToken();
+    const tokenHash = await hashInviteToken(token);
+    const invitePath = `/invite/${token}`;
+    const inviteUrl = `${siteUrl()}${invitePath}`;
     if (pending) {
-      await ctx.db.patch(pending._id, { role: args.role, updatedAt: now });
-      return { inviteId: pending._id, status: "updated" as const, emailSent: false };
+      await ctx.db.patch(pending._id, { role: args.role, tokenHash, updatedAt: now });
+      return { inviteId: pending._id, status: "updated" as const, emailSent: false, invitePath, inviteUrl };
     }
 
     const inviteId = await ctx.db.insert("invites", {
@@ -115,6 +133,7 @@ export const invite = mutation({
       role: args.role,
       status: "pending",
       workspaceId: membership.workspaceId,
+      tokenHash,
       createdAt: now,
       updatedAt: now,
     });
@@ -127,7 +146,33 @@ export const invite = mutation({
       summary: `Invited ${email} as ${ROLE_LABEL[args.role] ?? args.role}`,
       createdAt: now,
     });
-    return { inviteId, status: "created" as const, emailSent: false };
+    return { inviteId, status: "created" as const, emailSent: false, invitePath, inviteUrl };
+  },
+});
+
+export const lookupInvite = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    if (!args.token || args.token.length < 32) {
+      return { status: "invalid" as const };
+    }
+    const tokenHash = await hashInviteToken(args.token);
+    const invite = await ctx.db
+      .query("invites")
+      .withIndex("by_token_hash", (q) => q.eq("tokenHash", tokenHash))
+      .unique();
+    if (!invite) {
+      return { status: "invalid" as const };
+    }
+    const workspace = invite.workspaceId ? await ctx.db.get(invite.workspaceId) : null;
+    return {
+      status: invite.status,
+      email: invite.email,
+      role: invite.role,
+      roleLabel: ROLE_LABEL[invite.role] ?? invite.role,
+      roleDesc: ROLE_DESC[invite.role] ?? "",
+      workspaceName: workspace?.name ?? "OpenBooks workspace",
+    };
   },
 });
 
@@ -141,7 +186,7 @@ export const revokeInvite = mutation({
       throw new ConvexError("Invite not found in this workspace.");
     }
     await requireWorkspaceRole(ctx, membership.workspaceId, "admin");
-    await ctx.db.patch(invite._id, { status: "revoked", updatedAt: Date.now() });
+    await ctx.db.patch(invite._id, { status: "revoked", revokedAt: Date.now(), updatedAt: Date.now() });
     await ctx.db.insert("auditEvents", {
       workspaceId: membership.workspaceId,
       actorUserId: userId,

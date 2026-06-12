@@ -100,8 +100,8 @@ e2e green.
 | 5 | Inbox: confirm/correct/rule/batch/keyboard | ◑ PARTIAL → Epic H rewrites assertions |
 | 6 | Income/Expenses/Bills/Contacts/Payroll + missing mutations | ✅ WORKING |
 | 7 | Reports home→viewer, sane periods, drill-down, cash⇄accrual | ✅ WORKING |
-| 8 | Ask AI: streaming, markdown, threads, propose→confirm | ◑ backend WORKING; **UI is B4–B6** |
-| 9 | Settings: 10-section subnav | ◑ **WIP (Epic E, this tree)** — compiles, unverified |
+| 8 | Ask AI: streaming, markdown, threads, propose→confirm | ✅ WORKING for B4-B5; B6 import-trigger scheduling remains |
+| 9 | Settings: 10-section subnav | ✅ WORKING |
 | 10 | Mobile usable at 390px | ◑ PARTIAL → asserted per-screen + Epic H |
 
 ---
@@ -111,38 +111,28 @@ e2e green.
 Each item points at the authoritative spec in `implementation-plan.md`. Do one
 epic = one tightly-scoped batch; integrate, run BOTH gates + e2e, commit.
 
-### A. Finish & verify Epic E — Settings  _(closest to done)_
-Code is in the tree (10 sections: Businesses, Tax & Fiscal Year, Connections, AI,
-Categories, Rules, Notifications, Team, Data, Audit log; backend `entities.ts`,
-`rules.ts`, `settings.ts`, `team.ts`; schema additions). **Remaining:** write the
-E verification per plan Epic E "Verify" — e2e (navigate all 10 sections; **Add a
-business → appears in switcher → archive → gone**; autonomy radio persists; rule
-reorder persists; audit filter), unit (`entities.create` seeds CoA + authz;
-archive hides/preserves; autonomy→threshold; rule first-match; staff role
-rejected from settings mutation), + screenshots. Then mark row #9 WORKING.
+### A. Epic E — Settings verification — DONE
+Row #9 is **WORKING** with `tests/e2e/settings.spec.ts` 3/3,
+`convex/settings.test.ts` 4/4, screenshots, and gates. Remaining
+settings-adjacent work belongs to later epics: full entity-scoped read switching
+is G5.
 
-### B. Ask AI panel UI — **B4–B6** (the backend is done & verified)
-Plan Epic B, tasks B4–B6. Makes the engine visible and **docks** the panel
-(Ansar's top complaint: it currently overlays). B4: vendor AI Elements
-(`pnpm dlx ai-elements@latest add conversation message prompt-input tool
-confirmation suggestion loader`), add the Streamdown `@source` to `globals.css`,
-render on `useUIMessages(..., {stream:true})` + `useSmoothText`, proposals →
-Confirmation cards wired to `api.proposals.confirmProposal/dismissProposal`,
-thread switcher, delete the keyword-routing path in `OpenBooksAIChat.tsx`. B5:
-restructure `AppShell` to a docked 380px right column (kill the `xl:pr-[380px]`
-overlay) + `/ask-ai` full-page + mobile bottom-sheet. B6: schedule the
-categorization worker after every import (Plaid/Stripe/CSV), threshold-route via
-the single autonomy constant. **Backend API to consume:** `api.aiThreads.{create,
-listMine,rename,deleteThread,sendMessage,listThreadMessages}` + `api.proposals.*`.
+### B. Ask AI panel UI — B4-B5 DONE; B6 remains with imports/pipeline
+B4-B5 are **WORKING** with `tests/e2e/ai-chat.spec.ts` 4/4 and screenshots:
+durable threads, markdown, proposal confirmation cards, docked desktop panel,
+full-page `/ask-ai`, and mobile sheet. B6 post-import categorizer scheduling/run
+history is still **PARTIAL** and should be handled with Epic G import/pipeline
+work because it depends on Plaid/Stripe/CSV ingestion events.
 
-### C. Epic F — Identity (onboarding, profile, dev-mode, sign-in)
-Plan Epic F. F1 onboarding stepper (uses E2 `entities.create`). F2 `/profile` +
-`userProfiles`. F3 team invites end-to-end (`invites.create` → Plunk-or-copy-link;
-`/invite/[token]` accept; **role enforcement** Staff/Accountant). **F4 is high
-value:** `pnpm dev:full` one-command boot (Convex dev + Next dev + idempotent
-owner/seed + "Continue as owner (dev)" button) — this is the north-star entry
-command and currently does not exist; also fixes the env-loading gap in §1.4.
-F5 sign-in/request-access polish.
+### C. Epic F — Identity (profile, invites, dev-mode) — PARTIAL
+F2-F4 are evidenced: `/profile` + `userProfiles`; team invite copy-link +
+`/invite/[token]` accept; Staff role hides/blocks Settings; `pnpm dev:full`
+cloud-Convex boot reaches ready state with owner bootstrap. Evidence:
+`convex/profileTeam.test.ts`, `convex/authz.test.ts`,
+`tests/e2e/profile-team.spec.ts`, and Batch F screenshots. Remaining F gaps:
+F1 first-run onboarding stepper is **NOT STARTED**; password reset from `/profile`
+is **PARTIAL** until Convex Auth reset email is configured; Plunk email delivery
+is optional/unconfigured, so invites use copy-link mode.
 
 ### D. Epic G — Money rails  _(split into sub-batches; needs an input — see §4)_
 Plan Epic G. **G1 real Plaid Link needs fresh Plaid *sandbox* keys from Ansar**
@@ -160,8 +150,8 @@ H2 acceptance evidence pack (18 rows, desktop+mobile). H3 **honest categorizatio
 eval** (the old "100%" compared the seed to itself — strip labels, run the
 pipeline + live Bedrock, report real accuracy). H4 perf/limits pass. H5
 completion-report v2 + refresh `how-openbooks-works.md` + README quickstart +
-`AGENTS.md`. Then **redeploy** (Vercel + Convex prod) and smoke owner login on
-`https://openbooks.ansarullahanas.com`.
+`AGENTS.md`. Do **not** deploy to Vercel in this run unless Ansar reauthorizes it;
+the account context changed.
 
 ---
 

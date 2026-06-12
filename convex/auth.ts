@@ -5,6 +5,45 @@ import { ConvexError, type GenericId } from "convex/values";
 import { normalizeEmail, ownerEmail } from "./authz";
 import type { MutationCtx } from "./_generated/server";
 
+function profileInitials(name: string, email: string) {
+  const base = name.trim() || email;
+  const parts = base.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0]![0]}${parts.at(-1)![0]}`.toUpperCase();
+  return base.slice(0, 2).toUpperCase();
+}
+
+async function ensureUserProfile(
+  ctx: MutationCtx,
+  args: {
+    userId: GenericId<"users">;
+    email: string;
+    name?: string;
+  },
+) {
+  const now = Date.now();
+  const displayName = args.name?.trim() || args.email;
+  const existing = await ctx.db
+    .query("userProfiles")
+    .withIndex("by_user", (q) => q.eq("userId", args.userId))
+    .unique();
+  const profile = {
+    displayName,
+    initials: profileInitials(displayName, args.email),
+    avatarColor: "#17540f",
+    timezone: "America/Chicago",
+    updatedAt: now,
+  };
+  if (existing) {
+    await ctx.db.patch(existing._id, profile);
+  } else {
+    await ctx.db.insert("userProfiles", {
+      userId: args.userId,
+      ...profile,
+      createdAt: now,
+    });
+  }
+}
+
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
     Password({
@@ -33,10 +72,11 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       }
 
       const configuredOwner = ownerEmail();
-      const invite = await appCtx.db
+      const invites = await appCtx.db
         .query("invites")
         .withIndex("by_email", (q) => q.eq("email", email))
-        .unique();
+        .collect();
+      const invite = invites.find((candidate) => candidate.status === "pending") ?? null;
       const isOwner = configuredOwner !== null && email === configuredOwner;
 
       if (!args.existingUserId && !isOwner && invite?.status !== "pending") {
@@ -45,23 +85,25 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
 
       const now = Date.now();
       let userId = args.existingUserId as GenericId<"users"> | null;
+      const providedName =
+        typeof args.profile.name === "string" && args.profile.name.trim()
+          ? args.profile.name.trim()
+          : undefined;
 
       if (userId) {
         await appCtx.db.patch(userId, {
           email,
-          name:
-            typeof args.profile.name === "string" && args.profile.name.trim()
-              ? args.profile.name.trim()
-            : undefined,
+          ...(providedName ? { name: providedName } : {}),
         });
       } else {
         userId = await appCtx.db.insert("users", {
           email,
-          name:
-            typeof args.profile.name === "string" && args.profile.name.trim()
-              ? args.profile.name.trim()
-              : undefined,
+          ...(providedName ? { name: providedName } : {}),
         });
+      }
+
+      if (!args.existingUserId || providedName) {
+        await ensureUserProfile(appCtx, { userId, email, name: providedName });
       }
 
       const workspaceId = await ensureWorkspaceForUser(appCtx, {
@@ -75,6 +117,8 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         await appCtx.db.patch(invite._id, {
           status: "accepted",
           workspaceId,
+          acceptedByUserId: userId,
+          acceptedAt: now,
           updatedAt: now,
         });
       }

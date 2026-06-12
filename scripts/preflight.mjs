@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const guardOnly = process.argv.includes("--guard-only");
 
 const requiredEnv = [
   "OWNER_EMAIL",
@@ -86,6 +87,38 @@ function addResult(results, name, ok, detail) {
     status: ok ? "PASS" : "FAIL",
     detail,
   });
+}
+
+function isLocalUrl(value) {
+  if (!value) return false;
+  try {
+    const { hostname } = new URL(value);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function devBypassGuard(env) {
+  const serverBypass = env.OPENBOOKS_DEV_AUTH_BYPASS === "1";
+  const browserBypass = env.NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS === "1";
+  if (!serverBypass && !browserBypass) {
+    return { ok: true, detail: "disabled" };
+  }
+
+  if (env.VERCEL_ENV === "production" || env.NODE_ENV === "production") {
+    return { ok: false, detail: "dev auth bypass cannot be enabled in production" };
+  }
+
+  if (serverBypass && !isLocalUrl(env.SITE_URL)) {
+    return { ok: false, detail: "OPENBOOKS_DEV_AUTH_BYPASS requires SITE_URL to be localhost" };
+  }
+
+  if (browserBypass && env.NEXT_PUBLIC_APP_URL && !isLocalUrl(env.NEXT_PUBLIC_APP_URL)) {
+    return { ok: false, detail: "NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS requires a localhost app URL" };
+  }
+
+  return { ok: true, detail: "enabled only for localhost development" };
 }
 
 function plaidBaseUrl(env) {
@@ -264,7 +297,7 @@ function printResults(results) {
 
 async function main() {
   const envPath = resolve(process.cwd(), ".env.local");
-  const env = { ...process.env, ...parseEnvFile(envPath) };
+  const env = { ...parseEnvFile(envPath), ...process.env };
   const results = [];
 
   addResult(
@@ -289,6 +322,15 @@ async function main() {
     true,
     optionalPresent.length === 0 ? "none configured" : `configured: ${optionalPresent.join(", ")}`,
   );
+
+  const bypassGuard = devBypassGuard(env);
+  addResult(results, "Dev auth bypass guard", bypassGuard.ok, bypassGuard.detail);
+
+  if (guardOnly) {
+    printResults(results);
+    process.exitCode = bypassGuard.ok ? 0 : 1;
+    return;
+  }
 
   if (missing.length === 0) {
     const checks = [

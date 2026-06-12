@@ -53,6 +53,8 @@ function initials(name: string | null | undefined, fallback = "U") {
 function roleLabel(role: string | undefined) {
   if (!role) return "Member";
   if (role === "owner") return "Owner";
+  if (role === "admin") return "Accountant";
+  if (role === "member") return "Staff";
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
@@ -196,8 +198,12 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   }, [aiOpen]);
 
   const workspaceName = viewer?.workspace?.name ?? "open books";
-  const userName = viewer?.user?.name ?? "You";
-  const role = roleLabel(viewer?.role);
+  const userName = viewer?.user?.profile?.displayName ?? viewer?.user?.name ?? "You";
+  const userInitials = viewer?.user?.profile?.initials ?? initials(userName);
+  const avatarColor = viewer?.user?.profile?.avatarColor ?? "#17540f";
+  const rawRole = viewer?.role;
+  const role = roleLabel(rawRole);
+  const canAccessSettings = rawRole === "owner" || rawRole === "admin";
   const activeEntityName = reportPack?.entity.name ?? "Your business";
   const currentRouteLabel = appRoutes.find((route) => route.href === pathname)?.label ?? settingsRoute.label;
 
@@ -317,7 +323,10 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
                 pathname={pathname}
                 onExpand={toggleCollapsed}
                 userName={userName}
+                userInitials={userInitials}
+                avatarColor={avatarColor}
                 role={role}
+                canAccessSettings={canAccessSettings}
                 onSignOut={handleSignOut}
               />
             ) : (
@@ -327,7 +336,10 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
                 activeEntityName={activeEntityName}
                 entityOptions={entityOptions}
                 userName={userName}
+                userInitials={userInitials}
+                avatarColor={avatarColor}
                 role={role}
+                canAccessSettings={canAccessSettings}
                 onCollapse={toggleCollapsed}
                 onCloseMobile={() => setSidebarOpen(false)}
                 onNavigate={() => setSidebarOpen(false)}
@@ -456,7 +468,12 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
           </nav>
 
           {paletteMounted ? (
-            <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} enabled={paletteMounted} />
+            <CommandPalette
+              open={paletteOpen}
+              onOpenChange={setPaletteOpen}
+              enabled={paletteMounted}
+              canAccessSettings={canAccessSettings}
+            />
           ) : null}
         </div>
       </TooltipProvider>
@@ -497,7 +514,10 @@ function ExpandedSidebar({
   activeEntityName,
   entityOptions,
   userName,
+  userInitials,
+  avatarColor,
   role,
+  canAccessSettings,
   onCollapse,
   onCloseMobile,
   onNavigate,
@@ -508,7 +528,10 @@ function ExpandedSidebar({
   activeEntityName: string;
   entityOptions: EntityOption[];
   userName: string;
+  userInitials: string;
+  avatarColor: string;
   role: string;
+  canAccessSettings: boolean;
   onCollapse: () => void;
   onCloseMobile: () => void;
   onNavigate: () => void;
@@ -549,7 +572,12 @@ function ExpandedSidebar({
 
       {/* Entity switcher (A5) */}
       <div className="px-3 pb-2.5">
-        <EntitySwitcher activeEntityName={activeEntityName} entityOptions={entityOptions} onNavigate={onNavigate} />
+        <EntitySwitcher
+          activeEntityName={activeEntityName}
+          entityOptions={entityOptions}
+          canAccessSettings={canAccessSettings}
+          onNavigate={onNavigate}
+        />
       </div>
 
       <nav className="flex flex-1 flex-col gap-px overflow-y-auto px-3 py-1">
@@ -576,28 +604,39 @@ function ExpandedSidebar({
           );
         })}
 
-        <div className="my-2 h-px bg-[#ececec]" />
+        {canAccessSettings ? (
+          <>
+            <div className="my-2 h-px bg-[#ececec]" />
 
-        <Link
-          href={settingsRoute.href}
-          onClick={onNavigate}
-          data-active={pathname.startsWith("/settings")}
-          className={cn(
-            "flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13.5px] transition-colors",
-            pathname.startsWith("/settings")
-              ? "bg-[#f1f8ee] font-semibold text-[#17540f]"
-              : "font-medium text-[#454545] hover:bg-muted",
-          )}
-        >
-          <SettingsIcon className="size-[17px] shrink-0 opacity-85" />
-          <span className="flex-1">{settingsRoute.label}</span>
-        </Link>
+            <Link
+              href={settingsRoute.href}
+              onClick={onNavigate}
+              data-active={pathname.startsWith("/settings")}
+              className={cn(
+                "flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13.5px] transition-colors",
+                pathname.startsWith("/settings")
+                  ? "bg-[#f1f8ee] font-semibold text-[#17540f]"
+                  : "font-medium text-[#454545] hover:bg-muted",
+              )}
+            >
+              <SettingsIcon className="size-[17px] shrink-0 opacity-85" />
+              <span className="flex-1">{settingsRoute.label}</span>
+            </Link>
+          </>
+        ) : null}
       </nav>
 
       {/* Footer: sync + profile (A2) */}
       <div className="flex flex-col gap-2 border-t border-[#ececec] p-3">
         <SyncRow />
-        <ProfileMenu userName={userName} role={role} onSignOut={onSignOut} />
+        <ProfileMenu
+          userName={userName}
+          userInitials={userInitials}
+          avatarColor={avatarColor}
+          role={role}
+          canAccessSettings={canAccessSettings}
+          onSignOut={onSignOut}
+        />
       </div>
     </div>
   );
@@ -607,13 +646,19 @@ function CollapsedRail({
   pathname,
   onExpand,
   userName,
+  userInitials,
+  avatarColor,
   role,
+  canAccessSettings,
   onSignOut,
 }: {
   pathname: string;
   onExpand: () => void;
   userName: string;
+  userInitials: string;
+  avatarColor: string;
   role: string;
+  canAccessSettings: boolean;
   onSignOut: () => void;
 }) {
   return (
@@ -667,27 +712,37 @@ function CollapsedRail({
 
       <div className="my-1.5 h-px w-7 bg-[#ececec]" />
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Link
-            href={settingsRoute.href}
-            aria-label={settingsRoute.label}
-            data-active={pathname.startsWith("/settings")}
-            className={cn(
-              "flex size-9 items-center justify-center rounded-[9px] transition-colors",
-              pathname.startsWith("/settings") ? "bg-[#f1f8ee] text-[#17540f]" : "text-[#454545] hover:bg-muted",
-            )}
-          >
-            <SettingsIcon className="size-[17px] opacity-85" />
-          </Link>
-        </TooltipTrigger>
-        <TooltipContent side="right">{settingsRoute.label}</TooltipContent>
-      </Tooltip>
+      {canAccessSettings ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              href={settingsRoute.href}
+              aria-label={settingsRoute.label}
+              data-active={pathname.startsWith("/settings")}
+              className={cn(
+                "flex size-9 items-center justify-center rounded-[9px] transition-colors",
+                pathname.startsWith("/settings") ? "bg-[#f1f8ee] text-[#17540f]" : "text-[#454545] hover:bg-muted",
+              )}
+            >
+              <SettingsIcon className="size-[17px] opacity-85" />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right">{settingsRoute.label}</TooltipContent>
+        </Tooltip>
+      ) : null}
 
       <div className="flex-1" />
 
       <SyncRow collapsed />
-      <ProfileMenu collapsed userName={userName} role={role} onSignOut={onSignOut} />
+      <ProfileMenu
+        collapsed
+        userName={userName}
+        userInitials={userInitials}
+        avatarColor={avatarColor}
+        role={role}
+        canAccessSettings={canAccessSettings}
+        onSignOut={onSignOut}
+      />
     </div>
   );
 }
@@ -695,10 +750,12 @@ function CollapsedRail({
 function EntitySwitcher({
   activeEntityName,
   entityOptions,
+  canAccessSettings,
   onNavigate,
 }: {
   activeEntityName: string;
   entityOptions: EntityOption[];
+  canAccessSettings: boolean;
   onNavigate: () => void;
 }) {
   return (
@@ -731,15 +788,19 @@ function EntitySwitcher({
         ) : (
           <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
         )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/settings" onClick={onNavigate} className="gap-2" data-testid="entity-add-business">
-            <span className="flex size-5 items-center justify-center rounded-md border border-dashed text-muted-foreground">
-              <Plus className="size-3" />
-            </span>
-            <span>Add a business</span>
-          </Link>
-        </DropdownMenuItem>
+        {canAccessSettings ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/settings" onClick={onNavigate} className="gap-2" data-testid="entity-add-business">
+                <span className="flex size-5 items-center justify-center rounded-md border border-dashed text-muted-foreground">
+                  <Plus className="size-3" />
+                </span>
+                <span>Add a business</span>
+              </Link>
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -795,12 +856,18 @@ function SyncRow({ collapsed }: { collapsed?: boolean }) {
 function ProfileMenu({
   collapsed,
   userName,
+  userInitials,
+  avatarColor,
   role,
+  canAccessSettings,
   onSignOut,
 }: {
   collapsed?: boolean;
   userName: string;
+  userInitials: string;
+  avatarColor: string;
   role: string;
+  canAccessSettings: boolean;
   onSignOut: () => void;
 }) {
   // The collapsed trigger is an avatar-only button that is BOTH a dropdown
@@ -815,8 +882,11 @@ function ProfileMenu({
         data-testid="profile-trigger"
         className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1 text-left transition-colors hover:bg-muted"
       >
-        <span className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-[#17540f] text-[11px] font-semibold text-white">
-          {initials(userName)}
+        <span
+          className="flex size-[26px] shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+          style={{ backgroundColor: avatarColor }}
+        >
+          {userInitials}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[12.5px] font-medium leading-tight">{userName}</span>
@@ -834,9 +904,10 @@ function ProfileMenu({
             type="button"
             aria-label={`${userName} · ${role}`}
             data-testid="profile-trigger"
-            className="mt-1 flex size-[26px] items-center justify-center rounded-full bg-[#17540f] text-[11px] font-semibold text-white"
+            className="mt-1 flex size-[26px] items-center justify-center rounded-full text-[11px] font-semibold text-white"
+            style={{ backgroundColor: avatarColor }}
           >
-            {initials(userName)}
+            {userInitials}
           </button>
         </TooltipTrigger>
       </DropdownMenuTrigger>
@@ -860,17 +931,20 @@ function ProfileMenu({
           <span className="text-[11px] font-normal text-muted-foreground">{role}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {/* /profile is built in a later batch (F2); disabled until then. */}
-        <DropdownMenuItem disabled data-testid="profile-view">
-          <User />
-          View profile
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild data-testid="profile-settings">
-          <Link href="/settings">
-            <SettingsIcon />
-            Settings
+        <DropdownMenuItem asChild data-testid="profile-view">
+          <Link href="/profile">
+            <User />
+            View profile
           </Link>
         </DropdownMenuItem>
+        {canAccessSettings ? (
+          <DropdownMenuItem asChild data-testid="profile-settings">
+            <Link href="/settings">
+              <SettingsIcon />
+              Settings
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem data-testid="profile-logout" variant="destructive" onSelect={() => void onSignOut()}>
           <LogOut />

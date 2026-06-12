@@ -65,16 +65,30 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
     .index("by_user_and_workspace", ["userId", "workspaceId"]),
+  userProfiles: defineTable({
+    userId: v.id("users"),
+    displayName: v.string(),
+    initials: v.string(),
+    avatarColor: v.string(),
+    timezone: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
   invites: defineTable({
     email: v.string(),
     role: v.union(v.literal("owner"), v.literal("admin"), v.literal("member")),
     status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("revoked")),
     workspaceId: v.optional(v.id("workspaces")),
+    tokenHash: v.optional(v.string()),
+    acceptedByUserId: v.optional(v.id("users")),
+    acceptedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_email", ["email"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_token_hash", ["tokenHash"]),
   auditEvents: defineTable({
     workspaceId: v.optional(v.id("workspaces")),
     actorUserId: v.optional(v.id("users")),

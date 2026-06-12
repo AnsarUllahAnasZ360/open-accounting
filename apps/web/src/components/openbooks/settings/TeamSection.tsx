@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { Mail } from "lucide-react";
+import { Copy, Mail } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../../../../../../convex/_generated/api";
@@ -81,7 +81,7 @@ function InviteModal({ emailDeliveryConfigured }: { emailDeliveryConfigured: boo
   const [role, setRole] = useState<"member" | "admin">("member");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<{ message: string; inviteUrl: string } | null>(null);
 
   async function submit() {
     if (!email.trim()) {
@@ -93,11 +93,13 @@ function InviteModal({ emailDeliveryConfigured }: { emailDeliveryConfigured: boo
     setResult(null);
     try {
       const res = await invite({ email: email.trim(), role });
-      setResult(
-        emailDeliveryConfigured
-          ? `Invite ${res.status === "updated" ? "updated" : "sent"} to ${email.trim()}.`
-          : `Invite created for ${email.trim()}. Email delivery is wired to Plunk when configured; until then share access manually.`,
-      );
+      setResult({
+        message:
+          emailDeliveryConfigured
+            ? `Invite ${res.status === "updated" ? "updated" : "sent"} to ${email.trim()}.`
+            : `Invite created for ${email.trim()}. Email delivery is wired to Plunk when configured; share this link now.`,
+        inviteUrl: res.inviteUrl,
+      });
       setEmail("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create the invite.");
@@ -138,7 +140,23 @@ function InviteModal({ emailDeliveryConfigured }: { emailDeliveryConfigured: boo
               </SelectContent>
             </Select>
           </div>
-          {result ? <p className="text-[12.5px] text-primary" data-testid="team-invite-result">{result}</p> : null}
+          {result ? (
+            <div className="rounded-lg border border-[#dcefd2] bg-[#f1f8ee] p-3" data-testid="team-invite-result">
+              <p className="text-[12.5px] text-[#17540f]">{result.message}</p>
+              <div className="mt-2 flex gap-2">
+                <Input data-testid="team-invite-link" value={result.inviteUrl} readOnly />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Copy invite link"
+                  onClick={() => void navigator.clipboard.writeText(result.inviteUrl)}
+                >
+                  <Copy className="size-4" />
+                </Button>
+              </div>
+            </div>
+          ) : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>

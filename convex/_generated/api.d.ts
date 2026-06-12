@@ -37,6 +37,7 @@ import type * as payroll from "../payroll.js";
 import type * as payrollMath from "../payrollMath.js";
 import type * as pipeline from "../pipeline.js";
 import type * as plaid from "../plaid.js";
+import type * as profile from "../profile.js";
 import type * as proposals from "../proposals.js";
 import type * as receipts from "../receipts.js";
 import type * as reportViews from "../reportViews.js";
@@ -87,6 +88,7 @@ declare const fullApi: ApiFromModules<{
   payrollMath: typeof payrollMath;
   pipeline: typeof pipeline;
   plaid: typeof plaid;
+  profile: typeof profile;
   proposals: typeof proposals;
   receipts: typeof receipts;
   reportViews: typeof reportViews;

@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.26.2",
   "scripts": {
     "dev": "pnpm --filter @openbooks/web dev",
+    "dev:full": "node scripts/dev-full.mjs",
     "build": "pnpm --filter @openbooks/web build",
     "lint": "pnpm --filter @openbooks/web lint",
     "typecheck": "pnpm --filter @openbooks/web typecheck",

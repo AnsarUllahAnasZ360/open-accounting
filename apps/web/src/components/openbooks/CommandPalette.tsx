@@ -53,12 +53,14 @@ export function CommandPalette({
   open,
   onOpenChange,
   enabled,
+  canAccessSettings,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   // Only run the data queries while the dialog is (or has been) open, to avoid
   // loading the whole register on every page.
   enabled: boolean;
+  canAccessSettings: boolean;
 }) {
   const router = useRouter();
 
@@ -100,7 +102,7 @@ export function CommandPalette({
         <CommandEmpty>No matches found.</CommandEmpty>
 
         <CommandGroup heading="Go to">
-          {[...appRoutes, settingsRoute].map((route) => {
+          {[...appRoutes, ...(canAccessSettings ? [settingsRoute] : [])].map((route) => {
             const Icon = NAV_ICONS[route.href] ?? route.icon;
             return (
               <CommandItem

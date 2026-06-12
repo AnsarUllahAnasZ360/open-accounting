@@ -11,9 +11,9 @@ category math — which is why the reports always reconcile.
 
 ## Running it locally
 
-1. `pnpm install` once, then `pnpm dev:full`. This starts the backend
-   (Convex) and the web app, seeds the demo books if needed, and prints the
-   URL.
+1. `pnpm install` once, then `pnpm dev:full`. This pushes/watches the cloud
+   Convex dev deployment, starts the local web app, seeds the demo books if
+   needed, and prints the URL.
 2. Open the URL → click **"Continue as owner (dev)"** on the sign-in page.
    That button only exists in local dev mode; on the internet, OpenBooks is
    invite-only (visitors can only request access from the landing page).

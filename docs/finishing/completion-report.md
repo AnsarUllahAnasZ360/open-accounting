@@ -58,15 +58,15 @@ Updated as evidence lands. Starts as inherited reality from the audit.
 
 | # | Capability | Status | Evidence | Notes |
 |---|---|---|---|---|
-| 1 | Workspace + business creation via onboarding | NOT STARTED | — | Epic F1/E2. Today: hardcoded `ansar-workspace`. |
-| 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots; B5 dock verified in `tests/e2e/ai-chat.spec.ts` | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Partials downstream: profile page content (F2), multi-entity data-switch (G5), sync-now action (G2), ⌘K server search index (follow-up). AI panel is now docked on desktop and a bottom sheet on mobile. |
+| 1 | Workspace + business creation via onboarding | NOT STARTED | — | Epic F1. Today: owner still bootstraps into `ansar-workspace`; E2 creates businesses from Settings, but the first-run onboarding stepper is not built. |
+| 2 | Shell: collapsible sidebar, footer profile/settings/logout, ⌘K, entity switcher, Ask AI ⌘J | WORKING | `tests/e2e/app-shell.spec.ts` 9/9 + 8 screenshots; B5 dock verified in `tests/e2e/ai-chat.spec.ts`; F2 profile verified in `tests/e2e/profile-team.spec.ts` + screenshot | Sidebar 232⇄56 rail, footer menu (logout→sign-in), Income/Expenses nav, ⌘K, ⌘J, switcher all real-click verified. Profile page now updates sidebar identity live. Partials downstream: multi-entity data-switch (G5), sync-now action (G2), ⌘K server search index (follow-up). AI panel is docked on desktop and a bottom sheet on mobile. |
 | 3 | Plaid sandbox real Link → sync → pipeline → ledger/inbox | NOT STARTED | — | Epic G1/G2. Today: fixture mode only. |
 | 4 | Stripe test mode event-driven sync + payout reconcile | PARTIAL | inherited | Epic G3. Webhook receiver real; events trigger nothing yet. |
 | 5 | Inbox: confirm / correct / rule / batch / keyboard | PARTIAL | inherited | Epic H rewrites assertions; batch + keyboard unverified. |
 | 6 | Income / Expenses / Bills / Contacts / Payroll fully functional incl. missing mutations | WORKING | `income-expenses-bills.spec.ts` (C) + `reports-payroll.spec.ts` D4 + 41 unit | Income (payments/invoices/receivables); **invoice save-draft→finalize→receivables** (was missing); Expenses (categories/vendors/recurring + add-category); **bill mark-paid→AP drops + bank txn consumed** (was missing); payroll detail→approve→pay (Epic D). Contacts pre-existing. Partial: receipt-PDF bill intake (Epic G); seeded-bill auto-match e2e skips when no seeded candidate (unit-proven). |
 | 7 | Reports home → viewer, sane periods, drill-down, cash⇄accrual, exports match | WORKING | `tests/e2e/reports-payroll.spec.ts` D1–D3 + screenshots | Home card grid → viewer; default period never future (asserted); cash⇄accrual toggle + number→drill-down slide-over verified; Monthly Review one-pager + month stepper. Partial: CSV==screen equality not yet automated (export button works); exhaustive compare-column coverage deferred to H. |
 | 8 | Ask AI: Bedrock streaming, markdown, persistent threads, propose→confirm | WORKING | B1–B3 unit tests + live Bedrock smoke + `tests/e2e/ai-chat.spec.ts` 4/4 + 5 screenshots | Live Bedrock answer renders markdown table and survives reload; New conversation resets thread; durable proposal card confirms through `api.proposals.confirmProposal` on a temporary business, then archives it; desktop dock and mobile sheet verified. Named remaining B6 gap: post-import AI categorizer scheduling/run history is not part of this row and remains for the integrations/pipeline batch. |
-| 9 | Settings: 10-section subnav, all real | WORKING | `tests/e2e/settings.spec.ts` 3/3 + `convex/settings.test.ts` 4/4 + 6 screenshots | 10 sections real-click verified; Add business creates an entity, appears in the switcher, archive hides it while preserving audit history; AI autonomy persists; rule reorder persists; audit filter verified. Named downstream partials: full entity data-switch is G5; invite email/acceptance flow is F3. |
+| 9 | Settings: 10-section subnav, all real | WORKING | `tests/e2e/settings.spec.ts` 3/3 + `convex/settings.test.ts` 4/4 + 6 screenshots; F3 invite/staff role path in `tests/e2e/profile-team.spec.ts` + screenshots | 10 sections real-click verified; Add business creates an entity, appears in the switcher, archive hides it while preserving audit history; AI autonomy persists; rule reorder persists; audit filter verified. Team invite copy-link acceptance works; Plunk email delivery remains optional/unconfigured. Named downstream partial: full entity data-switch is G5. |
 | 10 | Mobile genuinely usable at 390px | PARTIAL | inherited | Epic H asserts; today screenshots only. |
 
 ## Batch log (dated, append-only)
@@ -334,6 +334,62 @@ Updated as evidence lands. Starts as inherited reality from the audit.
   and should be completed in the integrations/pipeline batch.
 - **Next:** Epic F (onboarding, profile, team invites, `pnpm dev:full`) before
   the larger Epic G integration work.
+
+### 2026-06-12 — Batch F2-F4: profile, team invites, staff access, dev-full (lead)
+
+- **Changed:** added `userProfiles` plus `api.profile.me/update`; `/profile`
+  page with editable display name, timezone, avatar color, read-only email, and
+  membership roles; sidebar footer now uses the profile snapshot live and links
+  to `/profile`. Password reset is shown honestly as disabled because Convex
+  Auth reset email is not configured yet.
+- **Team/invites:** `api.team.invite` now creates a one-time tokenized invite
+  link (stored as a SHA-256 hash), Team shows the copy-link state when Plunk is
+  absent, and `/invite/[token]` validates the invite before account creation.
+  Auth acceptance now records accepted invite metadata and avoids the previous
+  email-unique assumption by selecting a pending invite from historical rows.
+- **Role enforcement:** Staff keeps operational lanes but loses Settings entry
+  points: sidebar Settings link, entity "Add a business", profile-menu Settings,
+  and Command Palette Settings are hidden; direct `/settings` renders a role
+  access card. Backend representative checks still reject Staff invite/settings
+  mutations.
+- **Dev mode:** added `pnpm dev:full` (`scripts/dev-full.mjs`) for cloud Convex
+  push/watch + local Next dev + owner bootstrap + optional demo seed; added
+  `scripts/preflight.mjs --guard-only` safety check so dev auth bypass fails
+  away from localhost; refreshed README and `how-openbooks-works.md` to say
+  Convex is cloud-only.
+- **Evidence / verification:**
+  - `pnpm exec vitest run convex/profileTeam.test.ts convex/authz.test.ts` ->
+    **7/7 green**: profile update scoped to signed-in user; invite token lookup
+    resolves the public accept state; Staff cannot invite; dev bypass stays
+    localhost-only.
+  - `NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS=0 pnpm exec playwright test
+    tests/e2e/profile-team.spec.ts --project=chromium` -> **2/2 green
+    real-click**: owner profile edit updates sidebar without reload; owner
+    creates invite link; second browser context accepts as Staff; Staff sees no
+    Settings nav/palette entry and direct `/settings` is blocked.
+  - Screenshots:
+    `docs/finishing/evidence/2026-06-12-F2-profile-sidebar-update.png`,
+    `docs/finishing/evidence/2026-06-12-F3-invite-link.png`,
+    `docs/finishing/evidence/2026-06-12-F3-staff-no-settings.png`.
+  - `pnpm --silent dev:full -- --dry-run` -> **green** plan output.
+  - `OPENBOOKS_DEV_AUTH_BYPASS=1 SITE_URL=https://openbooks.example.com node
+    scripts/preflight.mjs --guard-only` -> correctly **fails**; same command
+    with `SITE_URL=http://localhost:3000` -> **passes**.
+  - `OPENBOOKS_SKIP_DEMO_SEED=1 pnpm dev:full` -> **green to ready state**:
+    Convex cloud `dev --once` green, `authAdmin:bootstrapOwner` returned
+    `updated`, cloud watcher + Next dev started, URL printed; stopped manually
+    after readiness. Full demo reseed was intentionally skipped for this check.
+  - Batch gates: `pnpm verify` -> **green** (typecheck, lint, build,
+    **128/128 unit**); `npx convex dev --once` -> **green** against cloud dev
+    `ceaseless-mandrill-524`.
+- **Status:** F2 profile identity **WORKING** except password reset remains
+  **PARTIAL** until reset-email is configured; F3 invite copy-link acceptance
+  and Staff role UI/backend checks **WORKING**; Plunk email sending is still
+  unconfigured so copy-link is the honest delivery path; F4 one-command local
+  boot **WORKING** with demo seed skipped in the verification run. F1 first-run
+  onboarding remains **NOT STARTED** and is not claimed by this batch.
+- **Next:** Epic G integrations, split into small batches (Plaid Link/crons,
+  Stripe event sync/payout lines, receipt PDFs, entity-scoped read models).
 
 <!-- Append one dated entry per batch below. Keep WORKING claims tied to a
      green test + screenshot. -->

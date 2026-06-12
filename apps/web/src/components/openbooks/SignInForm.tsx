@@ -13,7 +13,17 @@ type State = "idle" | "submitting" | "error";
 
 const INVITE_ONLY_MESSAGE = "OpenBooks is invite-only. Request access from the landing page.";
 
-export function SignInForm({ devAuthBypass = false }: { devAuthBypass?: boolean }) {
+export function SignInForm({
+  devAuthBypass = false,
+  defaultEmail = "",
+  lockEmail = false,
+  submitLabel = "Sign in",
+}: {
+  devAuthBypass?: boolean;
+  defaultEmail?: string;
+  lockEmail?: boolean;
+  submitLabel?: string;
+}) {
   const router = useRouter();
   const { signIn } = useAuthActions();
   const [state, setState] = useState<State>("idle");
@@ -85,7 +95,15 @@ export function SignInForm({ devAuthBypass = false }: { devAuthBypass?: boolean 
       <div className="grid gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor="email">Work email</Label>
-          <Input id="email" name="email" type="email" autoComplete="email" required />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            defaultValue={defaultEmail}
+            readOnly={lockEmail}
+            required
+          />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="password">Password</Label>
@@ -97,7 +115,7 @@ export function SignInForm({ devAuthBypass = false }: { devAuthBypass?: boolean 
         </div>
       </div>
       <Button className="mt-4 w-full" disabled={state === "submitting"} type="submit">
-        {state === "submitting" ? "Checking access" : "Sign in"}
+        {state === "submitting" ? "Checking access" : submitLabel}
         <ArrowRight className="size-4" />
       </Button>
       {state === "error" ? (

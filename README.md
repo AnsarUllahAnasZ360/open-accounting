@@ -24,8 +24,10 @@ The governing rule is:
 
 ## Current Status
 
-This repository is in an initiation/reset phase. The existing app is buildable,
-but it is not yet the finished OpenBooks product. The useful foundation is:
+This repository is on the `finishing` branch. The ledger foundation is in place
+and the remaining work is tracked in `docs/finishing/`: prototype-faithful UI,
+identity/onboarding, live Plaid/Stripe test integrations, and final acceptance
+evidence. The useful foundation is:
 
 - Next.js App Router, React, TypeScript, Tailwind CSS, shadcn/ui
 - Convex backend directory and Convex Auth starter wiring
@@ -55,32 +57,36 @@ Install dependencies:
 pnpm install
 ```
 
-Set up local environment:
+Set up local environment from the existing cloud Convex deployment:
 
 ```bash
 cp .env.example .env.local
-pnpm exec convex dev --once
 ```
 
-Convex writes `CONVEX_URL` to `.env.local`. Next.js needs the public browser
-value too, so set:
+Fill in the cloud Convex deployment values in `.env.local`. For this branch,
+Convex runs in the cloud; do not point `NEXT_PUBLIC_CONVEX_URL` at localhost.
+Then run the one-command local boot:
 
 ```bash
-NEXT_PUBLIC_CONVEX_URL=<same value as CONVEX_URL>
+pnpm dev:full
 ```
 
-Run the app:
+`pnpm dev:full` pushes the latest Convex functions to the cloud dev deployment,
+bootstraps the owner account, starts Convex watch plus Next dev, seeds the demo
+books unless `OPENBOOKS_SKIP_DEMO_SEED=1`, and prints the local URL. In local
+dev mode, open `/sign-in` and choose **Continue as local dev owner**.
+
+For a quick non-mutating check of the command plan:
 
 ```bash
-pnpm dev
+pnpm dev:full -- --dry-run
 ```
 
 Verify the current baseline:
 
 ```bash
-pnpm typecheck
-pnpm lint
-pnpm build
+pnpm verify
+npx convex dev --once
 ```
 
 ## Secret Safety

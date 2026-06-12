@@ -33,7 +33,7 @@ closeout.
   deployed route.
 - **Still open:** B6 real-Bedrock high/low import split proof · G4 true PDF
   raster-to-Bedrock proof · Plaid hosted-item proof · Stripe webhook delivery
-  proof · H2 remaining AI parity/import split and final
+  proof · H2 remaining AI import split and final
   evidence-index cross-check ·
   prod redeploy only if Ansar reauthorizes it.
 
@@ -137,8 +137,13 @@ categorization for CSV and Plaid paths, records Settings-visible run history,
 and uses the `system:sync` actor for background Plaid jobs. Evidence:
 `convex/ai.test.ts`, `convex/plaid.test.ts`, and
 `tests/e2e/import-ai-b6.spec.ts` with
-`docs/finishing/evidence/2026-06-12-B6-csv-ai-batch-history.png`. Remaining
-B6 gap: a real-Bedrock import split with high-confidence rows posting as
+`docs/finishing/evidence/2026-06-12-B6-csv-ai-batch-history.png`. H2
+five-question Ask AI parity is now evidenced by
+`tests/e2e/ask-ai-parity-h2.spec.ts` and
+`docs/finishing/evidence/2026-06-12-H2-ask-ai-five-question-parity.png`: the
+panel answers the five flagship prompts through read-tool traces and reconciles
+to independently queried report values. Remaining B6 gap: a real-Bedrock import
+split with high-confidence rows posting as
 `decidedBy: ai` and low-confidence rows staying in Inbox with AI reasoning.
 
 ### C. Epic F — Identity (onboarding, profile, invites, dev-mode) — MOSTLY DONE
@@ -208,8 +213,9 @@ are bounded to 120, and no truncation flags are set. H2 now has a **partial
 evidence index** at
 `docs/finishing/evidence/2026-06-12-H2-acceptance-evidence-index.md`, and rows
 #5 Inbox, #8 Contacts, #10 Reports export equality, #11 Data export, #16 Mobile,
-and #17 Audit log are now WORKING/evidenced. H2 still needs AI parity / import
-split, true PDF raster vision, Plaid hosted item proof, Stripe
+#17 Audit log, and the row #14 five-question Ask AI report-answer path are now
+evidenced. H2 still needs the B6 AI import split, true PDF raster vision, Plaid
+hosted item proof, Stripe
 webhook delivery, and a final H5 evidence-index cross-check before the whole
 acceptance pack can close. H5 docs refresh is **partially done/evidenced**: `README.md`,
 `docs/finishing/how-openbooks-works.md`, and `AGENTS.md` now match shipped

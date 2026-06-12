@@ -21,7 +21,7 @@ coverage stay PARTIAL/BLOCKED.
 | 11 | Data export | WORKING | `tests/e2e/acceptance-h2-pack.spec.ts`, `docs/finishing/evidence/2026-06-12-H2-data-export.png` | JSON dump download is proven by a real browser `download` event. CSV bundle file fan-out is not separately asserted, but report export equality is covered by row #10. |
 | 12 | Plaid sandbox | PARTIAL/BLOCKED | `docs/finishing/evidence/2026-06-12-G1-plaid-link-surface.png`, `docs/finishing/evidence/2026-06-12-G2-plaid-sync-controls.png` | Needs completed hosted Plaid sandbox Link session and real item sync proof. |
 | 13 | Stripe test | PARTIAL/BLOCKED | `docs/finishing/evidence/2026-06-12-G3-stripe-payout-lines.png` | Needs real Stripe CLI/Dashboard test webhook delivered to the cloud route. |
-| 14 | Ask AI | WORKING/PARTIAL | `docs/finishing/evidence/2026-06-12-B4-markdown-thread.png`, `docs/finishing/evidence/2026-06-12-B4-confirmation-card.png`, `docs/finishing/evidence/2026-06-12-B5-docked-desktop.png`, `docs/finishing/evidence/2026-06-12-H2-mobile-ask-ai.png`, `docs/finishing/evidence/2026-06-12-H3-ai-eval-settings.png` | Five-question report-answer parity and real-Bedrock import high/low split remain open proof. |
+| 14 | Ask AI | WORKING/PARTIAL | `tests/e2e/ask-ai-parity-h2.spec.ts`, `docs/finishing/evidence/2026-06-12-H2-ask-ai-five-question-parity.png`, `docs/finishing/evidence/2026-06-12-B4-markdown-thread.png`, `docs/finishing/evidence/2026-06-12-B4-confirmation-card.png`, `docs/finishing/evidence/2026-06-12-B5-docked-desktop.png`, `docs/finishing/evidence/2026-06-12-H2-mobile-ask-ai.png`, `docs/finishing/evidence/2026-06-12-H3-ai-eval-settings.png` | Five-question report-answer parity is now green against live Bedrock, read-tool traces, and independently queried ledger/report values. Real-Bedrock import high/low split remains open proof. |
 | 15 | Receipts | WORKING/PARTIAL | `docs/finishing/evidence/2026-06-12-G4-receipts-pdf-image-chip.png`, `docs/finishing/evidence/2026-06-12-G4-create-expense-receipt.png` | True first-page PDF raster-to-Bedrock vision remains a named G4 gap. |
 | 16 | Mobile | WORKING | `tests/e2e/acceptance-h2-pack.spec.ts`, `docs/finishing/evidence/2026-06-12-H2-mobile-dashboard.png`, `docs/finishing/evidence/2026-06-12-H2-mobile-inbox.png`, `docs/finishing/evidence/2026-06-12-H2-mobile-transactions.png`, `docs/finishing/evidence/2026-06-12-H2-mobile-ask-ai.png` | The required H2 390px pass covers Dashboard, Inbox, Transactions, and Ask AI with no horizontal scroll. Broader module-by-module mobile review is a later hardening item. |
 | 17 | Audit log | WORKING | `tests/e2e/audit-h2.spec.ts`, `docs/finishing/evidence/2026-06-12-E5-audit-filter.png`, `docs/finishing/evidence/2026-06-12-H2-audit-posting-trace.png` | Disposable-business posting proof filters the audit log by the unique merchant and shows the user-visible posting summary. |
@@ -29,7 +29,9 @@ coverage stay PARTIAL/BLOCKED.
 
 Summary: A-C are mostly working, but H2 is still PARTIAL because rows
 12, 13, 14, 15, and 18 need either stronger finishing evidence, final
-cross-checking, or external Plaid/Stripe inputs. Rows 8, 11, and 16 were upgraded
+cross-checking, or external Plaid/Stripe inputs. Row 14 now has five-question
+Ask AI report-answer parity, but remains partial for the separate B6 import
+high/low split. Rows 8, 11, and 16 were upgraded
 only after `tests/e2e/acceptance-h2-pack.spec.ts` passed with real clicks and
 fresh screenshots; row 17 was upgraded after `tests/e2e/audit-h2.spec.ts`
 proved a real posting action in the audit log; row 1 was upgraded after
@@ -37,4 +39,6 @@ proved a real posting action in the audit log; row 1 was upgraded after
 assumption; row 10 was upgraded after `tests/e2e/reports-export-h2.spec.ts`
 proved a downloaded P&L CSV matches visible report totals; row 5 was upgraded
 after `tests/e2e/inbox-h2.spec.ts` proved the general review workflow on a
-disposable business.
+disposable business; row 14's report-answer proof was upgraded after
+`tests/e2e/ask-ai-parity-h2.spec.ts` proved the five flagship prompts use
+read-tool traces and match independently queried report values.

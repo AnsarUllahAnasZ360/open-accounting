@@ -9,8 +9,8 @@ Stack: **Next.js (App Router) + Convex (self-hosted, Docker) + Vercel AI SDK (v6
 ```mermaid
 flowchart LR
   subgraph External["User's own accounts (BYO keys)"]
-    P[Plaid<br/>banks & cards]
-    S[Stripe<br/>payments & invoices]
+    P["Plaid<br/>banks and cards"]
+    S["Stripe<br/>payments and invoices"]
     L[LLM provider<br/>Anthropic / OpenAI / Google / Ollama]
   end
 
@@ -20,7 +20,7 @@ flowchart LR
     LEDGER[(Double-entry ledger<br/>journal entries)]
     INBOX[Inbox<br/>exception queue]
     REC[Reconciliation engine<br/>payouts · receipts · invoices · payroll]
-    RPT[Reports engine<br/>P&L · BS · CF · aging]
+    RPT["Reports engine<br/>P and L · BS · CF · aging"]
     CHAT[AI chat agent<br/>ask-your-books + actions]
   end
 

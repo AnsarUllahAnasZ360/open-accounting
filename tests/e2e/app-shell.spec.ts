@@ -271,6 +271,7 @@ test("A5 — entity switcher lists the workspace's businesses and offers Add a b
   await page.screenshot({ path: `${EVIDENCE}/2026-06-11-A5-entity-switcher.png`, fullPage: false });
 
   const switcherName = (await page.getByTestId("entity-switcher").innerText()).trim();
+  const activeName = switcherName.split("\n").at(-1)?.trim() ?? switcherName;
   await menu.getByTestId("entity-add-business").click();
   await expect(page).toHaveURL(/\/settings$/);
 
@@ -278,11 +279,8 @@ test("A5 — entity switcher lists the workspace's businesses and offers Add a b
   // shown in the switcher (proving the hardcoded "Acme Studio LLC" literal was
   // removed and the name now flows from the viewer/report context).
   await gotoApp(page);
-  const eyebrow = (
-    await page.locator("h1").first().locator("xpath=preceding-sibling::p[1]").innerText()
-  ).trim();
-  expect(eyebrow.length).toBeGreaterThan(0);
-  expect(switcherName).toContain(eyebrow);
+  const eyebrow = page.locator("h1").first().locator("xpath=preceding-sibling::p[1]");
+  await expect(eyebrow).toHaveText(activeName, { timeout: 30000 });
 });
 
 test("A — layout: no horizontal scroll at 1440 and 390, and the AI panel does not cover nav targets", async ({ page }) => {

@@ -2,6 +2,10 @@ import { expect, type Page, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+function visibleByTestId(page: Page, testId: string) {
+  return page.getByTestId(testId).filter({ visible: true }).first();
+}
+
 function readLocalEnv(names: string[]) {
   const env: Record<string, string> = {};
   const text = readFileSync(join(process.cwd(), ".env.local"), "utf8");
@@ -35,12 +39,17 @@ async function signInOwner(page: Page) {
 }
 
 async function ensureLiveSandbox(page: Page) {
-  await page.goto("/settings");
-  await expect(page.getByTestId("live-sandbox-create")).toBeVisible({ timeout: 15000 });
-  await page.getByTestId("live-sandbox-create").click();
-  await expect(page.getByTestId("business-card-live-sandbox")).toContainText("Live Sandbox", {
+  await page.goto("/settings/connections");
+  await expect(visibleByTestId(page, "live-sandbox-create")).toBeVisible({ timeout: 15000 });
+  await visibleByTestId(page, "live-sandbox-create").click();
+  await expect(visibleByTestId(page, "live-sandbox-message")).toContainText("Live Sandbox", {
     timeout: 120000,
   });
+  await page.goto("/settings/businesses");
+  await expect(visibleByTestId(page, "business-card-live-sandbox")).toContainText("Live Sandbox", {
+    timeout: 120000,
+  });
+  await page.goto("/settings/connections");
 }
 
 test("owner can run the M8 Stripe test-mode or fixture sync on Live Sandbox", async ({ page }) => {
@@ -49,7 +58,7 @@ test("owner can run the M8 Stripe test-mode or fixture sync on Live Sandbox", as
   await signInOwner(page);
   await ensureLiveSandbox(page);
 
-  const panel = page.getByTestId("stripe-connection-panel");
+  const panel = visibleByTestId(page, "stripe-connection-panel");
   await expect(panel).toBeVisible({ timeout: 15000 });
   await expect(panel).toContainText("Stripe test mode");
   await expect(panel).toContainText("Live Sandbox");

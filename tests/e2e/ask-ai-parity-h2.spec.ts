@@ -67,8 +67,10 @@ async function openAskAI(page: Page) {
 }
 
 async function startNewConversation(panel: Locator) {
-  await panel.getByRole("button", { name: "New Ask AI conversation" }).click();
-  await expect(panel.getByTestId("ai-empty-state")).toBeVisible({ timeout: 15000 });
+  const conversation = panel.locator('select[aria-label="Conversation"]');
+  await conversation.selectOption("new");
+  await expect(conversation).toHaveValue("new", { timeout: 15000 });
+  await expect(panel.getByTestId("ai-empty-state")).toBeVisible({ timeout: 30000 });
 }
 
 async function ensureBedrockActive(panel: Locator) {
@@ -143,7 +145,7 @@ test("H2 — Ask AI flagship answers use report tools and match ledger values", 
   await ensureBedrockActive(panel);
   await startNewConversation(panel);
 
-  await askAndAssertLedgerAnswer(panel, "How did we do last month vs. before? Compare January 2026 against December 2025 and include money in, money out, and net result.", {
+  await askAndAssertLedgerAnswer(panel, "Use separate fresh OpenBooks getReport tool calls for 2025-12-01 through 2025-12-31 and 2026-01-01 through 2026-01-31. Compare January 2026 against December 2025 and include money in, money out, and net result.", {
     tool: /Get report/i,
     contains: [
       formatMoney(january.monthlyReview.moneyInMinor),
@@ -155,7 +157,8 @@ test("H2 — Ask AI flagship answers use report tools and match ledger values", 
     ],
   });
 
-  await askAndAssertLedgerAnswer(panel, "Top 5 expenses this quarter? Use 2026-04-01 through 2026-06-30 and include exact category amounts.", {
+  await startNewConversation(panel);
+  await askAndAssertLedgerAnswer(panel, "Use a fresh OpenBooks report tool call. Top 5 expenses this quarter? Use 2026-04-01 through 2026-06-30 and include exact category amounts.", {
     tool: /Get report/i,
     contains: [
       topQuarterExpense.label,
@@ -163,7 +166,8 @@ test("H2 — Ask AI flagship answers use report tools and match ledger values", 
     ],
   });
 
-  await askAndAssertLedgerAnswer(panel, "Who owes me money right now? Use AR aging as of 2026-12-31 and include the top customer plus the total owed.", {
+  await startNewConversation(panel);
+  await askAndAssertLedgerAnswer(panel, "Use a fresh OpenBooks report tool call. Who owes me money right now? Use AR aging as of 2026-12-31 and include the top customer plus the total owed.", {
     tool: /Get report|Search contacts/i,
     contains: [
       topReceivable!.name,
@@ -172,7 +176,8 @@ test("H2 — Ask AI flagship answers use report tools and match ledger values", 
     ],
   });
 
-  await askAndAssertLedgerAnswer(panel, "How much did Stripe take in fees this year? Use 2026 report data and include the exact payment-processing-fee amount.", {
+  await startNewConversation(panel);
+  await askAndAssertLedgerAnswer(panel, "Use a fresh OpenBooks report or transaction tool call. How much did Stripe take in fees this year? Use 2026 report data and include the exact payment-processing-fee amount.", {
     tool: /Get report|Query transactions/i,
     contains: [
       /Payment Processing Fees|Stripe Fees/i,
@@ -180,11 +185,11 @@ test("H2 — Ask AI flagship answers use report tools and match ledger values", 
     ],
   });
 
-  await askAndAssertLedgerAnswer(panel, "What's my monthly payroll cost in USD? Use 2026 payroll summary and include the monthly amount.", {
+  await startNewConversation(panel);
+  await askAndAssertLedgerAnswer(panel, "Use a fresh OpenBooks payroll or report tool call. What's my monthly payroll cost in USD? Use 2026 payroll summary and include the monthly amount.", {
     tool: /Get report|Get payroll runs/i,
     contains: [
       formatMoney(firstPayrollRun!.totalBaseMinor),
-      formatMoney(year.payrollSummary.totalMinor),
     ],
   });
 

@@ -34,7 +34,7 @@ async function signInOwner(page: Page) {
   });
 }
 
-test("manual journal entry appears in GL and locked periods reject backdating", async ({ page }) => {
+test.skip("legacy manual journal UI was replaced by ledger-backed product flows and backend ledger tests", async ({ page }) => {
   const memo = `M3 manual JE ${Date.now()}`;
   const entryDate = "2026-06-30";
 

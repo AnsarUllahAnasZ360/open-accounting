@@ -584,8 +584,11 @@ export function OpenBooksAIChat({
   const lastExternalPromptRef = useRef("");
 
   const threads = threadRows ?? [];
-  const messages = useMemo(() => (messagesPage.results ?? []) as UIMessage[], [messagesPage.results]);
-  const proposals = useMemo(() => proposalRows ?? [], [proposalRows]);
+  const messages = useMemo(
+    () => (activeThreadId ? (messagesPage.results ?? []) as UIMessage[] : []),
+    [activeThreadId, messagesPage.results],
+  );
+  const proposals = useMemo(() => (activeThreadId ? proposalRows ?? [] : []), [activeThreadId, proposalRows]);
   const entityId = reportPack?.entity.id as Id<"entities"> | undefined;
   const booksContextReady = Boolean(workspaceId && entityId);
   const activeThread = threads.find((thread) => thread.threadId === activeThreadId);

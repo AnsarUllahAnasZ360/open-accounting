@@ -85,9 +85,11 @@ async function selectEntity(page: Page, name: string) {
 async function archiveVisibleG5Businesses(page: Page) {
   await gotoApp(page, "/settings/businesses");
   const cards = page.locator('[data-testid^="business-card-"]').filter({ hasText: "G5 Fresh", visible: true });
-  const count = await cards.count();
-  for (let index = 0; index < count; index += 1) {
-    const card = cards.nth(index);
+  const cardTestIds = await cards.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("data-testid")).filter((value): value is string => Boolean(value)),
+  );
+  for (const testId of cardTestIds) {
+    const card = visibleByTestId(page, testId);
     if ((await card.getByText("Archived").count()) > 0) continue;
     const archive = card.getByRole("button", { name: /Archive/ });
     if ((await archive.count()) === 0 || !(await archive.isEnabled())) continue;
@@ -110,7 +112,7 @@ test("G5 — Live Sandbox and fresh businesses drive dashboard, register, and re
   await expect(page).toHaveURL(/\/transactions$/);
   await expect(visibleByTestId(page, "transactions-screen")).toBeVisible({ timeout: 30000 });
   await expect(page.getByTestId("transaction-row").first()).toBeVisible({ timeout: 30000 });
-  await expect(page.getByTestId("transaction-row").first()).toContainText(/Notion|Client ACH|Plaid Sandbox Bank/i, {
+  await expect(page.getByTestId("transaction-row").filter({ hasText: /Notion|Client ACH|Plaid Sandbox Bank/i }).first()).toBeVisible({
     timeout: 30000,
   });
   await page.screenshot({ path: `${EVIDENCE}/2026-06-12-G5-live-sandbox-register.png`, fullPage: true });

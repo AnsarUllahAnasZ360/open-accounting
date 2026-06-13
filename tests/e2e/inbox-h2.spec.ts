@@ -81,10 +81,10 @@ test("H2 — Inbox keyboard, correction, rule save, confirm, and batch actions w
   const stamp = Date.now().toString().slice(-6);
   const businessName = `H2 Inbox ${stamp} LLC`;
   const merchants = [
-    `H2 Inbox Alpha ${stamp}`,
-    `H2 Inbox Beta ${stamp}`,
-    `H2 Inbox Gamma ${stamp}`,
-    `H2 Inbox Delta ${stamp}`,
+    `H2 Unknown Ambiguous Review Alpha ${stamp}`,
+    `H2 Unknown Ambiguous Review Beta ${stamp}`,
+    `H2 Unknown Ambiguous Review Gamma ${stamp}`,
+    `H2 Unknown Ambiguous Review Delta ${stamp}`,
   ];
 
   try {
@@ -98,7 +98,9 @@ test("H2 — Inbox keyboard, correction, rule save, confirm, and batch actions w
     );
     await expectClickable(visibleByTestId(page, "csv-import"));
     await visibleByTestId(page, "csv-import").click();
-    await expect(visibleByTestId(page, "transaction-message")).toContainText(/AI batch/i, { timeout: 60000 });
+    const message = visibleByTestId(page, "transaction-message");
+    await expect(message).toContainText(/AI batch/i, { timeout: 60000 });
+    await expect(message).toContainText(/updated for review/i, { timeout: 60000 });
 
     await gotoApp(page, "/inbox");
     await selectEntity(page, businessName);
@@ -131,9 +133,13 @@ test("H2 — Inbox keyboard, correction, rule save, confirm, and batch actions w
       fullPage: true,
     });
 
+    const beforeConfirmCount = await page.getByTestId("inbox-item").count();
     await expectClickable(visibleByTestId(page, "inbox-confirm"));
     await visibleByTestId(page, "inbox-confirm").click();
     await expect(visibleByTestId(page, "inbox-message")).toContainText("confirmed and posted", { timeout: 30000 });
+    await expect
+      .poll(async () => page.getByTestId("inbox-item").count(), { timeout: 30000 })
+      .toBeLessThan(beforeConfirmCount);
 
     const remainingItems = page.getByTestId("inbox-item");
     await expect.poll(async () => remainingItems.count(), { timeout: 30000 }).toBeGreaterThanOrEqual(2);

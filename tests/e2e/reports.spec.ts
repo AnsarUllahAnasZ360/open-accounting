@@ -43,39 +43,48 @@ test("owner can render ledger-backed reports and export from reports/settings", 
 
   await page.goto("/reports");
   await expect(page.getByTestId("reports-screen")).toBeVisible({ timeout: 15000 });
-  await expect(page.getByRole("button", { name: "Profit & Loss Income, expenses, and net profit." })).toBeVisible();
+  await page.getByRole("button", { name: "Monthly Review Your whole month on one page — in, out, owed, payroll." }).click();
+  await expect(page.getByRole("button", { name: "Profit & Loss How much you made and spent, by category." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled({ timeout: 15000 });
   const monthlyReviewDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();
   await (await monthlyReviewDownload).saveAs("docs/initiation/evidence/2026-06-11-m7-monthly-review.csv");
 
-  await page.getByRole("button", { name: "Profit & Loss Income, expenses, and net profit." }).click();
+  await page.getByTestId("reports-back").click();
+  await expect(page.getByRole("button", { name: "Profit & Loss How much you made and spent, by category." })).toBeVisible();
+  await page.getByRole("button", { name: "Profit & Loss How much you made and spent, by category." }).click();
   await expect(page.getByRole("heading", { name: "Profit & Loss" })).toBeVisible();
-  await expect(page.getByText("Net profit:")).toBeVisible();
+  await expect(page.getByText(/Net profit/)).toBeVisible();
 
-  await page.getByRole("button", { name: "Balance Sheet Assets, liabilities, and equity." }).click();
+  await page.getByTestId("reports-back").click();
+  await expect(page.getByRole("button", { name: "Balance Sheet What you own and what you owe, right now." })).toBeVisible();
+  await page.getByRole("button", { name: "Balance Sheet What you own and what you owe, right now." }).click();
   await expect(page.getByRole("heading", { name: "Balance Sheet" })).toBeVisible();
-  await expect(page.getByText("Balanced", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("balanced-chip")).toContainText("Balanced");
 
-  await page.getByRole("button", { name: "Trial Balance Debit and credit check." }).click();
+  await page.getByTestId("reports-back").click();
+  await expect(page.getByRole("button", { name: "Trial Balance All accounts with debit and credit totals." })).toBeVisible();
+  await page.getByRole("button", { name: "Trial Balance All accounts with debit and credit totals." }).click();
   await expect(page.getByRole("heading", { name: "Trial Balance" })).toBeVisible();
-  await expect(page.getByText("Difference 0")).toBeVisible();
+  await expect(page.locator("main").getByText(/Balanced/)).toBeVisible();
 
-  await page.getByRole("button", { name: "General Ledger Account activity line by line." }).click();
+  await page.getByTestId("reports-back").click();
+  await expect(page.getByRole("button", { name: "General Ledger Every posting, account by account." })).toBeVisible();
+  await page.getByRole("button", { name: "General Ledger Every posting, account by account." }).click();
   await expect(page.getByRole("heading", { name: "General Ledger" })).toBeVisible();
   await page.screenshot({
     path: "docs/initiation/evidence/2026-06-11-m7-reports-e2e.png",
     fullPage: true,
   });
 
-  await page.goto("/settings");
-  await expect(page.getByRole("button", { name: "Export CSV bundle" })).toBeEnabled({ timeout: 15000 });
-  await expect(page.getByRole("button", { name: "Export JSON" })).toBeEnabled();
+  await page.goto("/settings/data");
+  await expect(page.getByRole("button", { name: "CSV bundle (every report)" })).toBeEnabled({ timeout: 15000 });
+  await expect(page.getByRole("button", { name: "JSON dump" })).toBeEnabled();
   const bundleDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export CSV bundle" }).click();
+  await page.getByRole("button", { name: "CSV bundle (every report)" }).click();
   await (await bundleDownload).saveAs("docs/initiation/evidence/2026-06-11-m7-settings-export-sample.csv");
   const jsonDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export JSON" }).click();
+  await page.getByRole("button", { name: "JSON dump" }).click();
   await (await jsonDownload).saveAs("docs/initiation/evidence/2026-06-11-m7-settings-export.json");
   await page.screenshot({
     path: "docs/initiation/evidence/2026-06-11-m7-settings-export-e2e.png",

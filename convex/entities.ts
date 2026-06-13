@@ -82,12 +82,19 @@ export const list = query({
     const entities = await ctx.db
       .query("entities")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId))
-      .take(50);
+      .order("desc")
+      .take(200);
 
     const rows = await Promise.all(
       entities
         .slice()
-        .sort((a, b) => Number(b.isDemo) - Number(a.isDemo) || a.name.localeCompare(b.name))
+        .sort((a, b) => {
+          const demoFirst = Number(b.isDemo) - Number(a.isDemo);
+          if (demoFirst !== 0) return demoFirst;
+          const archivedLast = Number(isArchived(a)) - Number(isArchived(b));
+          if (archivedLast !== 0) return archivedLast;
+          return b.createdAt - a.createdAt;
+        })
         .map(async (entity) => {
           const counts = await entityCounts(ctx, entity._id);
           return {

@@ -15,6 +15,10 @@ function writeEvidence(name: string, payload: unknown) {
   writeFileSync(join(evidenceDir, name), `${JSON.stringify(payload, null, 2)}\n`);
 }
 
+function visibleByTestId(page: Page, testId: string) {
+  return page.getByTestId(testId).filter({ visible: true }).first();
+}
+
 function readLocalEnv(names: string[]) {
   const env: Record<string, string> = {};
   const text = readFileSync(join(process.cwd(), ".env.local"), "utf8");
@@ -48,12 +52,17 @@ async function signInOwner(page: Page) {
 }
 
 async function ensureLiveSandbox(page: Page) {
-  await page.goto("/settings");
-  await expect(page.getByTestId("live-sandbox-create")).toBeVisible({ timeout: 15000 });
-  await page.getByTestId("live-sandbox-create").click();
-  await expect(page.getByTestId("business-card-live-sandbox")).toContainText("Live Sandbox", {
+  await page.goto("/settings/connections");
+  await expect(visibleByTestId(page, "live-sandbox-create")).toBeVisible({ timeout: 15000 });
+  await visibleByTestId(page, "live-sandbox-create").click();
+  await expect(visibleByTestId(page, "live-sandbox-message")).toContainText("Live Sandbox", {
     timeout: 120000,
   });
+  await page.goto("/settings/businesses");
+  await expect(visibleByTestId(page, "business-card-live-sandbox")).toContainText("Live Sandbox", {
+    timeout: 120000,
+  });
+  await page.goto("/settings/connections");
 }
 
 test("Plaid fixture mode has sandbox-safe transaction coverage", async () => {
@@ -89,37 +98,37 @@ test("owner can connect Plaid sandbox bypass, select accounts, sync, and simulat
   await signInOwner(page);
   await ensureLiveSandbox(page);
 
-  const panel = page.getByTestId("plaid-connection-panel");
+  const panel = visibleByTestId(page, "plaid-connection-panel");
   await expect(panel).toBeVisible({ timeout: 15000 });
   await expect(panel.getByText("Bank connection")).toBeVisible();
   await expect(panel.getByRole("button", { name: /Prepare Link/ })).toBeVisible();
 
   await panel.getByRole("button", { name: /Prepare Link/ }).click();
-  await expect(page.getByTestId("plaid-panel-message")).toContainText(/Link token|Fixture Link token/i, {
+  await expect(visibleByTestId(page, "plaid-panel-message")).toContainText(/Link token|Fixture Link token/i, {
     timeout: 30000,
   });
 
   await panel.getByRole("button", { name: /Use sandbox bypass/ }).click();
-  await expect(page.getByTestId("plaid-account-selection")).toBeVisible({ timeout: 120000 });
-  await expect(page.getByTestId("plaid-account-selection").getByText(/ending/i).first()).toBeVisible();
+  await expect(visibleByTestId(page, "plaid-account-selection")).toBeVisible({ timeout: 120000 });
+  await expect(visibleByTestId(page, "plaid-account-selection").getByText(/ending/i).first()).toBeVisible();
 
   await panel.getByRole("button", { name: /Create selected/ }).click();
-  await expect(page.getByTestId("plaid-panel-message")).toContainText(/Plaid account|refreshed account selection/i, {
+  await expect(visibleByTestId(page, "plaid-panel-message")).toContainText(/Plaid account|refreshed account selection/i, {
     timeout: 30000,
   });
-  await expect(page.getByTestId("plaid-connected-accounts")).toBeVisible({ timeout: 30000 });
+  await expect(visibleByTestId(page, "plaid-connected-accounts")).toBeVisible({ timeout: 30000 });
 
   await panel.getByRole("button", { name: /Sync fixture/ }).click();
-  await expect(page.getByTestId("plaid-panel-message")).toContainText(/Synced|duplicates/i, {
+  await expect(visibleByTestId(page, "plaid-panel-message")).toContainText(/Synced|duplicates/i, {
     timeout: 120000,
   });
-  await expect(page.getByTestId("plaid-recent-transactions")).toContainText(/Notion|Client ACH|Plaid Sandbox Bank/i, {
+  await expect(visibleByTestId(page, "plaid-recent-transactions")).toContainText(/Notion|Client ACH|Plaid Sandbox Bank/i, {
     timeout: 30000,
   });
-  await expect(page.getByTestId("plaid-recent-transactions")).toContainText("Plaid prior");
+  await expect(visibleByTestId(page, "plaid-recent-transactions")).toContainText("Plaid prior");
 
   await panel.getByRole("button", { name: /Simulate relink/ }).click();
-  await expect(page.getByTestId("plaid-connection-issues")).toContainText(/needs you to sign in again/i, {
+  await expect(visibleByTestId(page, "plaid-connection-issues")).toContainText(/needs you to sign in again/i, {
     timeout: 30000,
   });
 

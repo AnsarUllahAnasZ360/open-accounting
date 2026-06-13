@@ -2,6 +2,10 @@ import { expect, type Page, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+function visibleByTestId(page: Page, testId: string) {
+  return page.getByTestId(testId).filter({ visible: true }).first();
+}
+
 function readLocalEnv(names: string[]) {
   const env: Record<string, string> = {};
   const text = readFileSync(join(process.cwd(), ".env.local"), "utf8");
@@ -48,11 +52,15 @@ test("owner can browse M6 contacts, AR, AP, payroll, and settings modules", asyn
   await ensureDemoData(page);
 
   await page.goto("/settings");
-  await expect(page.getByTestId("m6-settings-screen")).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText("Businesses", { exact: true })).toBeVisible();
-  await expect(page.getByText("Rules manager", { exact: true })).toBeVisible();
-  await expect(page.getByText("Audit log", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("audit-row").first()).toBeVisible();
+  await expect(page.getByTestId("settings-screen")).toBeVisible({ timeout: 15000 });
+  await expect(visibleByTestId(page, "businesses-grid")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole("heading", { name: "Businesses" }).filter({ visible: true }).first()).toBeVisible();
+  await page.goto("/settings/rules");
+  await expect(page.getByTestId("settings-screen")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole("heading", { name: "Rules" }).filter({ visible: true }).first()).toBeVisible();
+  await page.goto("/settings/audit");
+  await expect(visibleByTestId(page, "audit-section")).toBeVisible({ timeout: 15000 });
+  await expect(visibleByTestId(page, "audit-row")).toBeVisible();
   await page.screenshot({
     path: "docs/initiation/evidence/2026-06-11-m6-settings-e2e.png",
     fullPage: true,

@@ -71,9 +71,11 @@ function slugify(name: string) {
 
 async function archiveVisibleE2EBusinesses(page: Page) {
   const cards = page.locator('[data-testid^="business-card-"]').filter({ hasText: "E2E Settings", visible: true });
-  const count = await cards.count();
-  for (let index = 0; index < count; index += 1) {
-    const card = cards.nth(index);
+  const cardTestIds = await cards.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("data-testid")).filter((value): value is string => Boolean(value)),
+  );
+  for (const testId of cardTestIds) {
+    const card = visibleByTestId(page, testId);
     if ((await card.getByText("Archived").count()) > 0) continue;
     const archive = card.getByRole("button", { name: /Archive/ });
     if ((await archive.count()) === 0 || !(await archive.isEnabled())) continue;

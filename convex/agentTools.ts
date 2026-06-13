@@ -54,7 +54,7 @@ async function resolveEntityId(ctx: ToolCtx): Promise<Id<"entities">> {
 
 const getReport = createTool({
   description:
-    "Read a ledger-backed OpenBooks report: profit and loss, balance sheet, cash flow, AR/AP aging, expenses, income by customer, payroll summary, general ledger, trial balance, journal, or monthly review. Always use this for numbers.",
+    "Read a ledger-backed OpenBooks report: profit and loss, balance sheet, cash flow, AR/AP aging, expenses, income by customer, payroll summary, general ledger, trial balance, journal, or monthly review. Always use this for numbers. For period comparisons, call this separately for each compared period instead of one combined range.",
   inputSchema: jsonSchema<{
     report: ReportName;
     startDate?: string;

@@ -21,10 +21,15 @@ function readLocalEnv(names: string[]) {
 }
 
 async function signInOwner(page: Page) {
+  await page.goto("/sign-in");
+  const devOwnerButton = page.getByRole("button", { name: "Continue as local dev owner" });
+  if (await devOwnerButton.isVisible().catch(() => false)) {
+    await devOwnerButton.click();
+    return;
+  }
+
   const env = readLocalEnv(["OWNER_EMAIL", "OWNER_PASSWORD"]);
   test.skip(!env.OWNER_EMAIL || !env.OWNER_PASSWORD, "OWNER_EMAIL/OWNER_PASSWORD missing locally");
-
-  await page.goto("/sign-in");
   await page.getByLabel("Work email").fill(env.OWNER_EMAIL);
   await page.getByLabel("Password").fill(env.OWNER_PASSWORD);
   await page.getByLabel("Name").fill("Ansar Ullah");
@@ -71,7 +76,9 @@ test("owner can review request-access leads in settings", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible({
     timeout: 15000,
   });
-  await page.goto("/settings");
+  await page.goto("/settings/data");
   await expect(page.getByRole("heading", { name: "Request-access leads" })).toBeVisible();
-  await expect(page.getByText(email)).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("data-section").getByText(email).filter({ visible: true }).first()).toBeVisible({
+    timeout: 15000,
+  });
 });

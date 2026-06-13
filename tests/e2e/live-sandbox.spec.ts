@@ -2,6 +2,10 @@ import { expect, type Page, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+function visibleByTestId(page: Page, testId: string) {
+  return page.getByTestId(testId).filter({ visible: true }).first();
+}
+
 function readLocalEnv(names: string[]) {
   const env: Record<string, string> = {};
   const text = readFileSync(join(process.cwd(), ".env.local"), "utf8");
@@ -38,25 +42,20 @@ test("owner can create the Live Sandbox entity from Settings Businesses", async 
   test.setTimeout(240_000);
 
   await signInOwner(page);
-  await page.goto("/settings");
+  await page.goto("/settings/connections");
 
-  if ((await page.getByTestId("live-sandbox-create").count()) === 0) {
-    await page.getByRole("button", { name: "Reset demo data" }).click();
-    await expect(page.getByTestId("demo-seed-message")).toContainText("Demo seed complete.", {
-      timeout: 180_000,
-    });
-  }
-
-  await expect(page.getByTestId("live-sandbox-create")).toBeVisible({ timeout: 15000 });
-  await page.getByTestId("live-sandbox-create").click();
-  await expect(page.getByTestId("live-sandbox-message")).toContainText("Live Sandbox", {
+  await expect(visibleByTestId(page, "live-sandbox-create")).toBeVisible({ timeout: 15000 });
+  await visibleByTestId(page, "live-sandbox-create").click();
+  await expect(visibleByTestId(page, "live-sandbox-message")).toContainText("Live Sandbox", {
     timeout: 120000,
   });
-  await expect(page.getByTestId("business-card-live-sandbox")).toContainText("Live Sandbox", {
+  await page.goto("/settings/businesses");
+  await expect(visibleByTestId(page, "business-card-live-sandbox")).toContainText("Live Sandbox", {
     timeout: 120000,
   });
-  await expect(page.getByTestId("business-card-live-sandbox")).toContainText("Live");
-  await expect(page.getByTestId("stripe-connection-panel")).toBeVisible({ timeout: 15000 });
+  await expect(visibleByTestId(page, "business-card-live-sandbox")).toContainText("Live");
+  await page.goto("/settings/connections");
+  await expect(visibleByTestId(page, "stripe-connection-panel")).toBeVisible({ timeout: 15000 });
 
   await page.screenshot({
     path: "docs/initiation/evidence/2026-06-11-m8-live-sandbox-settings-e2e.png",

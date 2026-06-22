@@ -1,10 +1,14 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { Copy, Mail } from "lucide-react";
+import { ConvexError } from "convex/values";
+import { Copy, Mail, Trash2 } from "lucide-react";
+// ConvexError surfaces its `.data` payload on the client; we read it when present
+// (clear server messages like the last-owner guard) and fall back to `.message`.
 import { useState } from "react";
 
 import { api } from "../../../../../../convex/_generated/api";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,14 +24,29 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
-function avatar(initials: string, pending: boolean) {
-  return pending ? ["#fffaeb", "#b54708"] : ["#f0f0f0", "#525252"];
+// Avatar tint by role/state, routed through semantic tokens: the owner wears the
+// one brand green; a pending invite uses the warning surface; everyone else is
+// neutral.
+function avatarTint(role: string, pending: boolean) {
+  if (role === "owner") return "bg-ob-green-800 text-white";
+  if (pending) return "bg-warning-surface text-warning";
+  return "bg-muted text-muted-foreground";
 }
+
+function errorMessage(err: unknown, fallback: string) {
+  if (err instanceof ConvexError) return String(err.data);
+  if (err instanceof Error) return err.message;
+  return fallback;
+}
+
+type ManageableRole = "owner" | "accountant" | "hr";
 
 export function TeamSection() {
   const data = useQuery(api.team.list, {});
@@ -39,37 +58,190 @@ export function TeamSection() {
   return (
     <div className="flex flex-col gap-3" data-testid="team-section">
       <div className="overflow-hidden rounded-[14px] border bg-card shadow-xs">
-        {data.members.map((member) => {
-          const [bg, fg] = member.role === "owner" ? ["#17540f", "#ffffff"] : avatar(member.initials, member.pending);
-          return (
-            <div key={member.id} className="flex items-center gap-3 border-t px-[18px] py-3.5 first:border-t-0" data-testid="team-member">
-              <span
-                className="flex size-[30px] items-center justify-center rounded-full text-[11px] font-semibold"
-                style={{ background: bg, color: fg }}
-              >
-                {member.initials}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium">{member.name}</div>
-                <div className="text-[11.5px] text-muted-foreground">{member.email}</div>
-              </div>
-              {member.pending ? (
-                <span className="inline-flex h-5 items-center rounded-full bg-[#fffaeb] px-2 text-[10.5px] font-medium text-[#b54708]">Invite sent</span>
-              ) : null}
-              <span
-                title={member.roleDesc}
-                className="inline-flex h-6 cursor-help items-center rounded-full bg-muted px-2.5 text-[11.5px] font-medium text-[#525252]"
-              >
-                {member.roleLabel}
-              </span>
-            </div>
-          );
-        })}
+        {data.members.map((member) => (
+          <MemberRow key={member.id} member={member} canManage={data.canManage} />
+        ))}
       </div>
       <p className="text-[12px] text-muted-foreground/80">
-        Owner: everything · Staff: transactions, payroll &amp; bills, no settings · Accountant: read everything + journal entries.
+        Owner: everything · Accountant: books, reports, rules, imports, and ledger corrections · HR: payroll only.
       </p>
       {data.canManage ? <InviteModal emailDeliveryConfigured={data.emailDeliveryConfigured} /> : null}
+    </div>
+  );
+}
+
+type MemberRowData = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  roleLabel: string;
+  roleDesc: string;
+  initials: string;
+  pending: boolean;
+  isLastOwner: boolean;
+  isSelf: boolean;
+};
+
+function MemberRow({ member, canManage }: { member: MemberRowData; canManage: boolean }) {
+  const changeRole = useMutation(api.team.changeRole);
+  const removeMember = useMutation(api.team.removeMember);
+  const revokeInvite = useMutation(api.team.revokeInvite);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // The last owner can be neither demoted nor removed (server enforces this too).
+  const roleLocked = !canManage || member.isLastOwner;
+
+  async function onRoleChange(next: ManageableRole) {
+    if (next === member.role) return;
+    setBusy(true);
+    setError("");
+    try {
+      await changeRole({ memberId: member.id as Id<"workspaceMembers">, newRole: next });
+    } catch (err) {
+      setError(errorMessage(err, "Could not change the role."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemove() {
+    setBusy(true);
+    setError("");
+    try {
+      await removeMember({ memberId: member.id as Id<"workspaceMembers"> });
+      setConfirmOpen(false);
+    } catch (err) {
+      setError(errorMessage(err, "Could not remove the member."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRevoke() {
+    setBusy(true);
+    setError("");
+    try {
+      await revokeInvite({ inviteId: member.id as Id<"invites"> });
+    } catch (err) {
+      setError(errorMessage(err, "Could not revoke the invite."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-3 border-t px-[18px] py-3.5 first:border-t-0"
+      data-testid="team-member"
+      data-pending={member.pending ? "true" : "false"}
+    >
+      <span
+        className={cn(
+          "flex size-[30px] shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+          avatarTint(member.role, member.pending),
+        )}
+      >
+        {member.initials}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium">{member.name}</div>
+        <div className="text-[11.5px] text-muted-foreground">{member.email}</div>
+        {error ? <div className="mt-1 text-[11.5px] text-destructive" data-testid="team-member-error">{error}</div> : null}
+      </div>
+
+      {member.pending ? (
+        <>
+          <span className="inline-flex h-5 items-center rounded-full bg-warning-surface px-2 text-[10.5px] font-medium text-warning">
+            Invite sent
+          </span>
+          <span
+            title={member.roleDesc}
+            className="inline-flex h-6 cursor-help items-center rounded-full bg-muted px-2.5 text-[11.5px] font-medium text-muted-foreground"
+          >
+            {member.roleLabel}
+          </span>
+          {canManage ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-[12px] text-muted-foreground hover:text-destructive"
+              data-testid="team-revoke-invite"
+              disabled={busy}
+              onClick={onRevoke}
+            >
+              Revoke
+            </Button>
+          ) : null}
+        </>
+      ) : roleLocked ? (
+        <span
+          title={member.isLastOwner ? "The last owner can't be demoted." : member.roleDesc}
+          className="inline-flex h-6 cursor-help items-center rounded-full bg-muted px-2.5 text-[11.5px] font-medium text-muted-foreground"
+          data-testid="team-role-locked"
+        >
+          {member.roleLabel}
+        </span>
+      ) : (
+        <>
+          <Select
+            value={member.role}
+            onValueChange={(v) => void onRoleChange(v as ManageableRole)}
+            disabled={busy}
+          >
+            <SelectTrigger className="h-8 w-[150px]" data-testid="team-role-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="owner">Owner</SelectItem>
+                <SelectItem value="accountant">Accountant</SelectItem>
+                <SelectItem value="hr">HR</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <DialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 text-muted-foreground hover:text-destructive"
+                aria-label={`Remove ${member.name}`}
+                data-testid="team-remove"
+                disabled={busy}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent data-testid="team-remove-modal">
+              <DialogHeader>
+                <DialogTitle>Remove {member.name}?</DialogTitle>
+                <DialogDescription>
+                  They lose all access to this workspace immediately. Their past entries and audit history stay intact —
+                  removal never rewrites the books.
+                </DialogDescription>
+              </DialogHeader>
+              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              <DialogFooter>
+                <Button variant="outline" size="sm" onClick={() => setConfirmOpen(false)} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  data-testid="team-remove-confirm"
+                  disabled={busy}
+                  onClick={onRemove}
+                >
+                  {busy ? "Removing…" : "Remove member"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
     </div>
   );
 }
@@ -78,7 +250,7 @@ function InviteModal({ emailDeliveryConfigured }: { emailDeliveryConfigured: boo
   const invite = useMutation(api.team.invite);
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"member" | "admin">("member");
+  const [role, setRole] = useState<"accountant" | "hr">("hr");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ message: string; inviteUrl: string } | null>(null);
@@ -102,7 +274,7 @@ function InviteModal({ emailDeliveryConfigured }: { emailDeliveryConfigured: boo
       });
       setEmail("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create the invite.");
+      setError(errorMessage(err, "Could not create the invite."));
     } finally {
       setBusy(false);
     }
@@ -135,14 +307,16 @@ function InviteModal({ emailDeliveryConfigured }: { emailDeliveryConfigured: boo
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="member">Staff — transactions, payroll &amp; bills</SelectItem>
-                <SelectItem value="admin">Accountant — read all + journal entries</SelectItem>
+                <SelectGroup>
+                  <SelectItem value="hr">HR — payroll only</SelectItem>
+                  <SelectItem value="accountant">Accountant — books, imports, reports &amp; ledger corrections</SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
           {result ? (
-            <div className="rounded-lg border border-[#dcefd2] bg-[#f1f8ee] p-3" data-testid="team-invite-result">
-              <p className="text-[12.5px] text-[#17540f]">{result.message}</p>
+            <div className="rounded-lg border border-ob-green-100 bg-ob-green-50 p-3" data-testid="team-invite-result">
+              <p className="text-[12.5px] text-ob-green-800">{result.message}</p>
               <div className="mt-2 flex gap-2">
                 <Input data-testid="team-invite-link" value={result.inviteUrl} readOnly />
                 <Button

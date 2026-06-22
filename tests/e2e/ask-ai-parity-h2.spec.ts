@@ -62,19 +62,17 @@ async function openAskAI(page: Page) {
   await button.click();
   const panel = visibleByTestId(page, "ai-panel");
   await expect(panel).toBeVisible({ timeout: 15000 });
-  await expect(panel.getByPlaceholder("Ask about your books")).toBeEnabled({ timeout: 30000 });
+  await expect(panel.getByLabel("Ask about your books")).toBeEnabled({ timeout: 30000 });
   return panel;
 }
 
 async function startNewConversation(panel: Locator) {
-  const conversation = panel.locator('select[aria-label="Conversation"]');
-  await conversation.selectOption("new");
-  await expect(conversation).toHaveValue("new", { timeout: 15000 });
+  await panel.getByRole("button", { name: "New Ask AI conversation" }).click();
   await expect(panel.getByTestId("ai-empty-state")).toBeVisible({ timeout: 30000 });
 }
 
 async function ensureBedrockActive(panel: Locator) {
-  const active = await panel.getByText("Bedrock active").isVisible({ timeout: 15000 }).catch(() => false);
+  const active = !(await panel.getByText("AI off").isVisible({ timeout: 15000 }).catch(() => false));
   test.skip(!active, "Bedrock is not configured; H2 Ask AI parity needs live model answers.");
 }
 
@@ -86,7 +84,7 @@ async function askAndAssertLedgerAnswer(
   const beforeResponses = await panel.getByTestId("ai-markdown-response").count();
   const beforeTools = await panel.getByTestId("ai-tool-card").count();
 
-  await panel.getByPlaceholder("Ask about your books").fill(prompt);
+  await panel.getByLabel("Ask about your books").fill(prompt);
   await panel.getByRole("button", { name: "Send question" }).click();
   await expect(panel.getByTestId("ai-user-message").last()).toContainText(prompt.slice(0, 80), {
     timeout: 15000,

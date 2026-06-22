@@ -162,7 +162,7 @@ function CommandShortcut({
     <span
       data-slot="command-shortcut"
       className={cn(
-        "money-figures ml-auto text-xs tracking-widest text-muted-foreground",
+        "money-figures ml-auto inline-flex h-5 shrink-0 items-center rounded-md border border-border bg-background px-1.5 text-[11px] font-medium leading-none text-muted-foreground shadow-xs",
         className,
       )}
       {...props}

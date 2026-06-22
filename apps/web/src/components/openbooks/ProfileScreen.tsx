@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuthActions } from "@convex-dev/auth/react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Check, KeyRound, UserRound } from "lucide-react";
@@ -40,13 +41,28 @@ const AVATAR_COLORS = [
 
 type ProfileData = NonNullable<FunctionReturnType<typeof api.profile.me>>;
 
-export function ProfileScreen() {
+const PERMISSION_LABELS: Record<string, string> = {
+  "workspace.admin": "Workspace admin",
+  "workspace.reset": "Full rebuild",
+  "team.manage": "Team",
+  "settings.manage": "Settings",
+  "business.manage": "Businesses",
+  "connections.manage": "Connections",
+  "books.view": "Books view",
+  "books.manage": "Books manage",
+  "ledger.post": "Ledger posting",
+  "reports.view": "Reports",
+  "payroll.view": "Payroll view",
+  "payroll.manage": "Payroll manage",
+};
+
+export function ProfileScreen({ embedded = false }: { embedded?: boolean }) {
   const data = useQuery(api.profile.me, {});
 
   if (data === undefined) {
     return (
       <div className="space-y-5">
-        <PageHeader title="Profile" description="Your identity inside OpenBooks" />
+        {embedded ? null : <PageHeader title="Profile" description="Your identity inside OpenBooks" />}
         <div className="rounded-[14px] border bg-card p-5 text-sm text-muted-foreground shadow-xs">
           Loading profile...
         </div>
@@ -54,17 +70,20 @@ export function ProfileScreen() {
     );
   }
 
-  return <ProfileForm data={data as ProfileData} />;
+  return <ProfileForm data={data as ProfileData} embedded={embedded} />;
 }
 
-function ProfileForm({ data }: { data: ProfileData }) {
+function ProfileForm({ data, embedded }: { data: ProfileData; embedded: boolean }) {
   const update = useMutation(api.profile.update);
+  const { signIn } = useAuthActions();
   const [displayName, setDisplayName] = useState(data.profile.displayName);
   const [timezone, setTimezone] = useState(data.profile.timezone);
   const [avatarColor, setAvatarColor] = useState(data.profile.avatarColor);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
 
   const initials = useMemo(() => {
     const parts = displayName.trim().split(/\s+/).filter(Boolean);
@@ -87,9 +106,28 @@ function ProfileForm({ data }: { data: ProfileData }) {
     }
   }
 
+  async function requestPasswordReset() {
+    if (!data.user.email) return;
+    setResetBusy(true);
+    setResetMessage("");
+    setError("");
+    try {
+      await signIn("password", {
+        email: data.user.email,
+        flow: "reset",
+        redirectTo: `/sign-in?email=${encodeURIComponent(data.user.email)}&reset=1`,
+      });
+      setResetMessage("Password reset email sent.");
+    } catch (caught) {
+      setResetMessage(caught instanceof Error ? caught.message : "Could not send password reset email.");
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-5" data-testid="profile-screen">
-      <PageHeader title="Profile" description="Your identity inside OpenBooks" />
+      {embedded ? null : <PageHeader title="Profile" description="Your identity inside OpenBooks" />}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <form className="rounded-[14px] border bg-card p-5 shadow-xs" onSubmit={onSubmit}>
@@ -189,14 +227,23 @@ function ProfileForm({ data }: { data: ProfileData }) {
             </div>
             <div className="mt-4 divide-y rounded-[10px] border" data-testid="profile-memberships">
               {data.memberships.map((membership) => (
-                <div key={membership.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                  <span className="min-w-0">
+                <div key={membership.id} className="grid gap-2 px-3 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{membership.workspaceName}</span>
-                    <span className="block text-[11.5px] text-muted-foreground">Joined workspace</span>
-                  </span>
-                  <span className="rounded-full bg-muted px-2.5 py-1 text-[11.5px] font-medium">
-                    {membership.roleLabel}
-                  </span>
+                      <span className="block text-[11.5px] text-muted-foreground">{membership.roleDescription}</span>
+                    </span>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11.5px] font-medium">
+                      {membership.roleLabel}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {membership.permissions.map((permission) => (
+                      <span key={permission} className="rounded-full border bg-background px-2 py-0.5 text-[10.5px] text-muted-foreground">
+                        {PERMISSION_LABELS[permission] ?? permission}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -210,13 +257,24 @@ function ProfileForm({ data }: { data: ProfileData }) {
               <div>
                 <h2 className="text-[18px] font-semibold tracking-tight">Password</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Password reset needs the email reset provider before OpenBooks can change credentials from this page.
+                  Reset requests are sent through the configured OpenBooks email provider.
                 </p>
               </div>
             </div>
-            <Button className="mt-4 w-full" variant="outline" disabled data-testid="profile-password-disabled">
-              Password reset not enabled
+            <Button
+              className="mt-4 w-full"
+              variant="outline"
+              disabled={!data.auth.passwordResetEnabled || resetBusy}
+              data-testid={data.auth.passwordResetEnabled ? "profile-password-reset" : "profile-password-disabled"}
+              onClick={requestPasswordReset}
+            >
+              {resetBusy
+                ? "Sending reset..."
+                : data.auth.passwordResetEnabled
+                  ? "Send password reset email"
+                  : "Password reset not enabled"}
             </Button>
+            {resetMessage ? <p className="mt-3 text-sm text-muted-foreground">{resetMessage}</p> : null}
           </section>
         </div>
       </div>

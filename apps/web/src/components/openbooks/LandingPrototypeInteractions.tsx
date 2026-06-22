@@ -55,7 +55,7 @@ const faqs = [
   {
     question: "What do I need to run it?",
     answer:
-      "A machine that runs Docker — a $5 VPS, a home server, or your laptop. One `docker compose up` starts the app and the database. Connect a bank or upload a CSV, paste an AI key (or skip it — rules and manual categorization still work), and the dashboard lights up in about 15 minutes.",
+      "Node and pnpm, plus a free Convex deployment for the backend (Convex runs in the cloud, never on localhost). Clone the repo, run `pnpm setup` and `npx convex dev --once` to link your own deployment, then `pnpm dev:full` — or deploy the front end to Vercel. There is no Docker step. Connect a bank or upload a CSV, paste your AI key (or skip it — rules and manual categorization still work), and the dashboard lights up in about 15 minutes. The /setup page walks through it.",
   },
   {
     question: "Will my accountant accept the books?",
@@ -65,7 +65,7 @@ const faqs = [
   {
     question: "What happens if the project dies?",
     answer:
-      "Nothing happens to your books. They live in your own database, with full CSV, JSON and general-ledger export at all times — that's a hard product principle, learned from watching hosted bookkeeping services shut down overnight. The code is MIT-licensed, so anyone can fork it and keep it alive.",
+      "Nothing happens to your books. They live in your own database, with full CSV, JSON and general-ledger export at all times — that's a hard product principle, learned from watching hosted bookkeeping services shut down overnight. The code is MIT-licensed, so anyone is free to fork it, self-host it, and keep running it on their own terms.",
   },
 ] as const;
 

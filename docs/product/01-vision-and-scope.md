@@ -81,7 +81,7 @@ Becoming a payment processor · payroll tax filing · a full ERP · ads/upsells 
 | Stripe payout reconciliation | ✅ | partial | ❌ | ❌ | ✅ best | ✅ |
 | AI categorization + inbox | ✅ BYO model | ✅ | ✅ | ❌ | ✅ | ✅ |
 | Ask-your-books chat | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Open source | ✅ | ❌ | AGPL (defunct) | AGPL | ❌ | ❌ |
+| Open source | ✅ MIT | ❌ | ✅ (defunct) | ✅ | ❌ | ❌ |
 | Self-hosted, own your data | ✅ | ❌ | hard | ✅ | ❌ | ❌ |
 | Price | **$0 + API pennies** | $38–275/mo | — | $0 | $0–200/mo | $100+/mo |
 
@@ -102,7 +102,7 @@ Becoming a payment processor · payroll tax filing · a full ERP · ads/upsells 
 ## 7. Why We Win
 
 1. **Timing** — Midday is gone, Bench burned trust, QBO raised prices 50–83% in 5 years, and LLM costs collapsed.
-2. **Architecture** — BYO keys means $0 COGS for us and no vendor lock-in for users; AGPL keeps it open.
+2. **Architecture** — BYO keys means $0 COGS for us and no vendor lock-in for users; the MIT license keeps it open and permissive — anyone can fork, self-host, or build on it.
 3. **Opinionation** — we ship the 20% of QBO that 95% of small businesses use, with AI replacing the rest.
 4. **Trust primitive** — double-entry + immutable audit trail means the output is *accountant-grade*, not a toy.
 

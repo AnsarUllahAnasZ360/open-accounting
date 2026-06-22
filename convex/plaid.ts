@@ -4,16 +4,27 @@ import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { action, internalAction, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import { requireAnyWorkspacePermission, requireAnyWorkspaceRole, requireWorkspacePermission } from "./authz";
 import { postLedgerEntryCore } from "./ledger";
+import { decryptSecret, encryptSecret, isSecretEncryptionConfigured, secretEncryptionEnvLabel } from "./secretBox";
+import { matchPlaidInflowToPayout } from "./stripe";
 import { ensureSystemSyncActor } from "./systemActors";
 
-type PlaidEnvironment = "sandbox" | "missing" | "unsupported";
+type PlaidEnvironment = "sandbox" | "development" | "production" | "missing" | "unsupported";
 
 type PlaidEnvInput = {
   PLAID_CLIENT_ID?: string;
   PLAID_SECRET?: string;
   PLAID_ENV?: string;
+};
+
+type PlaidApiCredential = {
+  clientId: string;
+  secret: string;
+  environment: "sandbox" | "development" | "production";
+  redirectUri?: string;
+  webhookUrl?: string;
+  products?: string[];
 };
 
 export type PlaidEnvState = {
@@ -28,6 +39,7 @@ export type PlaidPersonalFinanceCategory = {
   primary: string;
   detailed: string;
   confidence_level?: string | null;
+  version?: string | null;
 };
 
 export type PlaidTransactionLike = {
@@ -77,12 +89,15 @@ type PlaidRouteResult = {
 
 type PlaidSyncTrigger = "cron" | "webhook" | "manual";
 
+const PLAID_SYNC_PERSIST_BATCH_SIZE = 25;
+
 type PlaidSyncResult = {
   stagedCount: number;
   postedCount: number;
   needsReviewCount: number;
   duplicateCount: number;
   plaidPriorCount: number;
+  payoutMatchCount: number;
   removedCount: number;
   removedReversalCount: number;
   nextCursor: string;
@@ -116,6 +131,8 @@ type ClaimPlaidItemSyncResult =
         plaidItemId: string;
         entityId: Id<"entities">;
         accessToken: string;
+        accessTokenCiphertext: string | null;
+        environment: "sandbox" | "development" | "production";
         institutionName: string;
         lastSyncCursor: string | null;
       };
@@ -162,6 +179,38 @@ type SyncItemByPlaidItemIdResult =
       reason?: string;
     };
 
+type PlaidSelectableAccount = {
+  plaidAccountId: string;
+  name: string;
+  mask: string;
+  subtype: string;
+  balanceMinor: number;
+  currency: string;
+  include: boolean;
+  plaidItemId?: string;
+  entityId?: Id<"entities">;
+};
+
+type UpsertPlaidAccountsForItemArgs = {
+  entityId: Id<"entities">;
+  plaidItemId?: string;
+  accounts: PlaidSelectableAccount[];
+  // Optional history start; the opening-balance entry is floored to this date's
+  // first-of-month (E1-T2 / decision Q2).
+  startDate?: string;
+};
+
+type UpsertPlaidAccountsForItemResult = {
+  createdCount: number;
+  updatedCount: number;
+  accounts: Array<{
+    bankAccountId: Id<"bankAccounts">;
+    ledgerAccountId: Id<"ledgerAccounts">;
+    plaidAccountId: string;
+    entityId: Id<"entities">;
+  }>;
+};
+
 const validateEntityAccessRef = makeFunctionReference<
   "query",
   { entityId: Id<"entities"> },
@@ -187,11 +236,18 @@ const syncItemTransactionsInternalRef = makeFunctionReference<
   SyncItemTransactionsInternalArgs,
   PlaidItemSyncResult
 >("plaid:syncItemTransactionsInternal");
-const categorizePendingTransactionsForImportInternalRef = makeFunctionReference<
+const upsertPlaidAccountsForItemInternalRef = makeFunctionReference<
+  "mutation",
+  UpsertPlaidAccountsForItemArgs,
+  UpsertPlaidAccountsForItemResult
+>("plaid:upsertPlaidAccountsForItemInternal");
+// E2-T3: drain the WHOLE needs_review backlog (self-rescheduling) instead of a
+// single min(25) pass, so a large Plaid import does not strand items in review.
+const drainCategorizationBacklogRef = makeFunctionReference<
   "action",
-  { entityId: Id<"entities">; actorUserId: Id<"users">; limit?: number },
+  { entityId: Id<"entities">; actorUserId?: Id<"users">; pass?: number; maxPasses?: number },
   unknown
->("bedrockCategorizer:categorizePendingTransactionsForImportInternal");
+>("bedrockCategorizer:drainCategorizationBacklog");
 const syncItemByPlaidItemIdRef = makeFunctionReference<
   "action",
   SyncItemByPlaidItemIdArgs,
@@ -202,6 +258,7 @@ const plaidPersonalFinanceCategoryValidator = v.object({
   primary: v.string(),
   detailed: v.string(),
   confidence_level: v.optional(v.union(v.string(), v.null())),
+  version: v.optional(v.union(v.string(), v.null())),
 });
 
 const plaidTransactionValidator = v.object({
@@ -218,6 +275,21 @@ const plaidTransactionValidator = v.object({
 });
 
 const plaidSyncTriggerValidator = v.union(v.literal("cron"), v.literal("webhook"), v.literal("manual"));
+
+const plaidSelectableAccountValidator = v.object({
+  plaidAccountId: v.string(),
+  name: v.string(),
+  mask: v.string(),
+  subtype: v.string(),
+  balanceMinor: v.number(),
+  currency: v.string(),
+  include: v.boolean(),
+  plaidItemId: v.optional(v.string()),
+  // E3-T5: a single Plaid login can span multiple businesses (Zikra + Z360).
+  // Each previewed account may carry its own owning entity; when absent the
+  // account falls back to the caller's default entityId (back-compat).
+  entityId: v.optional(v.id("entities")),
+});
 
 export const openBooksSandboxUser = {
   username: "openbooks_user_transactions_dynamic",
@@ -258,21 +330,33 @@ export function normalizePlaidEnvState(env: PlaidEnvInput): PlaidEnvState {
   const hasSecret = present(env.PLAID_SECRET);
   const requestedEnv = env.PLAID_ENV?.trim().toLowerCase();
   const environment: PlaidEnvironment = requestedEnv
-    ? requestedEnv === "sandbox"
-      ? "sandbox"
+    ? requestedEnv === "sandbox" || requestedEnv === "development" || requestedEnv === "production"
+      ? requestedEnv
       : "unsupported"
     : "missing";
   const problems = [];
   if (!hasClientId) problems.push("PLAID_CLIENT_ID is missing.");
   if (!hasSecret) problems.push("PLAID_SECRET is missing.");
-  if (environment === "missing") problems.push("PLAID_ENV must be sandbox.");
-  if (environment === "unsupported") problems.push("Only Plaid sandbox is allowed for this goal.");
+  if (environment === "missing") problems.push("PLAID_ENV must be sandbox, development, or production.");
+  if (environment === "unsupported") problems.push("PLAID_ENV must be sandbox, development, or production.");
+  if (
+    (environment === "development" || environment === "production") &&
+    process.env.OPENBOOKS_REAL_TEST_LIVE_CONNECTORS !== "1"
+  ) {
+    problems.push("Plaid development/production is blocked until OPENBOOKS_REAL_TEST_LIVE_CONNECTORS=1 is set.");
+  }
+  if (
+    (environment === "development" || environment === "production") &&
+    !isSecretEncryptionConfigured()
+  ) {
+    problems.push(`${secretEncryptionEnvLabel()} is required before storing non-sandbox Plaid access tokens.`);
+  }
 
   return {
     environment,
     hasClientId,
     hasSecret,
-    ready: hasClientId && hasSecret && environment === "sandbox",
+    ready: hasClientId && hasSecret && problems.length === 0,
     problems,
   };
 }
@@ -380,6 +464,103 @@ export function mapPlaidTransactionToPipeline(
   };
 }
 
+// ---------------------------------------------------------------------------
+// E2-T8: Plaid personal_finance_category (PFC) -> ledger account weak prior.
+// ---------------------------------------------------------------------------
+// plaidPriorAccountId was wired through the pipeline (auto-posts at the
+// plaid_prior confidence band) but never POPULATED on the live first pass, so
+// the first pass was a guaranteed Inbox miss that only the later LLM batch could
+// rescue. We derive a best-effort weak prior from Plaid's PFC.primary so the
+// first pass can post a confident expense/income immediately when the autonomy
+// allows it, and otherwise records the prior on the needs_review row.
+//
+// The mapping is deterministic and direction-aware: an OUTFLOW maps PFC.primary
+// to an EXPENSE account, an INFLOW maps it to an INCOME account. We never map an
+// inflow to an expense prior (or vice-versa) — that would invert the books. PFC
+// primaries that don't have a clean OpenBooks home (e.g. TRANSFER_IN/OUT,
+// LOAN_PAYMENTS, RENT_AND_UTILITIES which spans rent + utilities) are left
+// UNMAPPED so the item falls through cleanly to the LLM batch stage rather than
+// being forced into a wrong account.
+//
+// PFC primary reference: https://plaid.com/docs/api/products/transactions/#categoriesget
+const PLAID_PFC_EXPENSE_ACCOUNT: Record<string, string> = {
+  // Software / SaaS / cloud-leaning spend.
+  GENERAL_SERVICES: "5500", // Professional Services
+  // Bank/processor fees.
+  BANK_FEES: "6200", // Bank Fees
+  // Marketing-leaning.
+  // (Plaid has no dedicated marketing primary; advertising falls under
+  //  GENERAL_SERVICES, already mapped above.)
+  // Day-to-day operating spend.
+  GENERAL_MERCHANDISE: "6000", // Office & Supplies
+  HOME_IMPROVEMENT: "6000", // Office & Supplies
+  PERSONAL_CARE: "6000", // Office & Supplies
+  // Food.
+  FOOD_AND_DRINK: "5800", // Meals
+  // Travel.
+  TRAVEL: "5900", // Travel
+  TRANSPORTATION: "5900", // Travel
+  // Utilities (rent/utilities share a PFC primary in Plaid; we bias to
+  //  Utilities, which is the more common recurring small-business charge).
+  RENT_AND_UTILITIES: "6100", // Utilities
+  // Insurance / medical.
+  MEDICAL: "5700", // Insurance
+  // Entertainment / general.
+  ENTERTAINMENT: "6999", // Other Expense
+  GOVERNMENT_AND_NON_PROFIT: "6300", // Taxes & Licenses
+};
+
+const PLAID_PFC_INCOME_ACCOUNT: Record<string, string> = {
+  // Wages / business income deposits map to the generic income line; the LLM
+  //  batch refines to Sales/Services later, but a posted income beats an Inbox
+  //  miss for the cash figure.
+  INCOME: "4200", // Other Income
+};
+
+/**
+ * Pure mapping from a Plaid PFC primary + direction to an OpenBooks account
+ * NUMBER, or null when no clean mapping exists. Direction is the sign of the
+ * pipeline amount (>= 0 is an inflow). Exported for unit testing.
+ */
+export function plaidPriorAccountNumber(
+  primary: string | null | undefined,
+  amountMinor: number,
+): string | null {
+  if (!primary) return null;
+  const key = primary.toUpperCase();
+  if (amountMinor >= 0) {
+    return PLAID_PFC_INCOME_ACCOUNT[key] ?? null;
+  }
+  return PLAID_PFC_EXPENSE_ACCOUNT[key] ?? null;
+}
+
+/**
+ * Resolve a PFC weak prior to an actual, live ledger account id on the entity.
+ * Returns null when the PFC has no mapping or the mapped account number is
+ * absent/archived on the entity — leaving plaidPriorAccountId unset so the item
+ * falls through to the LLM batch stage instead of posting to a stale account.
+ */
+async function resolvePlaidPriorAccountId(
+  ctx: MutationCtx,
+  entityId: Id<"entities">,
+  prior: PipelineMappedPlaidTransaction["plaidPrior"],
+  amountMinor: number,
+): Promise<Id<"ledgerAccounts"> | null> {
+  if (!prior) return null;
+  const number = plaidPriorAccountNumber(prior.primary, amountMinor);
+  if (!number) return null;
+  const account = await ctx.db
+    .query("ledgerAccounts")
+    .withIndex("by_entity_and_number", (q) => q.eq("entityId", entityId).eq("number", number))
+    .unique();
+  if (!account || account.archived) return null;
+  // Defend the direction invariant even if the table is edited: an inflow must
+  // never resolve to a non-income prior, an outflow never to a non-expense one.
+  if (amountMinor >= 0 && account.type !== "income") return null;
+  if (amountMinor < 0 && account.type !== "expense") return null;
+  return account._id;
+}
+
 export function buildItemLoginRequiredInboxPayload({
   institutionName,
   itemId,
@@ -393,7 +574,9 @@ export function buildItemLoginRequiredInboxPayload({
   };
 }
 
-function plaidBaseUrl() {
+function plaidBaseUrl(environment = normalizePlaidEnvState(plaidEnvInput()).environment) {
+  if (environment === "production") return "https://production.plaid.com";
+  if (environment === "development") return "https://development.plaid.com";
   return "https://sandbox.plaid.com";
 }
 
@@ -417,7 +600,7 @@ async function requireEntity(ctx: QueryCtx | MutationCtx, entityId: Id<"entities
   if (!entity) {
     throw new Error("OpenBooks entity not found.");
   }
-  await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+  await requireWorkspacePermission(ctx, entity.workspaceId, "connections.manage");
   return entity;
 }
 
@@ -456,19 +639,149 @@ async function nextLedgerAccountNumber(ctx: MutationCtx, entityId: Id<"entities"
   throw new Error("No chart-of-accounts slot is available for this Plaid account.");
 }
 
-export async function callPlaid(path: string, body: Record<string, unknown>) {
-  const response = await fetch(`${plaidBaseUrl()}${path}`, {
+/**
+ * Floor an ISO date (YYYY-MM-DD) to the first day of its month. Used to date the
+ * opening-balance entry at `M-01` so it always predates the oldest imported
+ * transaction (decision Q2). Falls back to the connector's first-of-this-month
+ * when the supplied date is unparseable.
+ */
+export function openingBalanceDate(isoDate?: string): string {
+  const candidate = typeof isoDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : null;
+  if (candidate) {
+    return `${candidate.slice(0, 7)}-01`;
+  }
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
+}
+
+/**
+ * Resolve the entity's Opening Balance Equity account (3900). It is seeded as an
+ * isSystem account in the standard chart (ledger.ts:53), but entities created
+ * before it existed may lack it, so create-if-missing.
+ */
+async function ensureOpeningBalanceEquityAccount(ctx: MutationCtx, entity: Doc<"entities">) {
+  const existing = await ctx.db
+    .query("ledgerAccounts")
+    .withIndex("by_entity_and_number", (q) => q.eq("entityId", entity._id).eq("number", "3900"))
+    .unique();
+  const now = Date.now();
+  if (existing) {
+    if (existing.archived) {
+      await ctx.db.patch(existing._id, { archived: false, updatedAt: now });
+    }
+    return existing;
+  }
+  const accountId = await ctx.db.insert("ledgerAccounts", {
+    entityId: entity._id,
+    name: "Opening Balance Equity",
+    type: "equity",
+    subtype: "opening_balance",
+    number: "3900",
+    currency: entity.currency,
+    isSystem: true,
+    archived: false,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return (await ctx.db.get(accountId))!;
+}
+
+/**
+ * Post the opening journal entry for a freshly-connected bank account
+ * (E1-T2 / RC3). Connecting a real bank previously stored only `balanceMinor`,
+ * so ledger cash and Equity both started at $0. This books a single balanced
+ * entry against the unused 3900 Opening Balance Equity account so the GL starts
+ * at the bank's real position:
+ *
+ *   positive balance -> Dr Bank / Cr 3900
+ *   negative balance (e.g. a credit card) -> Dr 3900 / Cr Bank
+ *
+ * Dated the first day of the month of the connector's earliest activity
+ * (decision Q2), tagged `opening:<plaidAccountId>` for idempotency so a
+ * re-connect / re-sync never double-posts. USD integer minor units only — no
+ * fxRate, no currency conversion (decision Q20; the GL is USD-only). A zero
+ * balance posts nothing. The opening entry is a posted ledger entry, which is
+ * the system-of-record "cleared" state for the line.
+ */
+async function postOpeningBalanceForBankAccount(
+  ctx: MutationCtx,
+  args: {
+    entity: Doc<"entities">;
+    bankAccount: Doc<"bankAccounts">;
+    ledgerAccountId: Id<"ledgerAccounts">;
+    balanceMinor: number;
+    plaidAccountId: string;
+    actorUserId: Id<"users">;
+    startDate?: string;
+  },
+): Promise<{ posted: boolean; entryId: Id<"journalEntries"> | null }> {
+  if (!args.balanceMinor || args.balanceMinor === 0) {
+    return { posted: false, entryId: null };
+  }
+
+  const sourceId = `opening:${args.plaidAccountId}`;
+  // Idempotency: skip if an opening entry for this bank account already exists.
+  const existing = await ctx.db
+    .query("journalEntries")
+    .withIndex("by_entity", (q) => q.eq("entityId", args.entity._id))
+    .filter((q) => q.eq(q.field("sourceId"), sourceId))
+    .first();
+  if (existing) {
+    return { posted: false, entryId: existing._id };
+  }
+
+  const equityAccount = await ensureOpeningBalanceEquityAccount(ctx, args.entity);
+  const magnitude = Math.abs(args.balanceMinor);
+  const isDebitBalance = args.balanceMinor > 0;
+
+  const posted = await postLedgerEntryCore(ctx, {
+    entity: args.entity,
+    userId: args.actorUserId,
+    date: openingBalanceDate(args.startDate),
+    memo: `Opening balance for ${args.bankAccount.name}`,
+    source: "manual",
+    sourceId,
+    auditAction: "system.connect.opening_balance.posted",
+    lines: isDebitBalance
+      ? [
+          { accountId: args.ledgerAccountId, debitMinor: magnitude, creditMinor: 0 },
+          { accountId: equityAccount._id, debitMinor: 0, creditMinor: magnitude },
+        ]
+      : [
+          { accountId: equityAccount._id, debitMinor: magnitude, creditMinor: 0 },
+          { accountId: args.ledgerAccountId, debitMinor: 0, creditMinor: magnitude },
+        ],
+  });
+  return { posted: true, entryId: posted.entryId };
+}
+
+function plaidEnvFromCredential(credential: PlaidApiCredential) {
+  return normalizePlaidEnvState({
+    PLAID_CLIENT_ID: credential.clientId,
+    PLAID_SECRET: credential.secret,
+    PLAID_ENV: credential.environment,
+  });
+}
+
+export async function callPlaid(path: string, body: Record<string, unknown>, credential?: PlaidApiCredential) {
+  const env = credential ? plaidEnvFromCredential(credential) : normalizePlaidEnvState(plaidEnvInput());
+  const credentials = credential
+    ? { client_id: credential.clientId, secret: credential.secret }
+    : plaidCredentials();
+  const response = await fetch(`${plaidBaseUrl(env.environment)}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      ...plaidCredentials(),
+      ...credentials,
       ...body,
     }),
   });
   const payload = (await response.json()) as Record<string, unknown>;
   if (!response.ok) {
     const errorCode = typeof payload.error_code === "string" ? payload.error_code : "PLAID_REQUEST_FAILED";
-    const errorMessage = typeof payload.error_message === "string" ? payload.error_message : "Plaid sandbox request failed.";
+    const errorMessage = typeof payload.error_message === "string" ? payload.error_message : "Plaid request failed.";
     throw new Error(`${errorCode}: ${errorMessage}`);
   }
   return payload;
@@ -494,6 +807,7 @@ function emptyPlaidSyncSummary(nextCursor: string): PlaidSyncResult {
     needsReviewCount: 0,
     duplicateCount: 0,
     plaidPriorCount: 0,
+    payoutMatchCount: 0,
     removedCount: 0,
     removedReversalCount: 0,
     nextCursor,
@@ -521,9 +835,18 @@ function addSyncSummary(total: PlaidSyncResult, next: PlaidSyncResult) {
   total.needsReviewCount += next.needsReviewCount;
   total.duplicateCount += next.duplicateCount;
   total.plaidPriorCount += next.plaidPriorCount;
+  total.payoutMatchCount += next.payoutMatchCount;
   total.removedCount += next.removedCount;
   total.removedReversalCount += next.removedReversalCount;
   total.nextCursor = next.nextCursor || total.nextCursor;
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 async function upsertItemLoginRequiredInbox(
@@ -669,6 +992,13 @@ async function syncPlaidTransactions(
   let needsReviewCount = 0;
   let duplicateCount = 0;
   let plaidPriorCount = 0;
+  let payoutMatchCount = 0;
+  // Resolve a posting actor for any reconcile-only payout match. The matcher
+  // posts through the single ledger path, which needs a userId; the system sync
+  // actor is the right author (this is an automated reconciliation, not a human
+  // edit). Resolved lazily so the fixture path that has no actorUserId still
+  // gets one without changing the income-pipeline author.
+  let payoutMatchActorUserId: Id<"users"> | null = args.actorUserId ?? null;
   for (const transaction of args.transactions) {
     const mapped = mapPlaidTransactionToPipeline(transaction, args.entity.currency);
     if (mapped.plaidPrior) plaidPriorCount += 1;
@@ -679,6 +1009,37 @@ async function syncPlaidTransactions(
         updatedAt: now,
       });
     }
+
+    // E7.1: BEFORE the income pipeline runs, see if this inflow settles an open
+    // Stripe payout. A match posts a reconcile-only transfer (Dr Bank / Cr
+    // Payouts In-Transit) and skips categorization entirely, so the deposit is
+    // never recognized as income (the Stripe side already booked the revenue).
+    if (mapped.amountMinor > 0 && mapped.status === "posted") {
+      if (!payoutMatchActorUserId) {
+        payoutMatchActorUserId = await ensureSystemSyncActor(ctx, args.entity.workspaceId);
+      }
+      const matchResult = await matchPlaidInflowToPayout(ctx, {
+        entity: args.entity,
+        bankAccount: args.bankAccount,
+        actorUserId: payoutMatchActorUserId,
+        inflow: {
+          date: mapped.date,
+          amountMinor: mapped.amountMinor,
+          currency: mapped.currency,
+          merchant: mapped.merchant,
+          rawDescription: mapped.rawDescription,
+          status: mapped.status,
+          externalId: mapped.externalId,
+        },
+        auditAction: "system.sync.stripe.payout.reconciled",
+      });
+      if (matchResult.matched) {
+        payoutMatchCount += 1;
+        postedCount += 1;
+        continue;
+      }
+    }
+
     const routeArgs = {
       entityId: args.entity._id,
       bankAccountId: args.bankAccount._id,
@@ -702,9 +1063,26 @@ async function syncPlaidTransactions(
       source: "bank";
       externalId: string;
       categoryAccountId?: Id<"ledgerAccounts">;
+      plaidPriorAccountId?: Id<"ledgerAccounts">;
     };
     if (carryover?.categoryAccountId) {
       routeArgs.categoryAccountId = carryover.categoryAccountId as Id<"ledgerAccounts">;
+    }
+    // E2-T8: derive a weak prior from Plaid's PFC and set it on the FIRST pass so
+    // the pipeline's plaid_prior stage can post (under autopilot) instead of
+    // bouncing every live transaction to the Inbox. A carryover category already
+    // posts at full confidence, so we only attach the weak prior when there is no
+    // carryover to defer to.
+    if (!routeArgs.categoryAccountId) {
+      const priorAccountId = await resolvePlaidPriorAccountId(
+        ctx,
+        args.entity._id,
+        mapped.plaidPrior,
+        mapped.amountMinor,
+      );
+      if (priorAccountId) {
+        routeArgs.plaidPriorAccountId = priorAccountId;
+      }
     }
     const result: PlaidRouteResult = args.actorUserId
       ? await ctx.runMutation(internal.pipeline.routeTransactionInternal, {
@@ -730,6 +1108,7 @@ async function syncPlaidTransactions(
     needsReviewCount,
     duplicateCount,
     plaidPriorCount,
+    payoutMatchCount,
     removedCount,
     removedReversalCount,
     nextCursor,
@@ -768,6 +1147,7 @@ export const listConnectionState = query({
       .query("plaidItems")
       .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
       .take(20);
+    const visiblePlaidItems = plaidItems.filter((item) => item.status !== "disconnected");
     const transactions = await ctx.db
       .query("transactions")
       .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
@@ -777,6 +1157,20 @@ export const listConnectionState = query({
       .query("inboxItems")
       .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
       .take(100);
+    const savedCredential = await ctx.db
+      .query("connectionCredentials")
+      .withIndex("by_workspace_and_provider", (q) => q.eq("workspaceId", entity.workspaceId).eq("provider", "plaid"))
+      .take(50);
+    const activeCredential = savedCredential
+      .filter((credential) => credential.status === "active")
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    const plaidItemIds = new Set(visiblePlaidItems.map((item) => item.plaidItemId));
+    const plaidBankAccounts = bankAccounts.filter(
+      (account) =>
+        account.plaidItemId &&
+        account.plaidItemId !== "openbooks-sandbox-fixture" &&
+        plaidItemIds.has(account.plaidItemId),
+    );
 
     return {
       entity: {
@@ -784,8 +1178,14 @@ export const listConnectionState = query({
         name: entity.name,
         currency: entity.currency,
       },
-      env: normalizePlaidEnvState(plaidEnvInput()),
-      accounts: bankAccounts.map((account) => ({
+      env: activeCredential
+        ? normalizePlaidEnvState({
+            PLAID_CLIENT_ID: "saved",
+            PLAID_SECRET: "saved",
+            PLAID_ENV: activeCredential.mode,
+          })
+        : normalizePlaidEnvState(plaidEnvInput()),
+      accounts: plaidBankAccounts.map((account) => ({
         id: account._id,
         name: account.name,
         mask: account.mask,
@@ -797,7 +1197,7 @@ export const listConnectionState = query({
         lastSyncCursor: account.lastSyncCursor ?? null,
         lastSyncedAt: account.lastSyncedAt ?? null,
       })),
-      items: plaidItems.map((item) => ({
+      items: visiblePlaidItems.map((item) => ({
         plaidItemId: item.plaidItemId,
         institutionName: item.institutionName ?? null,
         status: item.status,
@@ -830,15 +1230,57 @@ export const listConnectionState = query({
   },
 });
 
+async function upsertPlaidFinancialConnection(
+  ctx: MutationCtx,
+  args: {
+    entity: Doc<"entities">;
+    plaidItemId: string;
+    institutionName?: string;
+    environment: "sandbox" | "development" | "production";
+  },
+) {
+  const now = Date.now();
+  const displayName = args.institutionName?.trim() || "Connected bank";
+  const existing = await ctx.db
+    .query("financialConnections")
+    .withIndex("by_external", (q) => q.eq("provider", "plaid").eq("externalId", args.plaidItemId))
+    .first();
+  const patch = {
+    workspaceId: args.entity.workspaceId,
+    entityId: args.entity._id,
+    provider: "plaid" as const,
+    mode: args.environment,
+    displayName,
+    externalId: args.plaidItemId,
+    status: "active" as const,
+    webhookStatus: "unknown" as const,
+    updatedAt: now,
+  };
+  if (existing) {
+    await ctx.db.patch(existing._id, patch);
+    return existing._id;
+  }
+  return await ctx.db.insert("financialConnections", {
+    ...patch,
+    createdAt: now,
+  });
+}
+
 export const persistPlaidItem = internalMutation({
   args: {
     entityId: v.id("entities"),
     plaidItemId: v.string(),
-    accessToken: v.string(),
+    accessToken: v.optional(v.string()),
+    accessTokenCiphertext: v.optional(v.string()),
     institutionName: v.optional(v.string()),
+    environment: v.optional(v.union(v.literal("sandbox"), v.literal("development"), v.literal("production"))),
   },
   handler: async (ctx, args) => {
-    await requireEntity(ctx, args.entityId);
+    const entity = await requireEntity(ctx, args.entityId);
+    if (!args.accessToken && !args.accessTokenCiphertext) {
+      throw new Error("Plaid token persistence requires a token or ciphertext.");
+    }
+    const environment = args.environment ?? "sandbox";
     const existing = await ctx.db
       .query("plaidItems")
       .withIndex("by_item", (q) => q.eq("plaidItemId", args.plaidItemId))
@@ -847,9 +1289,10 @@ export const persistPlaidItem = internalMutation({
     const row = {
       entityId: args.entityId,
       plaidItemId: args.plaidItemId,
-      accessToken: args.accessToken,
+      ...(args.accessToken ? { accessToken: args.accessToken } : {}),
+      ...(args.accessTokenCiphertext ? { accessTokenCiphertext: args.accessTokenCiphertext } : {}),
       ...(args.institutionName ? { institutionName: args.institutionName } : {}),
-      environment: "sandbox" as const,
+      environment,
       status: "active" as const,
       updatedAt: now,
     };
@@ -867,11 +1310,23 @@ export const persistPlaidItem = internalMutation({
         ...(existing.lastWebhookCode ? { lastWebhookCode: existing.lastWebhookCode } : {}),
         createdAt: existing.createdAt,
       });
+      await upsertPlaidFinancialConnection(ctx, {
+        entity,
+        plaidItemId: args.plaidItemId,
+        institutionName: args.institutionName,
+        environment,
+      });
       return { plaidItemRecordId: existing._id, status: "updated" as const };
     }
     const plaidItemRecordId = await ctx.db.insert("plaidItems", {
       ...row,
       createdAt: now,
+    });
+    await upsertPlaidFinancialConnection(ctx, {
+      entity,
+      plaidItemId: args.plaidItemId,
+      institutionName: args.institutionName,
+      environment,
     });
     return { plaidItemRecordId, status: "created" as const };
   },
@@ -931,7 +1386,9 @@ export const claimPlaidItemSync = internalMutation({
       item: {
         plaidItemId: item.plaidItemId,
         entityId: item.entityId,
-        accessToken: item.accessToken,
+        accessToken: item.accessToken ?? "",
+        accessTokenCiphertext: item.accessTokenCiphertext ?? null,
+        environment: item.environment,
         institutionName: item.institutionName ?? "Plaid institution",
         lastSyncCursor: item.lastSyncCursor ?? null,
       },
@@ -957,8 +1414,22 @@ export const releasePlaidItemSync = internalMutation({
     await ctx.db.patch(item._id, {
       status: args.status,
       syncLockUntil: undefined,
+      ...(args.institutionName?.trim() ? { institutionName: args.institutionName.trim() } : {}),
       updatedAt: now,
     });
+
+    if (args.institutionName?.trim()) {
+      const connection = await ctx.db
+        .query("financialConnections")
+        .withIndex("by_external", (q) => q.eq("provider", "plaid").eq("externalId", item.plaidItemId))
+        .first();
+      if (connection) {
+        await ctx.db.patch(connection._id, {
+          displayName: args.institutionName.trim(),
+          updatedAt: now,
+        });
+      }
+    }
 
     if (args.itemLoginRequired) {
       await upsertItemLoginRequiredInbox(ctx, {
@@ -1067,10 +1538,14 @@ export const syncItemTransactionsInternal = internalMutation({
     });
 
     if (summary.needsReviewCount > 0) {
-      await ctx.scheduler.runAfter(0, categorizePendingTransactionsForImportInternalRef, {
+      // E2-T3: kick off the self-rescheduling drainer (pass 0). It processes a
+      // bounded batch per pass and re-enqueues itself until the queue is empty
+      // or the maxPasses ceiling is hit — no item is left unattempted because of
+      // the old single-pass cap.
+      await ctx.scheduler.runAfter(0, drainCategorizationBacklogRef, {
         entityId: entity._id,
         actorUserId,
-        limit: Math.min(25, summary.needsReviewCount),
+        pass: 0,
       });
     }
 
@@ -1103,7 +1578,10 @@ export const syncItemByPlaidItemId = internalAction({
       };
     }
 
-    const env = normalizePlaidEnvState(plaidEnvInput());
+    const credential = await ctx.runAction(internal.connections.resolvePlaidCredentialForEntity, {
+      entityId: claim.item.entityId,
+    }) as PlaidApiCredential | null;
+    const env = credential ? plaidEnvFromCredential(credential) : normalizePlaidEnvState(plaidEnvInput());
     if (!env.ready) {
       await ctx.runMutation(releasePlaidItemSyncRef, {
         plaidItemId: args.plaidItemId,
@@ -1118,20 +1596,34 @@ export const syncItemByPlaidItemId = internalAction({
     }
 
     try {
+      const accessToken = claim.item.accessTokenCiphertext
+        ? await decryptSecret(claim.item.accessTokenCiphertext, "Plaid access tokens")
+        : claim.item.accessToken;
+      if (!accessToken) {
+        throw new Error("PLAID_ACCESS_TOKEN_MISSING");
+      }
       let cursor = claim.item.lastSyncCursor ?? undefined;
       let hasMore = true;
       let pages = 0;
+      const maxPages = 1000;
       const transactions: PlaidTransactionLike[] = [];
       const removedTransactionIds: string[] = [];
 
-      while (hasMore && pages < 4) {
+      while (hasMore) {
+        if (pages >= maxPages) {
+          throw new Error("PLAID_SYNC_PAGE_LIMIT_EXCEEDED");
+        }
         const payload = await callPlaid("/transactions/sync", {
-          access_token: claim.item.accessToken,
+          access_token: accessToken,
           ...(cursor ? { cursor } : {}),
-          count: 100,
-        });
-        const added = Array.isArray(payload.added) ? payload.added as PlaidTransactionLike[] : [];
-        const modified = Array.isArray(payload.modified) ? payload.modified as PlaidTransactionLike[] : [];
+          count: 500,
+        }, credential ?? undefined);
+        const added = Array.isArray(payload.added)
+          ? payload.added.map(normalizePlaidSyncTransaction).filter((transaction): transaction is PlaidTransactionLike => Boolean(transaction))
+          : [];
+        const modified = Array.isArray(payload.modified)
+          ? payload.modified.map(normalizePlaidSyncTransaction).filter((transaction): transaction is PlaidTransactionLike => Boolean(transaction))
+          : [];
         const removed = Array.isArray(payload.removed)
           ? payload.removed
             .map((transaction) =>
@@ -1148,14 +1640,39 @@ export const syncItemByPlaidItemId = internalAction({
         pages += 1;
       }
 
-      return await ctx.runMutation(syncItemTransactionsInternalRef, {
-        plaidItemId: args.plaidItemId,
-        transactions,
-        removedTransactionIds,
-        nextCursor: cursor ?? "",
+      const finalCursor = cursor ?? "";
+      const previousCursor = claim.item.lastSyncCursor ?? "";
+      const transactionBatches = chunkArray(transactions, PLAID_SYNC_PERSIST_BATCH_SIZE);
+      const removedBatches = chunkArray(removedTransactionIds, PLAID_SYNC_PERSIST_BATCH_SIZE);
+      const batchCount = Math.max(transactionBatches.length, removedBatches.length, 1);
+      const summary = emptyPlaidSyncSummary(finalCursor);
+      let unmatchedAccountCount = 0;
+
+      for (let index = 0; index < batchCount; index += 1) {
+        const finalBatch = index === batchCount - 1;
+        const result = await ctx.runMutation(syncItemTransactionsInternalRef, {
+          plaidItemId: args.plaidItemId,
+          transactions: transactionBatches[index] ?? [],
+          removedTransactionIds: removedBatches[index] ?? [],
+          nextCursor: finalBatch ? finalCursor : previousCursor,
+          trigger: args.trigger,
+          ...(args.webhookCode && finalBatch ? { webhookCode: args.webhookCode } : {}),
+        });
+        if (result.status !== "synced") {
+          return result;
+        }
+        unmatchedAccountCount += result.unmatchedAccountCount;
+        addSyncSummary(summary, result);
+      }
+
+      return {
+        status: "synced" as const,
+        itemId: args.plaidItemId,
         trigger: args.trigger,
-        ...(args.webhookCode ? { webhookCode: args.webhookCode } : {}),
-      });
+        unmatchedAccountCount,
+        ...summary,
+        nextCursor: finalCursor,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : "PLAID_SYNC_FAILED";
       const itemLoginRequired = message.includes("ITEM_LOGIN_REQUIRED");
@@ -1214,8 +1731,11 @@ export const createLinkToken = action({
     clientName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.runQuery(validateEntityAccessRef, { entityId: args.entityId });
-    const env = normalizePlaidEnvState(plaidEnvInput());
+    const entity = await ctx.runQuery(validateEntityAccessRef, { entityId: args.entityId });
+    const credential = await ctx.runAction(internal.connections.resolvePlaidCredentialForEntity, {
+      entityId: args.entityId,
+    }) as PlaidApiCredential | null;
+    const env = credential ? plaidEnvFromCredential(credential) : normalizePlaidEnvState(plaidEnvInput());
     if (!env.ready) {
       return {
         mode: "fixture" as const,
@@ -1226,6 +1746,10 @@ export const createLinkToken = action({
 
     let payload: Record<string, unknown>;
     try {
+      const convexSite = (process.env.CONVEX_SITE_URL || "").replace(/\/+$/, "");
+      const webhookUrl =
+        credential?.webhookUrl ?? process.env.PLAID_WEBHOOK_URL ?? (convexSite ? `${convexSite}/plaid/webhook` : undefined);
+      const redirectUri = credential?.redirectUri ?? process.env.PLAID_OAUTH_REDIRECT_URI;
       payload = await callPlaid("/link/token/create", {
         client_name: args.clientName ?? "OpenBooks",
         country_codes: ["US"],
@@ -1234,11 +1758,16 @@ export const createLinkToken = action({
         user: {
           client_user_id: `openbooks:${args.entityId}`,
         },
+        ...(webhookUrl ? { webhook: webhookUrl } : {}),
+        ...(redirectUri ? { redirect_uri: redirectUri } : {}),
         transactions: {
           days_requested: 730,
         },
-      });
+      }, credential ?? undefined);
     } catch (error) {
+      if (credential) {
+        throw new Error(error instanceof Error ? error.message : "PLAID_LINK_TOKEN_FAILED");
+      }
       return {
         mode: "fixture" as const,
         linkToken: "fixture-plaid-link-token",
@@ -1247,10 +1776,152 @@ export const createLinkToken = action({
     }
 
     return {
-      mode: "sandbox" as const,
+      mode: env.environment,
       linkToken: String(payload.link_token),
       env,
     };
+  },
+});
+
+// Toggle whether a single bank account is included in transaction sync. The
+// account stays linked and its posted history is untouched; sync simply skips
+// it while disabled.
+export const setBankAccountSync = mutation({
+  args: { bankAccountId: v.id("bankAccounts"), includeInSync: v.boolean() },
+  handler: async (ctx, args): Promise<{ bankAccountId: Id<"bankAccounts">; includeInSync: boolean }> => {
+    const account = await ctx.db.get(args.bankAccountId);
+    if (!account) throw new Error("Bank account not found.");
+    const entity = await ctx.db.get(account.entityId);
+    if (!entity) throw new Error("OpenBooks entity not found.");
+    await requireWorkspacePermission(ctx, entity.workspaceId, "connections.manage");
+    await ctx.db.patch(account._id, { includeInSync: args.includeInSync, updatedAt: Date.now() });
+    return { bankAccountId: account._id, includeInSync: args.includeInSync };
+  },
+});
+
+export const getPlaidItemForDisconnect = internalQuery({
+  args: { entityId: v.id("entities"), plaidItemId: v.string() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ accessToken: string | null; accessTokenCiphertext: string | null } | null> => {
+    const item = await ctx.db
+      .query("plaidItems")
+      .withIndex("by_item", (q) => q.eq("plaidItemId", args.plaidItemId))
+      .unique();
+    if (!item || item.entityId !== args.entityId) return null;
+    return { accessToken: item.accessToken ?? null, accessTokenCiphertext: item.accessTokenCiphertext ?? null };
+  },
+});
+
+// Ledger-safe disconnect: marks the Plaid item disconnected and turns sync off
+// for its bank accounts. Posted journal entries and transactions are immutable
+// and are never deleted — the books keep their history.
+export const markPlaidItemDisconnected = internalMutation({
+  args: { entityId: v.id("entities"), plaidItemId: v.string() },
+  handler: async (ctx, args): Promise<{ accountsDisabled: number }> => {
+    const now = Date.now();
+    const item = await ctx.db
+      .query("plaidItems")
+      .withIndex("by_item", (q) => q.eq("plaidItemId", args.plaidItemId))
+      .unique();
+    if (item && item.entityId === args.entityId) {
+      await ctx.db.patch(item._id, { status: "disconnected", syncLockUntil: undefined, updatedAt: now });
+    }
+    const accounts = await ctx.db
+      .query("bankAccounts")
+      .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+      .take(200);
+    let accountsDisabled = 0;
+    for (const account of accounts) {
+      if (account.plaidItemId === args.plaidItemId && account.includeInSync) {
+        await ctx.db.patch(account._id, { includeInSync: false, updatedAt: now });
+        accountsDisabled += 1;
+      }
+    }
+    const connection = await ctx.db
+      .query("financialConnections")
+      .withIndex("by_external", (q) => q.eq("provider", "plaid").eq("externalId", args.plaidItemId))
+      .first();
+    if (connection) {
+      await ctx.db.patch(connection._id, { status: "disconnected", updatedAt: now });
+    }
+    return { accountsDisabled };
+  },
+});
+
+export const disconnectPlaidItem = action({
+  args: { entityId: v.id("entities"), plaidItemId: v.string() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ status: "disconnected"; plaidItemId: string; accountsDisabled: number; revoked: boolean }> => {
+    await ctx.runQuery(validateEntityAccessRef, { entityId: args.entityId });
+    const item = await ctx.runQuery(internal.plaid.getPlaidItemForDisconnect, {
+      entityId: args.entityId,
+      plaidItemId: args.plaidItemId,
+    });
+    let revoked = false;
+    if (item && (item.accessTokenCiphertext || item.accessToken)) {
+      try {
+        const credential = (await ctx.runAction(internal.connections.resolvePlaidCredentialForEntity, {
+          entityId: args.entityId,
+        })) as PlaidApiCredential | null;
+        const accessToken = item.accessTokenCiphertext
+          ? await decryptSecret(item.accessTokenCiphertext, "Plaid access tokens")
+          : item.accessToken;
+        if (accessToken) {
+          await callPlaid("/item/remove", { access_token: accessToken }, credential ?? undefined);
+          revoked = true;
+        }
+      } catch {
+        // Best-effort token revocation at Plaid. The local disconnect below is
+        // the source of truth and always runs.
+      }
+    }
+    const result = await ctx.runMutation(internal.plaid.markPlaidItemDisconnected, {
+      entityId: args.entityId,
+      plaidItemId: args.plaidItemId,
+    });
+    return {
+      status: "disconnected" as const,
+      plaidItemId: args.plaidItemId,
+      accountsDisabled: result.accountsDisabled,
+      revoked,
+    };
+  },
+});
+
+// Lightweight credential check for the Plaid setup panel. Uses the workspace
+// Plaid app (or env credentials) to call /institutions/get — validates the
+// Client ID/secret without creating a Link token or linking a bank.
+export const testWorkspacePlaidApp = action({
+  args: {},
+  handler: async (ctx): Promise<{ ok: boolean; environment?: string; message: string }> => {
+    const authz: { workspaceId: Id<"workspaces">; anchorEntityId: Id<"entities"> | null } = await ctx.runQuery(
+      internal.connections.authorizeWorkspaceForConnections,
+      {},
+    );
+    const credential = authz.anchorEntityId
+      ? ((await ctx.runAction(internal.connections.resolvePlaidCredentialForEntity, {
+          entityId: authz.anchorEntityId,
+        })) as PlaidApiCredential | null)
+      : null;
+    const env = credential ? plaidEnvFromCredential(credential) : normalizePlaidEnvState(plaidEnvInput());
+    if (!env.ready) {
+      return {
+        ok: false,
+        message: credential
+          ? env.problems[0] ?? "Plaid app is not ready."
+          : "No Plaid app saved yet. Add your Client ID and secret first.",
+      };
+    }
+    try {
+      await callPlaid("/institutions/get", { count: 1, offset: 0, country_codes: ["US"] }, credential ?? undefined);
+      return { ok: true, environment: env.environment, message: "Plaid credentials are valid." };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : "Plaid test failed." };
+    }
   },
 });
 
@@ -1260,9 +1931,9 @@ export const createSandboxPublicToken = action({
     institutionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.runQuery(validateEntityAccessRef, { entityId: args.entityId });
+    const entity = await ctx.runQuery(validateEntityAccessRef, { entityId: args.entityId });
     const env = normalizePlaidEnvState(plaidEnvInput());
-    if (!env.ready) {
+    if (!env.ready || env.environment !== "sandbox") {
       return {
         mode: "fixture" as const,
         publicToken: "fixture-sandbox-public-token",
@@ -1293,10 +1964,18 @@ export const exchangePublicTokenAndPreviewAccounts = action({
   args: {
     entityId: v.id("entities"),
     publicToken: v.string(),
+    // E3-T5: when true, exchange + persist the Plaid Item but return the
+    // previewed accounts WITHOUT creating bank accounts, so the caller can map
+    // each account to a business and confirm via assignPlaidAccountsToBusinesses.
+    // Defaults to false (auto-persist all accounts to entityId — back-compat).
+    previewOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const entity = await ctx.runQuery(validateEntityAccessRef, { entityId: args.entityId });
-    const env = normalizePlaidEnvState(plaidEnvInput());
+    const credential = await ctx.runAction(internal.connections.resolvePlaidCredentialForEntity, {
+      entityId: args.entityId,
+    }) as PlaidApiCredential | null;
+    const env = credential ? plaidEnvFromCredential(credential) : normalizePlaidEnvState(plaidEnvInput());
     if (!env.ready || args.publicToken.startsWith("fixture-")) {
       return {
         mode: "fixture" as const,
@@ -1304,25 +1983,49 @@ export const exchangePublicTokenAndPreviewAccounts = action({
         accounts: fixturePlaidAccounts(entity.currency),
       };
     }
+    if (
+      env.environment !== "sandbox" &&
+      env.environment !== "development" &&
+      env.environment !== "production"
+    ) {
+      return {
+        mode: "fixture" as const,
+        accessTokenPersisted: false,
+        persistenceBlocker: "Plaid environment is not ready; fixture mode is active.",
+        accounts: fixturePlaidAccounts(entity.currency),
+      };
+    }
+    const plaidEnvironment = env.environment;
 
     let exchanged: Record<string, unknown>;
     let accountsPayload: Record<string, unknown>;
     let plaidItemId: string;
+    let institutionName: string | undefined;
     try {
       exchanged = await callPlaid("/item/public_token/exchange", {
         public_token: args.publicToken,
-      });
+      }, credential ?? undefined);
       const accessToken = String(exchanged.access_token);
       plaidItemId = typeof exchanged.item_id === "string" ? exchanged.item_id : `sandbox-item:${args.entityId}`;
       accountsPayload = await callPlaid("/accounts/get", {
         access_token: accessToken,
-      });
+      }, credential ?? undefined);
+      institutionName = institutionNameFromPlaidPayload(accountsPayload);
+      const accessTokenCiphertext = await encryptSecret(accessToken);
+      if (!accessTokenCiphertext) {
+        throw new Error(`${secretEncryptionEnvLabel()} is required before storing Plaid access tokens.`);
+      }
       await ctx.runMutation(internal.plaid.persistPlaidItem, {
         entityId: args.entityId,
         plaidItemId,
-        accessToken,
+        accessTokenCiphertext,
+        ...(institutionName ? { institutionName } : {}),
+        environment: plaidEnvironment,
       });
-    } catch {
+    } catch (error) {
+      if (credential) {
+        throw new Error(error instanceof Error ? error.message : "PLAID_PUBLIC_TOKEN_EXCHANGE_FAILED");
+      }
       return {
         mode: "fixture" as const,
         accessTokenPersisted: false,
@@ -1334,93 +2037,295 @@ export const exchangePublicTokenAndPreviewAccounts = action({
       ? accountsPayload.accounts.map((account) => normalizePlaidAccount(account, entity.currency, plaidItemId))
       : [];
 
-    return {
-      mode: "sandbox" as const,
-      accessTokenPersisted: true,
+    // E3-T5 preview-then-assign: persist the Item but defer bank-account
+    // creation to assignPlaidAccountsToBusinesses so the owner can map each
+    // account to a business first.
+    if (args.previewOnly) {
+      return {
+        mode: plaidEnvironment,
+        accessTokenPersisted: true,
+        previewOnly: true as const,
+        plaidItemId,
+        accounts,
+        accountsCreated: 0,
+        accountsUpdated: 0,
+        institutionName,
+      };
+    }
+
+    const accountResult = await ctx.runMutation(upsertPlaidAccountsForItemInternalRef, {
+      entityId: args.entityId,
+      plaidItemId,
       accounts,
+    });
+
+    return {
+      mode: plaidEnvironment,
+      accessTokenPersisted: true,
+      plaidItemId,
+      accounts,
+      accountsCreated: accountResult.createdCount,
+      accountsUpdated: accountResult.updatedCount,
+      institutionName,
     };
+  },
+});
+
+export const refreshPlaidItemAccounts = action({
+  args: {
+    entityId: v.id("entities"),
+    plaidItemId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const entity = await ctx.runQuery(validateEntityAccessRef, { entityId: args.entityId });
+    const claim = await ctx.runMutation(claimPlaidItemSyncRef, {
+      entityId: args.entityId,
+      plaidItemId: args.plaidItemId,
+      trigger: "manual",
+    });
+    if (claim.status !== "claimed" || !claim.item) {
+      return {
+        status: claim.status,
+        reason: claim.reason ?? "Plaid item is not available for account refresh.",
+        accountsCreated: 0,
+        accountsUpdated: 0,
+        accounts: [],
+      };
+    }
+
+    let shouldRelink = false;
+    let institutionName = claim.item.institutionName;
+    try {
+      const credential = await ctx.runAction(internal.connections.resolvePlaidCredentialForEntity, {
+        entityId: claim.item.entityId,
+      }) as PlaidApiCredential | null;
+      const accessToken = await decryptPlaidAccessToken({
+        accessToken: claim.item.accessToken,
+        accessTokenCiphertext: claim.item.accessTokenCiphertext,
+      });
+      const accountsPayload = await callPlaid("/accounts/get", {
+        access_token: accessToken,
+      }, credential ?? undefined);
+      institutionName = institutionNameFromPlaidPayload(accountsPayload) ?? institutionName;
+      const accounts = Array.isArray(accountsPayload.accounts)
+        ? accountsPayload.accounts.map((account) => normalizePlaidAccount(account, entity.currency, args.plaidItemId))
+        : [];
+      const result = await ctx.runMutation(upsertPlaidAccountsForItemInternalRef, {
+        entityId: args.entityId,
+        plaidItemId: args.plaidItemId,
+        accounts,
+      });
+      await ctx.runMutation(releasePlaidItemSyncRef, {
+        plaidItemId: args.plaidItemId,
+        status: "active",
+        institutionName,
+      });
+      return {
+        status: "refreshed" as const,
+        accountsCreated: result.createdCount,
+        accountsUpdated: result.updatedCount,
+        accounts: result.accounts,
+        institutionName,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "PLAID_ACCOUNT_REFRESH_FAILED";
+      shouldRelink = /ITEM_LOGIN_REQUIRED|INVALID_ACCESS_TOKEN|NO_ACCOUNTS/i.test(message);
+      await ctx.runMutation(releasePlaidItemSyncRef, {
+        plaidItemId: args.plaidItemId,
+        status: shouldRelink ? "relink_required" : "active",
+        institutionName,
+        itemLoginRequired: shouldRelink,
+      });
+      throw new Error(message);
+    }
+  },
+});
+
+async function upsertPlaidAccountsForItemCore(
+  ctx: MutationCtx,
+  args: UpsertPlaidAccountsForItemArgs,
+): Promise<UpsertPlaidAccountsForItemResult> {
+  // The caller's default entity. Every account routes here unless it carries its
+  // own `entityId` assignment (E3-T5: a single Plaid login can span LLCs).
+  const defaultEntity = await requireEntity(ctx, args.entityId);
+  const now = Date.now();
+  const accounts = [];
+  let createdCount = 0;
+  let updatedCount = 0;
+
+  // Resolve + authorize each assignment target once, validating every entity is
+  // in the SAME workspace as the default entity and that the caller can manage
+  // its connections. This caches both the entity doc and its existing bank
+  // accounts so we keep per-entity dedupe.
+  const entityCache = new Map<Id<"entities">, Doc<"entities">>([[defaultEntity._id, defaultEntity]]);
+  const existingByEntity = new Map<Id<"entities">, Doc<"bankAccounts">[]>();
+  async function resolveTargetEntity(entityId: Id<"entities">): Promise<Doc<"entities">> {
+    const cached = entityCache.get(entityId);
+    if (cached) return cached;
+    const target = await requireEntity(ctx, entityId);
+    if (target.workspaceId !== defaultEntity.workspaceId) {
+      throw new Error("Plaid accounts can only be assigned to businesses in the same workspace.");
+    }
+    entityCache.set(entityId, target);
+    return target;
+  }
+  async function existingForEntity(entityId: Id<"entities">): Promise<Doc<"bankAccounts">[]> {
+    const cached = existingByEntity.get(entityId);
+    if (cached) return cached;
+    const rows = await ctx.db
+      .query("bankAccounts")
+      .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+      .take(500);
+    existingByEntity.set(entityId, rows);
+    return rows;
+  }
+
+  for (const account of args.accounts.filter((candidate) => candidate.include)) {
+    const targetEntity = account.entityId
+      ? await resolveTargetEntity(account.entityId)
+      : defaultEntity;
+    const kind = accountKind(account.subtype);
+    const plaidItemId = account.plaidItemId || args.plaidItemId || "openbooks-sandbox-fixture";
+    const existingBankAccounts = await existingForEntity(targetEntity._id);
+    const existing = existingBankAccounts.find(
+      (bankAccount) =>
+        bankAccount.plaidAccountId === account.plaidAccountId ||
+        (!bankAccount.plaidAccountId &&
+          bankAccount.name === account.name &&
+          bankAccount.mask === account.mask &&
+          bankAccount.kind === kind),
+    );
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        plaidAccountId: account.plaidAccountId,
+        plaidItemId,
+        includeInSync: true,
+        balanceMinor: account.balanceMinor,
+        updatedAt: now,
+      });
+      accounts.push({
+        bankAccountId: existing._id,
+        ledgerAccountId: existing.ledgerAccountId,
+        plaidAccountId: account.plaidAccountId,
+        entityId: targetEntity._id,
+      });
+      // Re-connect / re-sync of a known account: post the opening balance only
+      // if it was never posted before (idempotent by sourceId).
+      await postOpeningBalanceForBankAccount(ctx, {
+        entity: targetEntity,
+        bankAccount: existing,
+        ledgerAccountId: existing.ledgerAccountId,
+        balanceMinor: account.balanceMinor,
+        plaidAccountId: account.plaidAccountId,
+        actorUserId: await ensureSystemSyncActor(ctx, targetEntity.workspaceId),
+        startDate: args.startDate,
+      });
+      updatedCount += 1;
+      continue;
+    }
+    const ledgerAccountId = await ctx.db.insert("ledgerAccounts", {
+      entityId: targetEntity._id,
+      name: account.name,
+      type: accountType(kind),
+      subtype: accountSubtype(kind),
+      number: await nextLedgerAccountNumber(ctx, targetEntity._id, kind),
+      currency: account.currency || targetEntity.currency,
+      isSystem: false,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const bankAccountId = await ctx.db.insert("bankAccounts", {
+      entityId: targetEntity._id,
+      ledgerAccountId,
+      name: account.name,
+      mask: account.mask,
+      kind,
+      balanceMinor: account.balanceMinor,
+      includeInSync: true,
+      plaidAccountId: account.plaidAccountId,
+      plaidItemId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    // Newly tracked accounts cache so a second account assigned to the same
+    // entity in this same call dedupes correctly.
+    existingByEntity.get(targetEntity._id)?.push((await ctx.db.get(bankAccountId))!);
+    // E1-T2: book the opening balance (Dr Bank / Cr 3900) so the GL starts at
+    // the bank's real position instead of $0.
+    await postOpeningBalanceForBankAccount(ctx, {
+      entity: targetEntity,
+      bankAccount: (await ctx.db.get(bankAccountId))!,
+      ledgerAccountId,
+      balanceMinor: account.balanceMinor,
+      plaidAccountId: account.plaidAccountId,
+      actorUserId: await ensureSystemSyncActor(ctx, targetEntity.workspaceId),
+      startDate: args.startDate,
+    });
+    accounts.push({
+      bankAccountId,
+      ledgerAccountId,
+      plaidAccountId: account.plaidAccountId,
+      entityId: targetEntity._id,
+    });
+    createdCount += 1;
+  }
+
+  return { createdCount, updatedCount, accounts };
+}
+
+export const upsertPlaidAccountsForItemInternal = internalMutation({
+  args: {
+    entityId: v.id("entities"),
+    plaidItemId: v.optional(v.string()),
+    accounts: v.array(plaidSelectableAccountValidator),
+    startDate: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await upsertPlaidAccountsForItemCore(ctx, args);
+  },
+});
+
+export const upsertPlaidAccountsForItem = mutation({
+  args: {
+    entityId: v.id("entities"),
+    plaidItemId: v.optional(v.string()),
+    accounts: v.array(plaidSelectableAccountValidator),
+    startDate: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await upsertPlaidAccountsForItemCore(ctx, args);
+  },
+});
+
+/**
+ * E3-T5: assign each previewed Plaid account to a business, splitting one Plaid
+ * login across multiple LLCs. Every assignment is validated server-side: the
+ * default `entityId` and each per-account `entityId` must belong to the same
+ * authorized workspace (enforced inside upsertPlaidAccountsForItemCore). Every
+ * previewed account must be explicitly assigned (or excluded via `include:false`)
+ * — none are silently dropped.
+ */
+export const assignPlaidAccountsToBusinesses = mutation({
+  args: {
+    entityId: v.id("entities"),
+    plaidItemId: v.optional(v.string()),
+    accounts: v.array(plaidSelectableAccountValidator),
+    startDate: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await upsertPlaidAccountsForItemCore(ctx, args);
   },
 });
 
 export const selectSandboxFixtureAccounts = mutation({
   args: {
     entityId: v.id("entities"),
-    accounts: v.array(
-      v.object({
-        plaidAccountId: v.string(),
-        name: v.string(),
-        mask: v.string(),
-        subtype: v.string(),
-        balanceMinor: v.number(),
-        currency: v.string(),
-        include: v.boolean(),
-        plaidItemId: v.optional(v.string()),
-      }),
-    ),
+    accounts: v.array(plaidSelectableAccountValidator),
+    startDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const entity = await requireEntity(ctx, args.entityId);
-    const now = Date.now();
-    const created = [];
-    let createdCount = 0;
-    const existingBankAccounts = await ctx.db
-      .query("bankAccounts")
-      .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
-      .collect();
-    for (const account of args.accounts.filter((candidate) => candidate.include)) {
-      const kind = accountKind(account.subtype);
-      const existing = existingBankAccounts.find(
-        (bankAccount) =>
-          bankAccount.plaidAccountId === account.plaidAccountId ||
-          (!bankAccount.plaidAccountId &&
-            bankAccount.name === account.name &&
-            bankAccount.mask === account.mask &&
-            bankAccount.kind === kind),
-      );
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          plaidAccountId: account.plaidAccountId,
-          plaidItemId: account.plaidItemId || "openbooks-sandbox-fixture",
-          includeInSync: true,
-          balanceMinor: account.balanceMinor,
-          updatedAt: now,
-        });
-        created.push({
-          bankAccountId: existing._id,
-          ledgerAccountId: existing.ledgerAccountId,
-          plaidAccountId: account.plaidAccountId,
-        });
-        continue;
-      }
-      const ledgerAccountId = await ctx.db.insert("ledgerAccounts", {
-        entityId: args.entityId,
-        name: account.name,
-        type: accountType(kind),
-        subtype: accountSubtype(kind),
-        number: await nextLedgerAccountNumber(ctx, args.entityId, kind),
-        currency: account.currency || entity.currency,
-        isSystem: false,
-        archived: false,
-        createdAt: now,
-        updatedAt: now,
-      });
-      const bankAccountId = await ctx.db.insert("bankAccounts", {
-        entityId: args.entityId,
-        ledgerAccountId,
-        name: account.name,
-        mask: account.mask,
-        kind,
-        balanceMinor: account.balanceMinor,
-        includeInSync: true,
-        plaidAccountId: account.plaidAccountId,
-        plaidItemId: account.plaidItemId || "openbooks-sandbox-fixture",
-        createdAt: now,
-        updatedAt: now,
-      });
-      created.push({ bankAccountId, ledgerAccountId, plaidAccountId: account.plaidAccountId });
-      createdCount += 1;
-    }
-    return { createdCount, accounts: created };
+    return await upsertPlaidAccountsForItemCore(ctx, args);
   },
 });
 
@@ -1487,6 +2392,25 @@ export const handleItemLoginRequired = mutation({
   },
 });
 
+async function decryptPlaidAccessToken(args: {
+  accessToken: string;
+  accessTokenCiphertext: string | null;
+}) {
+  const accessToken = args.accessTokenCiphertext
+    ? await decryptSecret(args.accessTokenCiphertext, "Plaid access tokens")
+    : args.accessToken;
+  if (!accessToken) {
+    throw new Error("PLAID_ACCESS_TOKEN_MISSING");
+  }
+  return accessToken;
+}
+
+function institutionNameFromPlaidPayload(payload: Record<string, unknown>) {
+  const item = payload.item && typeof payload.item === "object" ? payload.item as Record<string, unknown> : {};
+  const institutionName = typeof item.institution_name === "string" ? item.institution_name.trim() : "";
+  return institutionName || undefined;
+}
+
 function normalizePlaidAccount(account: unknown, currency: string, plaidItemId?: string) {
   const value = account && typeof account === "object" ? account as Record<string, unknown> : {};
   const balances = value.balances && typeof value.balances === "object" ? value.balances as Record<string, unknown> : {};
@@ -1501,6 +2425,64 @@ function normalizePlaidAccount(account: unknown, currency: string, plaidItemId?:
     currency: typeof balances.iso_currency_code === "string" ? balances.iso_currency_code : currency,
     ...(plaidItemId ? { plaidItemId } : {}),
     include: true,
+  };
+}
+
+function normalizeOptionalString(value: unknown) {
+  if (value === null) return null;
+  return typeof value === "string" ? value : undefined;
+}
+
+function normalizePlaidPersonalFinanceCategory(value: unknown): PlaidPersonalFinanceCategory | null | undefined {
+  if (value === null) return null;
+  if (!value || typeof value !== "object") return undefined;
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.primary !== "string" || typeof record.detailed !== "string") {
+    return undefined;
+  }
+
+  const confidenceLevel = normalizeOptionalString(record.confidence_level);
+  const version = normalizeOptionalString(record.version);
+  return {
+    primary: record.primary,
+    detailed: record.detailed,
+    ...(confidenceLevel !== undefined ? { confidence_level: confidenceLevel } : {}),
+    ...(version !== undefined ? { version } : {}),
+  };
+}
+
+function normalizePlaidSyncTransaction(value: unknown): PlaidTransactionLike | null {
+  if (!value || typeof value !== "object") return null;
+
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.transaction_id !== "string" ||
+    typeof record.account_id !== "string" ||
+    typeof record.date !== "string" ||
+    typeof record.amount !== "number" ||
+    !Number.isFinite(record.amount) ||
+    typeof record.name !== "string"
+  ) {
+    return null;
+  }
+
+  const merchantName = normalizeOptionalString(record.merchant_name);
+  const isoCurrencyCode = normalizeOptionalString(record.iso_currency_code);
+  const unofficialCurrencyCode = normalizeOptionalString(record.unofficial_currency_code);
+  const personalFinanceCategory = normalizePlaidPersonalFinanceCategory(record.personal_finance_category);
+
+  return {
+    transaction_id: record.transaction_id,
+    account_id: record.account_id,
+    date: record.date,
+    amount: record.amount,
+    name: record.name,
+    pending: typeof record.pending === "boolean" ? record.pending : false,
+    ...(merchantName !== undefined ? { merchant_name: merchantName } : {}),
+    ...(isoCurrencyCode !== undefined ? { iso_currency_code: isoCurrencyCode } : {}),
+    ...(unofficialCurrencyCode !== undefined ? { unofficial_currency_code: unofficialCurrencyCode } : {}),
+    ...(personalFinanceCategory !== undefined ? { personal_finance_category: personalFinanceCategory } : {}),
   };
 }
 

@@ -1,8 +1,9 @@
 import { convexAuth } from "@convex-dev/auth/server";
+import { Email } from "@convex-dev/auth/providers/Email";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { ConvexError, type GenericId } from "convex/values";
 
-import { normalizeEmail, ownerEmail } from "./authz";
+import { normalizeEmail, ownerEmail, type WorkspaceRole } from "./authz";
 import type { MutationCtx } from "./_generated/server";
 
 function profileInitials(name: string, email: string) {
@@ -44,9 +45,52 @@ async function ensureUserProfile(
   }
 }
 
+function plunkBaseUrl() {
+  return (process.env.PLUNK_API_BASE_URL ?? "https://api.plunk.zikrainfotech.com").replace(/\/+$/, "");
+}
+
+function passwordResetEmailProvider() {
+  const secret = process.env.PLUNK_SECRET_KEY;
+  const from = process.env.PLUNK_FROM_EMAIL;
+  if (!secret || !from) return null;
+
+  return Email({
+    id: "openbooks-reset",
+    from,
+    maxAge: 30 * 60,
+    async sendVerificationRequest(params) {
+      const response = await fetch(`${plunkBaseUrl()}/v1/send`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${secret}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: params.identifier,
+          from,
+          fromName: process.env.PLUNK_FROM_NAME ?? "OpenBooks",
+          subject: "Reset your OpenBooks password",
+          body: [
+            "<p>Use this secure link to reset your OpenBooks password.</p>",
+            `<p><a href="${params.url}">Reset password</a></p>`,
+            `<p>This link expires at ${params.expires.toISOString()}.</p>`,
+          ].join(""),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new ConvexError("Could not send password reset email.");
+      }
+    },
+  });
+}
+
+const passwordReset = passwordResetEmailProvider();
+
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
     Password({
+      ...(passwordReset ? { reset: passwordReset } : {}),
       profile(params) {
         const email = normalizeEmail(String(params.email ?? ""));
         if (!email) {
@@ -107,7 +151,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
           await ensureWorkspaceForUser(appCtx, {
             userId,
             email,
-            role: isOwner ? "owner" : (invite?.role ?? "member"),
+            role: isOwner ? "owner" : (invite?.role ?? "hr"),
             inviteWorkspaceId: invite?.workspaceId,
           })
         : null;
@@ -153,29 +197,33 @@ export async function ensureWorkspaceForUser(
   args: {
     userId: GenericId<"users">;
     email: string;
-    role: "owner" | "admin" | "member";
+    role: WorkspaceRole;
     inviteWorkspaceId?: GenericId<"workspaces">;
+    workspaceName?: string;
+    workspaceSlug?: string;
   },
 ) {
   const now = Date.now();
   let workspaceId = args.inviteWorkspaceId;
+  const workspaceName = args.workspaceName?.trim() || process.env.OPENBOOKS_OWNER_WORKSPACE_NAME || "Ansar's workspace";
+  const workspaceSlug = args.workspaceSlug?.trim() || process.env.OPENBOOKS_OWNER_WORKSPACE_SLUG || "ansar-workspace";
 
   if (!workspaceId) {
     const existingWorkspace = await ctx.db
       .query("workspaces")
-      .withIndex("by_slug", (q) => q.eq("slug", "ansar-workspace"))
+      .withIndex("by_slug", (q) => q.eq("slug", workspaceSlug))
       .unique();
 
     if (existingWorkspace) {
       workspaceId = existingWorkspace._id;
       await ctx.db.patch(workspaceId, {
-        name: "Ansar's workspace",
+        name: workspaceName,
         updatedAt: now,
       });
     } else {
       workspaceId = await ctx.db.insert("workspaces", {
-        name: "Ansar's workspace",
-        slug: "ansar-workspace",
+        name: workspaceName,
+        slug: workspaceSlug,
         createdAt: now,
         updatedAt: now,
       });

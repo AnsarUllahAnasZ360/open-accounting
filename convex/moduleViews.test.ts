@@ -7,7 +7,7 @@ import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
-const moduleOverview = makeFunctionReference<"query", Record<string, never>, ModuleOverview>(
+const moduleOverview = makeFunctionReference<"query", { entityId?: string; today?: string }, ModuleOverview>(
   "moduleViews:overview",
 );
 
@@ -16,7 +16,21 @@ type ModuleOverview = {
   contacts: { rows: Array<{ name: string; roles: string[]; openReceivableMinor: number; openPayableMinor: number }> };
   invoices: { kpis: { openMinor: number; overdueMinor: number }; aging: { totalMinor: number } };
   bills: { kpis: { openMinor: number }; groups: Array<{ key: string; rows: unknown[] }> };
-  payroll: { employees: unknown[]; currencyTotals: Array<{ currency: string; localMinor: number }> };
+  payroll: {
+    employees: Array<{ active: boolean }>;
+    currencyTotals: Array<{ currency: string; localMinor: number; baseMinor: number }>;
+    runs: Array<{ period: string; status: string; totalBaseMinor: number }>;
+    statementsByCurrency: Array<{ currency: string; isBaseCurrency: boolean; localMinor: number; baseMinor: number; csv: string; csvFilename: string }>;
+    insight: {
+      runRateBaseMinor: number;
+      runRateBasedOnApprovedRun: boolean;
+      headcount: number;
+      baseCurrency: string;
+      hasFxExposure: boolean;
+      fxExposureSharePct: number;
+      nonBaseCurrencies: string[];
+    };
+  };
   settings: {
     businesses: { rows: Array<{ name: string; canArchive: boolean }> };
     rules: { rows: Array<{ summary: string; hitCount: number; active: boolean }>; pendingSuggestion: { status: string } };
@@ -101,5 +115,62 @@ describe("M6 module view model", () => {
       expect.arrayContaining(["ai", "rule", "user"]),
     );
     expect(overview.settings.audit.rows.some((row) => row.action === "ai.rule.confirmed")).toBe(true);
+  });
+});
+
+describe("E10-T6: payroll insight (run-rate / headcount / FX exposure)", () => {
+  it("run-rate equals the latest approved/paid run base total; FX note flips on with non-base staff", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupWorkspace(t);
+    const session = authed(t, ids.userId);
+    await session.action(api.seedDemo.resetAndSeed, {});
+
+    // Pin "today" so the read path is deterministic (no frozen literal).
+    const overview = await session.query(moduleOverview, { today: "2026-06-11" });
+    const insight = overview.payroll.insight;
+
+    // Run-rate is derived from a posted (approved/paid) run, not roster face value.
+    expect(insight.runRateBasedOnApprovedRun).toBe(true);
+    const approvedRuns = overview.payroll.runs
+      .filter((run) => run.status === "approved" || run.status === "paid")
+      .sort((a, b) => b.period.localeCompare(a.period));
+    expect(approvedRuns.length).toBeGreaterThan(0);
+    expect(insight.runRateBaseMinor).toBe(approvedRuns[0].totalBaseMinor);
+    expect(insight.runRateBaseMinor).toBeGreaterThan(0);
+
+    // Headcount = active employees.
+    expect(insight.headcount).toBe(overview.payroll.employees.filter((e) => e.active).length);
+
+    // FX-exposure flips ON because the demo roster carries PKR + INR staff.
+    expect(insight.hasFxExposure).toBe(true);
+    expect(insight.fxExposureSharePct).toBeGreaterThan(0);
+    expect(insight.nonBaseCurrencies.sort()).toEqual(["INR", "PKR"]);
+    expect(insight.baseCurrency).toBe("USD");
+  });
+
+  it("per-currency statements split the roster and reconcile local + base totals", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupWorkspace(t);
+    const session = authed(t, ids.userId);
+    await session.action(api.seedDemo.resetAndSeed, {});
+
+    const overview = await session.query(moduleOverview, { today: "2026-06-11" });
+    const blocks = overview.payroll.statementsByCurrency;
+
+    // One block per currency on the roster, base currency first.
+    expect(blocks.map((b) => b.currency)).toEqual(["USD", "INR", "PKR"].filter((c) =>
+      overview.payroll.currencyTotals.some((t) => t.currency === c),
+    ).sort((a, b) => (a === "USD" ? -1 : b === "USD" ? 1 : a.localeCompare(b))));
+    expect(blocks[0].isBaseCurrency).toBe(true);
+
+    // Each block's totals reconcile to the roster currencyTotals; the CSV carries
+    // its own filename per currency.
+    for (const block of blocks) {
+      const roster = overview.payroll.currencyTotals.find((t) => t.currency === block.currency)!;
+      expect(block.localMinor).toBe(roster.localMinor);
+      expect(block.baseMinor).toBe(roster.baseMinor);
+      expect(block.csvFilename).toBe(`openbooks-payroll-statement-${block.currency.toLowerCase()}.csv`);
+      expect(block.csv.split("\n")[0]).toContain("employee,country,currency");
+    }
   });
 });

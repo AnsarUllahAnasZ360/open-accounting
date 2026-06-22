@@ -1,0 +1,74 @@
+{
+  "core": [
+    "OWNER_EMAIL",
+    "OWNER_PASSWORD",
+    "NEXT_PUBLIC_CONVEX_URL",
+    "CONVEX_DEPLOYMENT",
+    "AI_PROVIDER"
+  ],
+  "encryption": {
+    "anyOf": [
+      "OPENBOOKS_SECRET_ENCRYPTION_KEY",
+      "OPENBOOKS_TOKEN_ENCRYPTION_KEY"
+    ]
+  },
+  "providerConditional": {
+    "gateway": [
+      "AI_GATEWAY_API_KEY"
+    ],
+    "openai": [
+      "OPENAI_API_KEY"
+    ],
+    "anthropic": [
+      "ANTHROPIC_API_KEY"
+    ],
+    "google": [
+      "GOOGLE_GENERATIVE_AI_API_KEY"
+    ],
+    "bedrock": [
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_REGION",
+      "AI_MODEL"
+    ],
+    "azure": [
+      "AZURE_API_KEY",
+      "AZURE_BASE_URL"
+    ],
+    "groq": [
+      "GROQ_API_KEY"
+    ],
+    "deepseek": [
+      "DEEPSEEK_API_KEY"
+    ],
+    "mistral": [
+      "MISTRAL_API_KEY"
+    ],
+    "moonshot": [
+      "MOONSHOT_API_KEY"
+    ],
+    "xai": [
+      "XAI_API_KEY"
+    ],
+    "fireworks": [
+      "FIREWORKS_API_KEY"
+    ],
+    "ollama": [
+      "OLLAMA_BASE_URL"
+    ],
+    "openai_compatible": [
+      "OPENAI_COMPATIBLE_API_KEY",
+      "OPENAI_COMPATIBLE_BASE_URL"
+    ]
+  },
+  "optional": [
+    "STRIPE_WEBHOOK_SECRET",
+    "PLUNK_SECRET_KEY",
+    "PLUNK_FROM_EMAIL",
+    "AI_EMBEDDINGS_MODEL",
+    "PLAID_CLIENT_ID",
+    "PLAID_SECRET",
+    "PLAID_ENV",
+    "STRIPE_SECRET_KEY"
+  ]
+}

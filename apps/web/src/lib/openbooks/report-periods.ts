@@ -180,6 +180,38 @@ export function formatRangeLabel(range: DateRange): string {
   return `${months[sm - 1]} ${sd}, ${sy} – ${months[em - 1]} ${ed}, ${ey}`;
 }
 
+/**
+ * Resolve a dashboard `period=YYYY-MM` param to a concrete calendar-month range,
+ * clamped so the end never exceeds today. Dashboard drill-throughs carry the
+ * selected month as `period=`; Reports maps it to start/end so the viewer opens
+ * on that exact month instead of the report's own default.
+ */
+export function rangeForPeriodParam(period: string, today: string): DateRange | null {
+  const match = /^(\d{4})-(\d{2})$/.exec(period);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!year || month < 1 || month > 12) return null;
+  return clampRange(
+    { startDate: iso(year, month, 1), endDate: iso(year, month, lastDayOfMonth(year, month)) },
+    today,
+  );
+}
+
+/**
+ * The most recent FULL calendar month relative to `today` — the period a
+ * "Close the books" action targets. Returns the month range plus its last day
+ * (the lockedThroughDate) and a human label.
+ */
+export function lastFullMonth(today: string): { range: DateRange; lockThroughDate: string; label: string } {
+  const range = lastMonthRange(today);
+  return {
+    range,
+    lockThroughDate: range.endDate,
+    label: formatRangeLabel(range),
+  };
+}
+
 /** Label for the as-of date (balance sheet / aging / trial balance). */
 export function formatAsOfLabel(date: string): string {
   const months = [

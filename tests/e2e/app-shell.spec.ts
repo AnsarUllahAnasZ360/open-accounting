@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
+import { appUrl, gotoApp } from "./helpers";
+
 // Epic A — App shell & navigation fidelity.
 // These specs use REAL pointer clicks only; no synthetic events or forced clicks.
 // The app runs in dev-auth-bypass mode locally (NEXT_PUBLIC_OPENBOOKS_DEV_AUTH_BYPASS=1),
@@ -7,27 +9,22 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 
 const EVIDENCE = "docs/finishing/evidence";
 
-// Final navigation order the prototype specifies (Epic A3). Settings follows a
-// divider but is still reachable in the sidebar; the 9 primary items + Settings
-// = the 10 destinations Ansar asked for.
+// Final navigation order the prototype specifies (Epic A3). Post-redesign,
+// Settings was MOVED OUT of the primary nav into the sidebar footer cluster
+// (beside Sync + Profile), so the PRIMARY nav now lists 9 destinations; Settings
+// is asserted separately as reachable from the footer.
+// Epic E3 demoted Bills from the primary nav: it is now the "Bills" sub-tab
+// under Expenses (/expenses/bills), so the primary nav lists 8 destinations.
 const NAV_ORDER = [
   "Dashboard",
   "Inbox",
   "Transactions",
   "Income",
   "Expenses",
-  "Bills",
   "Contacts",
   "Payroll",
   "Reports",
-  "Settings",
 ];
-
-async function gotoApp(page: Page, path = "/dashboard") {
-  await page.goto(path);
-  // The shell mounts once the viewer/report queries resolve.
-  await expect(page.getByTestId("app-sidebar")).toBeVisible({ timeout: 30000 });
-}
 
 async function expectNoHorizontalScroll(page: Page) {
   const overflow = await page.evaluate(() => {
@@ -50,7 +47,12 @@ async function boxesOverlap(a: Locator, b: Locator) {
   );
 }
 
-test.describe.configure({ mode: "serial" });
+// Each test resets sidebar/collapse state in beforeEach and navigates fresh, so
+// they are independent. Default (non-serial) mode means a single known product
+// defect — the A4 ⌘K deep-link, flagged for the source-fix agent — does not mask
+// the remaining shell assertions (serial mode aborts every later test on the
+// first failure).
+test.describe.configure({ mode: "default" });
 
 // The Next.js dev-tools overlay renders a shadow-DOM `nextjs-portal` in the
 // bottom-left corner — the same corner as the collapsed-rail footer avatar — and
@@ -81,7 +83,7 @@ test.beforeEach(async ({ page }) => {
   // between tests. Reset it to a known expanded baseline before each test (the A1
   // reload-persistence assertion sets + reloads within its own body, so this does
   // not interfere with it).
-  await page.goto("/dashboard");
+  await page.goto(appUrl("/dashboard"));
   await page.evaluate(() => {
     try {
       window.localStorage.removeItem("ob:sidebar-collapsed");
@@ -171,7 +173,7 @@ test("A2b — there is no logout control in the top bar", async ({ page }) => {
   await expect(header.getByRole("button", { name: /log out/i })).toHaveCount(0);
 });
 
-test("A3 — nav shows the 10 destinations in order and /invoices redirects to /income", async ({ page }) => {
+test("A3 — primary nav shows the 8 destinations in order, Settings is in the footer, and /invoices + /bills redirect", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await gotoApp(page);
@@ -180,7 +182,20 @@ test("A3 — nav shows the 10 destinations in order and /invoices redirects to /
   const navLabels = await sidebar.locator("nav a").allInnerTexts();
   // Each nav link's first line is its label; badges add extra lines.
   const labels = navLabels.map((text) => text.split("\n")[0].trim()).filter(Boolean);
+  // Redesign: Settings is no longer a primary-nav destination — the primary nav
+  // lists 8 items (Bills demoted under Expenses in E3) and Settings lives in the
+  // footer cluster (asserted below).
   expect(labels).toEqual(NAV_ORDER);
+
+  // Settings is OUTSIDE the primary <nav> — it lives in the sidebar footer's
+  // profile menu (account/admin controls grouped together). Open the profile
+  // menu and confirm the Settings item routes.
+  await page.getByTestId("profile-trigger").click();
+  const settingsItem = page.getByTestId("profile-menu").getByTestId("profile-settings");
+  await expect(settingsItem).toBeVisible();
+  await settingsItem.click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await gotoApp(page);
 
   // Income/Expenses routes exist and are distinct (Expenses is NOT Bills).
   await sidebar.getByRole("link", { name: "Income", exact: true }).click();
@@ -190,8 +205,11 @@ test("A3 — nav shows the 10 destinations in order and /invoices redirects to /
   await expect(page.getByRole("heading", { name: "Expenses" })).toBeVisible();
 
   // Old URL redirects.
-  await page.goto("/invoices");
+  await page.goto(appUrl("/invoices"));
   await expect(page).toHaveURL(/\/income$/);
+  // Bills was demoted under Expenses (E3); the old top-level link still resolves.
+  await page.goto(appUrl("/bills"));
+  await expect(page).toHaveURL(/\/expenses\/bills$/);
 
   await page.screenshot({ path: `${EVIDENCE}/2026-06-11-A3-nav-income.png`, fullPage: false });
 });
@@ -216,7 +234,7 @@ test("A4 — ⌘K opens the palette; typing a merchant and pressing Enter opens 
 
   // Discover a real seeded merchant from the register (merchant is the bold name
   // in the third column), then search for it in the palette.
-  await page.goto("/transactions");
+  await page.goto(appUrl("/transactions"));
   const firstRow = page.getByTestId("transaction-row").first();
   await expect(firstRow).toBeVisible({ timeout: 30000 });
   const firstMerchant = (await firstRow.locator(".font-medium").first().innerText()).trim();
@@ -236,6 +254,14 @@ test("A4 — ⌘K opens the palette; typing a merchant and pressing Enter opens 
 
   // Lands on the register focused on that transaction (drawer open + URL param).
   await expect(page).toHaveURL(new RegExp(`/transactions\\?focus=${firstTxnId}`));
+  // KNOWN PRODUCT DEFECT (flagged for the source-fix agent): when the register
+  // is ALREADY mounted, a client-side ⌘K deep-link changes the `?focus=` param
+  // but TransactionsScreen only seeds `selectedId` from `focusId` in a
+  // `useState(focusId)` initializer (CoreScreens.tsx ~L1203) with no effect to
+  // sync a subsequent param change — so the drawer never opens on this path. A
+  // direct fresh-mount to /transactions?focus= DOES open it (verified). This
+  // assertion is intentionally NOT weakened: it documents the real ⌘K UX promise
+  // and will pass once the screen syncs focusId → selectedId after mount.
   await expect(page.getByTestId("transaction-drawer")).toBeVisible({ timeout: 15000 });
 
   await page.screenshot({ path: `${EVIDENCE}/2026-06-11-A4-command-palette.png`, fullPage: false });
@@ -246,16 +272,15 @@ test("A4b — ⌘J opens the Ask AI panel", async ({ page }) => {
   await gotoApp(page);
 
   const panel = page.getByTestId("ai-panel");
-  // Panel is mounted but off-screen; opening brings it into the viewport.
+  // The panel is mounted only when opened; on desktop it reserves a side column
+  // instead of covering the active page.
   await page.keyboard.press("ControlOrMeta+j");
-  await expect
-    .poll(async () => {
-      const box = await panel.boundingBox();
-      const vw = page.viewportSize()!.width;
-      return box ? box.x < vw - 100 : false;
-    }, { timeout: 5000 })
-    .toBe(true);
-  await expect(panel.getByText("Ask AI").first()).toBeVisible();
+  await expect(panel).toBeVisible({ timeout: 5000 });
+  // The Ask AI panel was rebuilt on AI Elements: the docked surface exposes its
+  // identity through the accessible "Ask AI chat for …" region label and a
+  // "Chat" header, not a visible "Ask AI" string. Assert the real, current DOM.
+  await expect(panel.getByLabel(/Ask AI chat for/i)).toBeVisible();
+  await expect(panel.getByText("Chat", { exact: true }).first()).toBeVisible();
 });
 
 test("A5 — entity switcher lists the workspace's businesses and offers Add a business", async ({ page }) => {
@@ -270,17 +295,19 @@ test("A5 — entity switcher lists the workspace's businesses and offers Add a b
   await expect(menu.getByTestId("entity-add-business")).toBeVisible();
   await page.screenshot({ path: `${EVIDENCE}/2026-06-11-A5-entity-switcher.png`, fullPage: false });
 
+  // The redesign moved the active-entity name OUT of a page-header eyebrow (that
+  // <p> no longer exists) and into the sidebar entity switcher itself, where it
+  // renders `{activeEntityName}` flowing from the viewer/report context. The
+  // data-driven proof is now: the switcher's label is non-empty and equals the
+  // entity marked active (disabled) in its own menu — never a hardcoded literal.
+  const activeOption = menu.locator('[role="menuitem"][data-disabled], [role="menuitem"][aria-disabled="true"]').first();
+  const activeName = (await activeOption.innerText()).trim().split("\n")[0]!.trim();
+  expect(activeName.length).toBeGreaterThan(0);
   const switcherName = (await page.getByTestId("entity-switcher").innerText()).trim();
-  const activeName = switcherName.split("\n").at(-1)?.trim() ?? switcherName;
+  expect(switcherName).toContain(activeName);
+
   await menu.getByTestId("entity-add-business").click();
   await expect(page).toHaveURL(/\/settings$/);
-
-  // The page-header eyebrow is data-driven: it must equal the active entity name
-  // shown in the switcher (proving the hardcoded "Acme Studio LLC" literal was
-  // removed and the name now flows from the viewer/report context).
-  await gotoApp(page);
-  const eyebrow = page.locator("h1").first().locator("xpath=preceding-sibling::p[1]");
-  await expect(eyebrow).toHaveText(activeName, { timeout: 30000 });
 });
 
 test("A — layout: no horizontal scroll at 1440 and 390, and the AI panel does not cover nav targets", async ({ page }) => {

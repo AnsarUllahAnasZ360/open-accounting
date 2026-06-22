@@ -1,0 +1,47 @@
+{
+  "epic": "E7.5",
+  "title": "Stripe single-counting proof (unit level)",
+  "generatedAt": "2026-06-14T00:00:00.000Z",
+  "lifecycle": {
+    "chargeGrossMinor": 100000,
+    "chargeFeeMinor": 3200,
+    "payoutNetMinor": 96800,
+    "payoutId": "po_proof_001",
+    "model": "Payouts-In-Transit (1160): charge Dr Clearing/Cr Sales + Dr Fees/Cr Clearing; payout Dr In-Transit/Cr Clearing; matched Plaid arrival Dr Bank/Cr In-Transit."
+  },
+  "beforeDepositMatch": {
+    "bankNetMinor": 0,
+    "clearingNetMinor": 0,
+    "inTransitNetMinor": 96800,
+    "payoutStatus": "pending",
+    "salesNetMinor": -100000
+  },
+  "afterDepositMatch": {
+    "salesNetMinor": -100000,
+    "feesNetMinor": 3200,
+    "clearingNetMinor": 0,
+    "inTransitNetMinor": 0,
+    "bankNetMinor": 96800,
+    "payoutStatus": "reconciled"
+  },
+  "assertions": {
+    "revenueCreditedExactlyOnce": true,
+    "clearingNetsToZeroPerPayout": true,
+    "inTransitNetsToZeroPerPayout": true,
+    "bankDebitedExactlyOnce": true,
+    "matchedDepositIsNotIncome": true,
+    "ledgerBalanced": true,
+    "idempotentReReconcile": true
+  },
+  "idempotency": {
+    "firstMatchedPayoutId": "po_proof_001",
+    "secondMatchFoundOpenPayout": false,
+    "reReconcileStatus": "already_reconciled",
+    "note": "Re-delivering the deposit finds no open payout (already reconciled) and a direct reconcile re-call is an explicit no-op, so neither re-posts."
+  },
+  "deferred": {
+    "E7.3": "PARTIAL. The Payouts-In-Transit single-counting model is implemented and proven here. Refund -> contra-revenue, dispute -> fee + reversal, negative payout, and tax -> liability are DEFERRED: the Stripe projection (convex/stripe.ts) carries no refund/dispute/credit-note objects, so wiring contra-revenue now would be a fragile half-build against data that is never fetched.",
+    "E7.4": "DEFERRED (honest). entities.accountingBasis exists and is read for display, but revenue recognition is unchanged: charges recognize at charge time (cash-like) and invoices at finalization (accrual). True cash-vs-accrual deferral needs the charge<->invoice link the projection does not carry; not attempted to avoid a fragile half-build."
+  },
+  "liveProofStatus": "UNIT-LEVEL ONLY. The live end-to-end proof still needs a hosted Plaid sandbox Link session plus a real Stripe payout webhook delivered to the cloud route (external/blocked per docs/finishing/whats-left.md). E7 proves single-counting deterministically at the unit level."
+}

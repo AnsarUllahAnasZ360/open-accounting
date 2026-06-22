@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { Archive, ArchiveRestore, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../../../../../../convex/_generated/api";
@@ -21,10 +21,12 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const TYPE_LABEL: Record<string, string> = {
   services: "Services",
@@ -33,20 +35,45 @@ const TYPE_LABEL: Record<string, string> = {
   agency: "Agency",
 };
 
+type BusinessType = "services" | "software" | "ecommerce" | "agency";
+
+// Entity types co-owned with the Tax section (E12-T2 merges legal/tax identity
+// editing into the Businesses card so the owner never round-trips to Tax).
+const ENTITY_TYPES = ["LLC", "S-Corporation", "C-Corporation", "Sole proprietorship", "Partnership"];
+
+type BusinessRow = {
+  id: string;
+  name: string;
+  slug: string;
+  businessType: string;
+  currency: string;
+  isDemo: boolean;
+  archived: boolean;
+  legalName: string;
+  entityType: string;
+  taxId: string;
+  homeState: string;
+};
+
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-function avatarColor(name: string) {
-  const palette = [
-    ["#dcefd2", "#17540f"],
-    ["#eff8ff", "#175cd3"],
-    ["#fef0c7", "#b54708"],
-    ["#fce7f6", "#a4148c"],
-  ];
+// Deterministic avatar tint from the design system's chart palette — no raw
+// hexes (the old palette included an off-brand magenta #a4148c). Each entry is a
+// soft surface + readable foreground built from a single --chart token.
+const AVATAR_TINTS = [
+  "bg-[color-mix(in_oklch,var(--chart-1)_18%,transparent)] text-[var(--chart-1)]",
+  "bg-[color-mix(in_oklch,var(--chart-2)_18%,transparent)] text-[var(--chart-2)]",
+  "bg-[color-mix(in_oklch,var(--chart-3)_18%,transparent)] text-[var(--chart-3)]",
+  "bg-[color-mix(in_oklch,var(--chart-4)_18%,transparent)] text-[var(--chart-4)]",
+  "bg-[color-mix(in_oklch,var(--chart-5)_18%,transparent)] text-[var(--chart-5)]",
+];
+
+function avatarTint(name: string) {
   let hash = 0;
   for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  return palette[hash % palette.length]!;
+  return AVATAR_TINTS[hash % AVATAR_TINTS.length]!;
 }
 
 export function BusinessesSection() {
@@ -78,17 +105,18 @@ export function BusinessesSection() {
       {error ? <p className="text-sm text-destructive" data-testid="businesses-error">{error}</p> : null}
       <div className="grid gap-[14px] sm:grid-cols-2" data-testid="businesses-grid">
         {data.rows.map((business) => {
-          const [bg, fg] = avatarColor(business.name);
           return (
             <div
               key={business.id}
               data-testid={`business-card-${business.slug}`}
-              className={`rounded-[14px] border bg-card p-5 shadow-xs ${business.archived ? "opacity-60" : ""}`}
+              className={cn("rounded-[14px] border bg-card p-5 shadow-xs", business.archived && "opacity-60")}
             >
               <div className="flex items-center gap-2.5">
                 <span
-                  className="flex size-7 items-center justify-center rounded-[8px] text-xs font-semibold"
-                  style={{ background: bg, color: fg }}
+                  className={cn(
+                    "flex size-7 items-center justify-center rounded-[8px] text-xs font-semibold",
+                    avatarTint(business.name),
+                  )}
                 >
                   {business.name.slice(0, 1).toUpperCase()}
                 </span>
@@ -110,6 +138,9 @@ export function BusinessesSection() {
                 {business.transactionCount.toLocaleString()} transactions
               </div>
               <div className="mt-3 flex gap-2">
+                {!business.isDemo ? (
+                  <EditBusinessModal business={business as BusinessRow} />
+                ) : null}
                 <Button
                   size="sm"
                   variant="outline"
@@ -135,6 +166,173 @@ export function BusinessesSection() {
 
       <AddBusinessModal />
     </div>
+  );
+}
+
+function EditBusinessModal({ business }: { business: BusinessRow }) {
+  const updateProfile = useMutation(api.entities.updateProfile);
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(business.name);
+  const [businessType, setBusinessType] = useState<BusinessType>(business.businessType as BusinessType);
+  const [legalName, setLegalName] = useState(business.legalName);
+  const [entityType, setEntityType] = useState(business.entityType || "LLC");
+  const [taxId, setTaxId] = useState(business.taxId);
+  const [homeState, setHomeState] = useState(business.homeState);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  // Re-seed the form when the dialog opens so edits always start from the
+  // latest persisted values (the card data refetches after a save).
+  function onOpenChange(next: boolean) {
+    if (next) {
+      setName(business.name);
+      setBusinessType(business.businessType as BusinessType);
+      setLegalName(business.legalName);
+      setEntityType(business.entityType || "LLC");
+      setTaxId(business.taxId);
+      setHomeState(business.homeState);
+      setError("");
+    }
+    setOpen(next);
+  }
+
+  async function submit() {
+    if (name.trim().length < 2) {
+      setError("Give the business a name.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await updateProfile({
+        entityId: business.id as Id<"entities">,
+        name: name.trim(),
+        businessType,
+        legalName: legalName.trim(),
+        entityType: entityType.trim(),
+        taxId: taxId.trim(),
+        homeState: homeState.trim(),
+      });
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the business.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" data-testid={`business-edit-${business.slug}`}>
+          <Pencil className="size-4" /> Edit
+        </Button>
+      </DialogTrigger>
+      <DialogContent data-testid="edit-business-modal">
+        <DialogHeader>
+          <DialogTitle>Edit business</DialogTitle>
+          <DialogDescription>
+            Name, type, and legal/tax identity in one place. Base currency is set at creation and can&rsquo;t change.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-biz-name-${business.slug}`}>Business name</Label>
+            <Input
+              id={`edit-biz-name-${business.slug}`}
+              data-testid="edit-business-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Type</Label>
+              <Select value={businessType} onValueChange={(v) => setBusinessType(v as BusinessType)}>
+                <SelectTrigger data-testid="edit-business-type" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="services">Services</SelectItem>
+                    <SelectItem value="software">Software</SelectItem>
+                    <SelectItem value="ecommerce">E-commerce</SelectItem>
+                    <SelectItem value="agency">Agency</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor={`edit-biz-currency-${business.slug}`}>Base currency</Label>
+              <Input
+                id={`edit-biz-currency-${business.slug}`}
+                data-testid="edit-business-currency"
+                value={business.currency}
+                readOnly
+                disabled
+                title="Base currency is set at creation and can't change."
+                className="money-figures uppercase bg-muted/40"
+              />
+              <span className="text-[11px] text-muted-foreground">Set at creation.</span>
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-biz-legal-${business.slug}`}>Legal name</Label>
+            <Input
+              id={`edit-biz-legal-${business.slug}`}
+              data-testid="edit-business-legal-name"
+              value={legalName}
+              onChange={(e) => setLegalName(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Entity type</Label>
+              <Select value={entityType} onValueChange={setEntityType}>
+                <SelectTrigger data-testid="edit-business-entity-type" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {ENTITY_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor={`edit-biz-state-${business.slug}`}>Home state</Label>
+              <Input
+                id={`edit-biz-state-${business.slug}`}
+                data-testid="edit-business-home-state"
+                value={homeState}
+                onChange={(e) => setHomeState(e.target.value)}
+                placeholder="Texas"
+              />
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-biz-taxid-${business.slug}`}>EIN / Tax ID</Label>
+            <Input
+              id={`edit-biz-taxid-${business.slug}`}
+              data-testid="edit-business-tax-id"
+              value={taxId}
+              onChange={(e) => setTaxId(e.target.value)}
+              placeholder="••-•••••••"
+              className="font-mono text-[12.5px]"
+            />
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button size="sm" data-testid="edit-business-submit" disabled={busy} onClick={submit}>
+            {busy ? "Saving…" : "Save changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -198,10 +396,12 @@ function AddBusinessModal() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="services">Services</SelectItem>
-                  <SelectItem value="software">Software</SelectItem>
-                  <SelectItem value="ecommerce">E-commerce</SelectItem>
-                  <SelectItem value="agency">Agency</SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="services">Services</SelectItem>
+                    <SelectItem value="software">Software</SelectItem>
+                    <SelectItem value="ecommerce">E-commerce</SelectItem>
+                    <SelectItem value="agency">Agency</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>

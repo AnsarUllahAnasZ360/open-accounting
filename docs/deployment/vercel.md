@@ -1,4 +1,13 @@
-# Vercel Deployment
+# Vercel Deployment — Ansar's reference deployment (NOT for self-hosters)
+
+> **Maintainer-only reference.** This documents the project owner's own
+> production deployment (a specific Vercel scope, Convex prod, and custom
+> domain). **Self-hosters: do NOT copy these values** — follow the generic,
+> placeholder-only runbook in [`docs/self-host/deploy.md`](../self-host/deploy.md)
+> instead, which walks the same `npx convex deploy` → `convex env set --prod` →
+> `vercel link` → `vercel deploy --prod` → Stripe-webhook flow with your own
+> accounts. The values below are kept only for the maintainer's operational
+> continuity.
 
 ## Project
 

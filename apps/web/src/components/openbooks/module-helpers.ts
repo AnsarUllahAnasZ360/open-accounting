@@ -1,11 +1,28 @@
+export type ContactHistoryItem = {
+  id: string;
+  kind: string;
+  date: string;
+  label: string;
+  amountMinor: number;
+  status: string;
+};
+
+export type ContactProfileData = ContactRow & {
+  history: ContactHistoryItem[];
+  mergeFlow: { status: string; reason: string; suggestion: string };
+};
+
 export type ModuleOverview = {
   entity: { id: string; name: string; currency: string; businessType: string; isDemo: boolean } | null;
   contacts: {
     rows: ContactRow[];
-    selectedProfile: (ContactRow & {
-      history: Array<{ id: string; kind: string; date: string; label: string; amountMinor: number; status: string }>;
-      mergeFlow: { status: string; reason: string; suggestion: string };
-    }) | null;
+    selectedProfile: ContactProfileData | null;
+    kpis: {
+      openReceivableMinor: number;
+      openPayableMinor: number;
+      contactsCount: number;
+      overdueReceivableCount: number;
+    };
   };
   invoices: {
     kpis: { openMinor: number; overdueMinor: number; paidLast30Minor: number; averageDaysToPay: number };
@@ -14,7 +31,16 @@ export type ModuleOverview = {
     composer: { saveDraftStatus: string; sendViaStripeStatus: string; manualRecordStatus: string };
   };
   bills: {
-    kpis: { openMinor: number; dueThisWeekMinor: number; overdueMinor: number };
+    kpis: {
+      openMinor: number;
+      dueThisWeekMinor: number;
+      dueSoonMinor: number;
+      overdueMinor: number;
+      paidThisPeriodMinor: number;
+      missingEvidenceMinor: number;
+      missingEvidenceCount: number;
+      avgDaysToPay: number;
+    };
     groups: Array<{ key: string; label: string; rows: BillRow[] }>;
     matchCandidates: Array<{ id: string; date: string; merchant: string; amountMinor: number; currency: string }>;
     uploadPdf: {
@@ -54,6 +80,7 @@ export type ModuleOverview = {
     employees: EmployeeRow[];
     runs: PayrollRunRow[];
     currencyTotals: Array<{ currency: string; localMinor: number; baseMinor: number }>;
+    unmatchedCount: number;
     statementRows: Array<{
       employeeName: string;
       country: string;
@@ -63,6 +90,36 @@ export type ModuleOverview = {
       fxDisplay: string;
     }>;
     statementCsv: string;
+    // E10-T5: one statement block + one CSV export PER currency.
+    statementsByCurrency: Array<{
+      currency: string;
+      isBaseCurrency: boolean;
+      rows: Array<{
+        employeeName: string;
+        country: string;
+        currency: string;
+        localMinor: number;
+        baseMinor: number;
+        fxDisplay: string;
+      }>;
+      localMinor: number;
+      baseMinor: number;
+      fxDisplay: string;
+      csv: string;
+      csvFilename: string;
+    }>;
+    // E10-T6: the single payroll page insight (run-rate / headcount / FX).
+    insight: {
+      runRateBaseMinor: number;
+      runRateBasedOnApprovedRun: boolean;
+      latestApprovedPeriod: string | null;
+      headcount: number;
+      baseCurrency: string;
+      hasFxExposure: boolean;
+      fxExposureSharePct: number;
+      fxExposureBaseMinor: number;
+      nonBaseCurrencies: string[];
+    };
   };
   settings: {
     businesses: {
@@ -118,9 +175,16 @@ export type ContactRow = {
   roles: string[];
   email: string | null;
   aliases: string[];
+  notes: string | null;
+  archived: boolean;
   openReceivableMinor: number;
   openPayableMinor: number;
+  overdueReceivableMinor: number;
+  moneyInYtdMinor: number;
+  moneyOutYtdMinor: number;
   totalThisYearMinor: number;
+  lastActivity?: number;
+  lastActivityDate: string | null;
   defaultCategory: { id: string; name: string; number: string } | null;
   defaultCategoryRule: { status: string; label: string };
 };
@@ -139,16 +203,47 @@ export type InvoiceRow = {
   daysPastDue: number;
 };
 
+export type BillLedgerLine = {
+  account: string;
+  accountNumber: string;
+  debitMinor: number;
+  creditMinor: number;
+  currency: string;
+};
+
 export type BillRow = {
   id: string;
   vendorName: string;
+  contactId: string;
   status: string;
   issueDate: string;
   dueDate: string;
+  createdAt: number;
   totalMinor: number;
   currency: string;
   daysUntilDue: number;
-  document: { id: string; vendor: string; status: string; totalMinor: number } | null;
+  isOverdue: boolean;
+  isDueSoon: boolean;
+  source: "pdf" | "manual";
+  paymentMatch: "matched" | "scheduled" | "expected";
+  /** The bank transaction that settled a paid bill, when resolvable; else null. */
+  matchedTransactionId: string | null;
+  attention: "overdue" | "missing-evidence" | null;
+  hasEvidence: boolean;
+  extractionConfidence: number | null;
+  extractionNotes: string | null;
+  extractionSource: string | null;
+  category: string | null;
+  ledgerEntryIds: string[];
+  ledgerLines: BillLedgerLine[];
+  document: {
+    id: string;
+    vendor: string;
+    status: string;
+    totalMinor: number;
+    fileName: string | null;
+    date: string;
+  } | null;
   postingAffordance: string;
 };
 
@@ -169,9 +264,13 @@ export type PayrollRunRow = {
   id: string;
   period: string;
   status: string;
+  /** "manual" (owner-started) or "auto-draft" (drafted by the schedule). */
+  source: "manual" | "auto-draft";
   totalBaseMinor: number;
   headcount: number;
   currencyTotals: Array<{ currency: string; localMinor: number; baseMinor: number }>;
+  /** Approved-but-unsettled lines awaiting a bank match (0 for drafts/paid). */
+  unmatchedCount: number;
   actionState: string;
 };
 

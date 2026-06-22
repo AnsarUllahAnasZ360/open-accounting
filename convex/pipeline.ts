@@ -1,14 +1,28 @@
 import { v } from "convex/values";
 
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, type MutationCtx } from "./_generated/server";
 import { type AIAutonomy, shouldAutoPostAI } from "./ai";
 import { requireWorkspaceRole } from "./authz";
+import { assertNotDemoWrite } from "./demoWorkspace";
+import {
+  type BusinessImpactCategory,
+  type CalibrationParams,
+  IDENTITY_CALIBRATION,
+} from "./calibration";
 import { postLedgerEntryCore, type LedgerLineInput } from "./ledger";
 import { assertSignedMinorUnit } from "./money";
+import { ruleMatchesTxn } from "./ruleMatcher";
 
 const sourceValidator = v.union(v.literal("bank"), v.literal("stripe"), v.literal("manual"));
+
+// E2-T8: confidence assigned to a Plaid PFC-derived weak prior. Sits ABOVE the
+// autopilot threshold (0.75) so autopilot posts a small charge on the first
+// pass, and BELOW the balanced threshold (0.90) so balanced/suggest record the
+// prior but route to the Inbox. Changing this value never touches
+// AI_AUTONOMY_THRESHOLDS — the gate constant is the source of truth for the cut.
+export const PLAID_PRIOR_CONFIDENCE = 0.78;
 const aiProposalValidator = v.object({
   categoryAccountId: v.id("ledgerAccounts"),
   confidence: v.number(),
@@ -16,12 +30,14 @@ const aiProposalValidator = v.object({
   needsHuman: v.boolean(),
   question: v.optional(v.string()),
 });
-const semanticMemoryProposalValidator = v.object({
+// E2-T5: an embedding/k-NN recall proposal. Same shape as an AI proposal but
+// routed at stage "embedding" — it slots into the cascade between exact-string
+// correction memory and the plaid_prior / LLM stages.
+const recallProposalValidator = v.object({
   categoryAccountId: v.id("ledgerAccounts"),
   confidence: v.number(),
   reasoning: v.string(),
 });
-
 const routeTransactionArgs = {
   entityId: v.id("entities"),
   bankAccountId: v.id("bankAccounts"),
@@ -41,7 +57,7 @@ const routeTransactionArgs = {
   evalExpectedAccountId: v.optional(v.id("ledgerAccounts")),
   evalSet: v.optional(v.boolean()),
   plaidPriorAccountId: v.optional(v.id("ledgerAccounts")),
-  semanticMemoryProposal: v.optional(semanticMemoryProposalValidator),
+  embeddingProposal: v.optional(recallProposalValidator),
   aiProposal: v.optional(aiProposalValidator),
 };
 
@@ -64,7 +80,7 @@ type RouteTransactionArgs = {
   evalExpectedAccountId?: Id<"ledgerAccounts">;
   evalSet?: boolean;
   plaidPriorAccountId?: Id<"ledgerAccounts">;
-  semanticMemoryProposal?: {
+  embeddingProposal?: {
     categoryAccountId: Id<"ledgerAccounts">;
     confidence: number;
     reasoning: string;
@@ -82,15 +98,11 @@ function directionFor(amountMinor: number) {
   return amountMinor >= 0 ? "inflow" : "outflow";
 }
 
-function includesText(haystack: string, needle: string | undefined) {
-  return !needle || haystack.toLowerCase().includes(needle.toLowerCase());
-}
-
 function absoluteMinor(amountMinor: number) {
   return Math.abs(amountMinor);
 }
 
-function normalizeMerchantKey(merchant: string) {
+export function normalizeMerchantKey(merchant: string) {
   return merchant.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
@@ -110,6 +122,12 @@ async function requireEntity(ctx: MutationCtx, entityId: Id<"entities">) {
     throw new Error("OpenBooks entity not found.");
   }
   await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+  // E11-T6: block writes targeting the read-only public demo workspace. This is
+  // the shared entity-resolver for every session-bound pipeline WRITE
+  // (routeTransaction, confirm, recategorize, correct), so one call here covers
+  // them all. The seed/cron path uses `routeTransactionInternal` (no
+  // `requireEntity`), so the demo re-seed is unaffected.
+  await assertNotDemoWrite(ctx, entity.workspaceId);
   return entity;
 }
 
@@ -194,6 +212,9 @@ async function reverseExistingEntry(
       debitMinor: line.creditMinor,
       creditMinor: line.debitMinor,
       currency: line.currency,
+      // E1-T9: carry the contact attribution onto the reversal so the
+      // contact-level rollup nets out exactly when an entry is reversed/reposted.
+      contactId: line.contactId,
     })),
   });
   return result.entryId;
@@ -212,15 +233,19 @@ async function findMatchingRule(
     .query("rules")
     .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
     .collect();
-  const direction = directionFor(args.amountMinor);
+  // E12-T4: evaluate condition GROUPS (OR-of-groups / AND-within) through the
+  // shared matcher, which folds legacy flat rules into a single implicit group
+  // via its read-time shim. first-match-wins across rules is preserved by the
+  // order sort below — this only changes how a SINGLE rule decides it matches.
   return rules
     .filter((rule) => rule.active)
     .sort((a, b) => a.order - b.order)
-    .find(
-      (rule) =>
-        (rule.direction === "any" || rule.direction === direction) &&
-        includesText(args.merchant, rule.merchantContains) &&
-        includesText(args.rawDescription, rule.descriptionContains),
+    .find((rule) =>
+      ruleMatchesTxn(rule, {
+        merchant: args.merchant,
+        rawDescription: args.rawDescription,
+        amountMinor: args.amountMinor,
+      }),
     );
 }
 
@@ -230,6 +255,56 @@ async function getEntityAutonomy(ctx: MutationCtx, entity: Doc<"entities">): Pro
     .withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId))
     .unique();
   return config?.autonomy ?? "balanced";
+}
+
+/**
+ * Load the entity's fitted confidence calibration (E2-T10). Resolution order is
+ * PER-ENTITY first (two LLCs calibrate differently), then the WORKSPACE-LEVEL
+ * fallback row (entityId omitted) for entities whose holdout labels were too thin
+ * to fit their own, then identity when nothing has been fitted yet — identity
+ * leaves the gate identical to the pre-calibration behavior, and calibration only
+ * ever tightens auto-post (the conservative-only clamp in decideAutoPost).
+ */
+async function getEntityCalibration(
+  ctx: MutationCtx,
+  entity: Doc<"entities">,
+): Promise<CalibrationParams> {
+  const entityRow = await ctx.db
+    .query("aiCalibrations")
+    .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+    .unique();
+  const row =
+    entityRow ??
+    // Workspace fallback: a row written for the workspace with entityId omitted.
+    (
+      await ctx.db
+        .query("aiCalibrations")
+        .withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId))
+        .collect()
+    ).find((candidate) => candidate.entityId === undefined) ??
+    null;
+  if (!row) return IDENTITY_CALIBRATION;
+  return {
+    method: row.method,
+    a: row.a,
+    b: row.b,
+    sampleCount: row.sampleCount,
+    positiveCount: row.positiveCount,
+  };
+}
+
+/** Resolve the category-account metadata used by the E6.2 business-impact gate. */
+async function resolveBusinessImpactCategory(
+  ctx: MutationCtx,
+  categoryAccountId: Id<"ledgerAccounts">,
+): Promise<BusinessImpactCategory> {
+  const account = await ctx.db.get(categoryAccountId);
+  return {
+    type: account?.type ?? null,
+    subtype: account?.subtype ?? null,
+    number: account?.number ?? null,
+    name: account?.name ?? null,
+  };
 }
 
 async function assertCategoryAccount(
@@ -242,6 +317,64 @@ async function assertCategoryAccount(
     throw new Error("Pipeline proposal category must be an active account on this entity.");
   }
   return account;
+}
+
+/**
+ * Non-throwing existence/ownership check for a proposed category account
+ * (E2-T7). The LLM (or an embedding-recall row pointing at a since-archived
+ * account) can hand us a category id that does not exist on this entity. For
+ * MACHINE proposals (ai/embedding/memory/plaid_prior) we must abstain to the
+ * Inbox rather than throw a whole batch or mispost — so the route functions call
+ * this first and skip to needs_review when it returns false. Human-supplied ids
+ * (confirm/recategorize) keep the strict `assertCategoryAccount` throw.
+ */
+async function categoryAccountValidForEntity(
+  ctx: MutationCtx,
+  entityId: Id<"entities">,
+  categoryAccountId: Id<"ledgerAccounts">,
+): Promise<boolean> {
+  const account = await ctx.db.get(categoryAccountId);
+  return Boolean(account && account.entityId === entityId && !account.archived);
+}
+
+/**
+ * Abstain a transaction to the Inbox unposted (E2-T7). Used when a machine
+ * proposal cannot be trusted (e.g. a hallucinated / archived category id). NEVER
+ * fabricates a category onto the ledger — the honest tail stays unposted (Q9).
+ */
+async function abstainToInbox(
+  ctx: MutationCtx,
+  args: {
+    entityId: Id<"entities">;
+    transactionId: Id<"transactions">;
+    merchant: string;
+    currency: string;
+    amountMinor: number;
+    reasoning: string;
+    now: number;
+  },
+) {
+  await ctx.db.patch(args.transactionId, {
+    decidedBy: "needs_review",
+    confidence: 0.35,
+    reasoning: args.reasoning,
+    updatedAt: args.now,
+  });
+  await ctx.db.insert("inboxItems", {
+    entityId: args.entityId,
+    transactionId: args.transactionId,
+    kind: "categorize",
+    payloadSummary: `${args.merchant} needs review for ${args.currency} ${absoluteMinor(args.amountMinor) / 100}`,
+    status: "open",
+    createdAt: args.now,
+    updatedAt: args.now,
+  });
+  return {
+    status: "needs_review" as const,
+    transactionId: args.transactionId,
+    entryId: null,
+    stage: "needs_review" as const,
+  };
 }
 
 async function findCorrectionMemory(
@@ -271,6 +404,11 @@ async function postPipelineLedgerEntry(
   args: {
     entity: Doc<"entities">;
     actorUserId?: Id<"users">;
+    // When true (the demo seed, E11-T4), the actor posts AS ITSELF — the audit
+    // row uses the normal `ledger.entry.posted` action, not the Plaid-sync
+    // `system.sync.*` action. The default (Plaid/receipts sync) keeps the
+    // `system.sync` label so those entries read as system-posted.
+    auditAsSelf?: boolean;
     date: string;
     memo: string;
     source: "bank" | "stripe" | "manual";
@@ -287,7 +425,7 @@ async function postPipelineLedgerEntry(
       source: args.source,
       sourceId: args.sourceId,
       lines: args.lines,
-      auditAction: "system.sync.ledger_entry.posted",
+      auditAction: args.auditAsSelf ? undefined : "system.sync.ledger_entry.posted",
     });
     return result.entryId;
   }
@@ -316,14 +454,23 @@ async function postTransactionEntry(
     categoryAccountId: Id<"ledgerAccounts">;
     memoSuffix: string;
     actorUserId?: Id<"users">;
+    // E11-T4: when the demo seed posts, the actor posts AS ITSELF (normal audit
+    // action), not as the Plaid `system.sync` actor.
+    auditAsSelf?: boolean;
+    // E1-T9: contact resolved on the transaction (customer for an inflow, vendor
+    // for an outflow). Attributed to BOTH legs so customer/vendor reports roll up
+    // off the ledger. Optional — omitting it preserves prior behavior.
+    contactId?: Id<"contacts">;
   },
 ) {
   const amount = absoluteMinor(args.amountMinor);
   const debitAccountId = args.amountMinor >= 0 ? args.bankAccount.ledgerAccountId : args.categoryAccountId;
   const creditAccountId = args.amountMinor >= 0 ? args.categoryAccountId : args.bankAccount.ledgerAccountId;
+  const contactId = args.contactId ? String(args.contactId) : undefined;
   return await postPipelineLedgerEntry(ctx, {
     entity: args.entity,
     actorUserId: args.actorUserId,
+    auditAsSelf: args.auditAsSelf,
     date: args.date,
     memo: `${args.merchant} - ${args.memoSuffix}`,
     source: args.source === "manual" ? "manual" : args.source,
@@ -334,12 +481,14 @@ async function postTransactionEntry(
         debitMinor: amount,
         creditMinor: 0,
         currency: args.entity.currency,
+        contactId,
       },
       {
         accountId: creditAccountId,
         debitMinor: 0,
         creditMinor: amount,
         currency: args.entity.currency,
+        contactId,
       },
     ],
   });
@@ -359,21 +508,44 @@ async function routeProposedCategory(
     categoryAccountId: Id<"ledgerAccounts">;
     confidence: number;
     reasoning: string;
-    stage: "memory" | "plaid_prior" | "ai";
+    stage: "memory" | "embedding" | "plaid_prior" | "ai";
     needsHuman?: boolean;
     question?: string;
     now: number;
     actorUserId?: Id<"users">;
+    // E11-T4: demo seed posts AS ITSELF (normal audit action).
+    auditAsSelf?: boolean;
+    // E1-T9: contact resolved on the transaction (customer/vendor), carried onto
+    // the posted journal lines when this proposal auto-posts.
+    contactId?: Id<"contacts">;
   },
 ) {
-  await assertCategoryAccount(ctx, args.entity._id, args.categoryAccountId);
+  // E2-T7: a machine proposal (memory/embedding/plaid_prior/ai) with a
+  // missing/foreign/archived category id abstains to the Inbox — it never throws
+  // the batch and never misposts.
+  if (!(await categoryAccountValidForEntity(ctx, args.entity._id, args.categoryAccountId))) {
+    return await abstainToInbox(ctx, {
+      entityId: args.entity._id,
+      transactionId: args.transactionId,
+      merchant: args.merchant,
+      currency: args.entity.currency,
+      amountMinor: args.amountMinor,
+      reasoning: `Proposed category from the ${args.stage} stage is no longer valid on this entity; routed to review.`,
+      now: args.now,
+    });
+  }
   const autonomy = await getEntityAutonomy(ctx, args.entity);
+  const calibration = await getEntityCalibration(ctx, args.entity);
+  const category = await resolveBusinessImpactCategory(ctx, args.categoryAccountId);
 
   if (
     shouldAutoPostAI({
       autonomy,
       confidence: args.confidence,
       needsHuman: args.needsHuman,
+      amountMinor: args.amountMinor,
+      category,
+      calibration,
     })
   ) {
     const entryId = await postTransactionEntry(ctx, {
@@ -387,6 +559,8 @@ async function routeProposedCategory(
       categoryAccountId: args.categoryAccountId,
       memoSuffix: `pipeline ${args.stage}`,
       actorUserId: args.actorUserId,
+      auditAsSelf: args.auditAsSelf,
+      contactId: args.contactId,
     });
     await ctx.db.patch(args.transactionId, {
       review: "auto",
@@ -397,7 +571,10 @@ async function routeProposedCategory(
       reasoning: args.reasoning,
       updatedAt: args.now,
     });
-    return { status: "posted" as const, transactionId: args.transactionId, entryId, stage: "rule" as const };
+    // E2-T7: report the REAL stage (memory|embedding|plaid_prior|ai) on the
+    // posted branch instead of a hardcoded "rule", so provenance and the
+    // calibration eval are truthful end-to-end.
+    return { status: "posted" as const, transactionId: args.transactionId, entryId, stage: args.stage };
   }
 
   await ctx.db.patch(args.transactionId, {
@@ -471,21 +648,50 @@ async function routeExistingProposedCategory(
     categoryAccountId: Id<"ledgerAccounts">;
     confidence: number;
     reasoning: string;
-    stage: "memory" | "ai";
+    stage: "memory" | "embedding" | "ai";
     needsHuman?: boolean;
     question?: string;
     now: number;
     actorUserId?: Id<"users">;
   },
 ) {
-  await assertCategoryAccount(ctx, args.entity._id, args.categoryAccountId);
+  // E2-T7: abstain (don't throw) when the machine-proposed category id is
+  // missing/foreign/archived. The existing imported row stays in review with a
+  // clear reason instead of failing the batch or misposting.
+  if (!(await categoryAccountValidForEntity(ctx, args.entity._id, args.categoryAccountId))) {
+    await ctx.db.patch(args.transaction._id, {
+      decidedBy: "needs_review",
+      confidence: 0.35,
+      reasoning: `Proposed category from the ${args.stage} stage is no longer valid on this entity; left for review.`,
+      updatedAt: args.now,
+    });
+    await upsertOpenCategorizationInbox(ctx, {
+      entityId: args.entity._id,
+      transactionId: args.transaction._id,
+      merchant: args.transaction.merchant,
+      currency: args.transaction.currency,
+      amountMinor: args.transaction.amountMinor,
+      now: args.now,
+    });
+    return {
+      status: "needs_review" as const,
+      transactionId: args.transaction._id,
+      entryId: null,
+      stage: "needs_review" as const,
+    };
+  }
   const autonomy = await getEntityAutonomy(ctx, args.entity);
+  const calibration = await getEntityCalibration(ctx, args.entity);
+  const category = await resolveBusinessImpactCategory(ctx, args.categoryAccountId);
 
   if (
     shouldAutoPostAI({
       autonomy,
       confidence: args.confidence,
       needsHuman: args.needsHuman,
+      amountMinor: args.transaction.amountMinor,
+      category,
+      calibration,
     })
   ) {
     const entryId = await postTransactionEntry(ctx, {
@@ -499,6 +705,7 @@ async function routeExistingProposedCategory(
       categoryAccountId: args.categoryAccountId,
       memoSuffix: `pipeline ${args.stage}`,
       actorUserId: args.actorUserId,
+      contactId: args.transaction.contactId,
     });
     await ctx.db.patch(args.transaction._id, {
       review: "auto",
@@ -586,6 +793,7 @@ async function recordCorrectionMemory(
     status = "rule_suggested";
   }
 
+  let memoryId: Id<"aiCorrectionMemories">;
   if (existing) {
     await ctx.db.patch(existing._id, {
       occurrenceCount: nextCount,
@@ -595,22 +803,31 @@ async function recordCorrectionMemory(
       suggestedRuleId,
       updatedAt: args.now,
     });
-    return existing._id;
+    memoryId = existing._id;
+  } else {
+    memoryId = await ctx.db.insert("aiCorrectionMemories", {
+      entityId: args.entity._id,
+      merchantKey,
+      merchantDisplayName: args.transaction.merchant,
+      direction,
+      categoryAccountId: args.categoryAccountId,
+      occurrenceCount: nextCount,
+      lastTransactionId: args.transaction._id,
+      status,
+      suggestedRuleId,
+      createdAt: args.now,
+      updatedAt: args.now,
+    });
   }
 
-  return await ctx.db.insert("aiCorrectionMemories", {
-    entityId: args.entity._id,
-    merchantKey,
-    merchantDisplayName: args.transaction.merchant,
-    direction,
-    categoryAccountId: args.categoryAccountId,
-    occurrenceCount: nextCount,
-    lastTransactionId: args.transaction._id,
-    status,
-    suggestedRuleId,
-    createdAt: args.now,
-    updatedAt: args.now,
+  // E2-T4: bring the semantic-memory vector table to life. After the exact /
+  // lexical merchantKey memory is written, schedule the (provider-agnostic,
+  // pinned-1024-dim) embedding upsert. It NO-OPs when no embedding-capable
+  // credential exists, so the correction always succeeds via lexical memory.
+  await ctx.scheduler.runAfter(0, internal.embeddings.embedCorrectionMemory, {
+    correctionMemoryId: memoryId,
   });
+  return memoryId;
 }
 
 async function routeTransactionCore(
@@ -620,10 +837,13 @@ async function routeTransactionCore(
     entity: Doc<"entities">;
     bankAccount: Doc<"bankAccounts">;
     actorUserId?: Id<"users">;
+    // E11-T4: the demo seed posts AS ITSELF (normal audit action), not as the
+    // Plaid `system.sync` actor. Threaded to every post in this routing pass.
+    auditAsSelf?: boolean;
   },
 ){
   assertSignedMinorUnit(args.amountMinor, "Transaction amount");
-  const { entity, bankAccount, actorUserId } = options;
+  const { entity, bankAccount, actorUserId, auditAsSelf } = options;
 
     const duplicate = await ctx.db
       .query("transactions")
@@ -663,6 +883,7 @@ async function routeTransactionCore(
       const entryId = await postPipelineLedgerEntry(ctx, {
         entity,
         actorUserId,
+        auditAsSelf,
         date: args.date,
         memo: `${args.merchant} - transfer`,
         source: "bank",
@@ -701,6 +922,8 @@ async function routeTransactionCore(
         categoryAccountId: args.matchAccountId,
         memoSuffix: "matched record",
         actorUserId,
+        auditAsSelf,
+        contactId: args.contactId,
       });
       await ctx.db.patch(transactionId, {
         review: "auto",
@@ -736,6 +959,8 @@ async function routeTransactionCore(
         categoryAccountId,
         memoSuffix: matchingRule ? `rule: ${matchingRule.name}` : "seeded category",
         actorUserId,
+        auditAsSelf,
+        contactId: args.contactId,
       });
       await ctx.db.patch(transactionId, {
         review: "auto",
@@ -772,10 +997,17 @@ async function routeTransactionCore(
         stage: "memory",
         now,
         actorUserId,
+        auditAsSelf,
+        contactId: args.contactId,
       });
     }
 
-    if (args.semanticMemoryProposal && !args.forceReview) {
+    // E2-T5: embedding / k-NN recall stage. Slots between exact-string memory
+    // and plaid_prior: a merchant VARIANT ("AWS" ≈ "AMZN WEB SERVICES") resolves
+    // deterministically and cheaply, short-circuiting the LLM. The recall itself
+    // runs in the categorizer action (vectorSearch is action-only); here we just
+    // route the proposal it produced at the truthful "embedding" stage.
+    if (args.embeddingProposal && !args.forceReview) {
       return await routeProposedCategory(ctx, {
         entity,
         bankAccount,
@@ -785,12 +1017,14 @@ async function routeTransactionCore(
         merchant: args.merchant,
         source: args.source,
         sourceId: args.externalId,
-        categoryAccountId: args.semanticMemoryProposal.categoryAccountId,
-        confidence: args.semanticMemoryProposal.confidence,
-        reasoning: args.semanticMemoryProposal.reasoning,
-        stage: "memory",
+        categoryAccountId: args.embeddingProposal.categoryAccountId,
+        confidence: args.embeddingProposal.confidence,
+        reasoning: `Pipeline stage 4b semantic recall: ${args.embeddingProposal.reasoning}`,
+        stage: "embedding",
         now,
         actorUserId,
+        auditAsSelf,
+        contactId: args.contactId,
       });
     }
 
@@ -805,11 +1039,19 @@ async function routeTransactionCore(
         source: args.source,
         sourceId: args.externalId,
         categoryAccountId: args.plaidPriorAccountId,
-        confidence: 0.7,
+        // E2-T8: the Plaid PFC prior is a WEAK signal — strong enough for
+        // autopilot (≥0.75) to post a small charge, deliberately below the
+        // balanced gate (0.90) so balanced/suggest record the prior but route to
+        // the Inbox for review. AI_AUTONOMY_THRESHOLDS is unchanged; only the
+        // confidence assigned to this stage moved (0.7 → 0.78) so the documented
+        // "auto-posts under autopilot" behavior is actually reachable.
+        confidence: PLAID_PRIOR_CONFIDENCE,
         reasoning: "Pipeline stage 5 used Plaid personal finance category as a weak prior.",
         stage: "plaid_prior",
         now,
         actorUserId,
+        auditAsSelf,
+        contactId: args.contactId,
       });
     }
 
@@ -831,6 +1073,8 @@ async function routeTransactionCore(
         question: args.aiProposal.question,
         now,
         actorUserId,
+        auditAsSelf,
+        contactId: args.contactId,
       });
     }
 
@@ -871,6 +1115,9 @@ export const routeTransactionInternal = internalMutation({
   args: {
     ...routeTransactionArgs,
     actorUserId: v.id("users"),
+    // E11-T4: the demo seed posts AS ITSELF (normal `ledger.entry.posted` audit
+    // action). Default false preserves the Plaid/receipts `system.sync` labeling.
+    auditAsSelf: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const entity = await ctx.db.get(args.entityId);
@@ -885,6 +1132,7 @@ export const routeTransactionInternal = internalMutation({
       entity,
       bankAccount,
       actorUserId: args.actorUserId,
+      auditAsSelf: args.auditAsSelf,
     });
   },
 });
@@ -922,6 +1170,7 @@ async function confirmTransactionCore(
     sourceId: transaction.externalId,
     categoryAccountId,
     memoSuffix: "human confirmed",
+    contactId: transaction.contactId,
   });
   const now = Date.now();
   await ctx.db.patch(transaction._id, {
@@ -967,7 +1216,7 @@ export const applyProposalToExistingTransactionInternal = internalMutation({
   args: {
     transactionId: v.id("transactions"),
     actorUserId: v.optional(v.id("users")),
-    semanticMemoryProposal: v.optional(semanticMemoryProposalValidator),
+    embeddingProposal: v.optional(recallProposalValidator),
     aiProposal: v.optional(aiProposalValidator),
   },
   handler: async (ctx, args) => {
@@ -1003,15 +1252,18 @@ export const applyProposalToExistingTransactionInternal = internalMutation({
       };
     }
     const now = Date.now();
-    if (args.semanticMemoryProposal) {
+    // E2-T5: a semantic-recall proposal short-circuits the LLM. Routed at the
+    // truthful "embedding" stage; if it abstains (invalid id) the row stays in
+    // review, and a later batch pass / LLM proposal can still rescue it.
+    if (args.embeddingProposal) {
       return await routeExistingProposedCategory(ctx, {
         entity,
         bankAccount,
         transaction,
-        categoryAccountId: args.semanticMemoryProposal.categoryAccountId,
-        confidence: args.semanticMemoryProposal.confidence,
-        reasoning: args.semanticMemoryProposal.reasoning,
-        stage: "memory",
+        categoryAccountId: args.embeddingProposal.categoryAccountId,
+        confidence: args.embeddingProposal.confidence,
+        reasoning: `Pipeline stage 4b semantic recall: ${args.embeddingProposal.reasoning}`,
+        stage: "embedding",
         now,
         actorUserId: args.actorUserId,
       });
@@ -1036,7 +1288,7 @@ export const applyProposalToExistingTransactionInternal = internalMutation({
       transactionId: transaction._id,
       entryId: null,
       stage: transaction.decidedBy ?? "needs_review",
-      reason: "No AI or semantic-memory proposal was supplied.",
+      reason: "No AI proposal was supplied.",
     };
   },
 });
@@ -1076,6 +1328,7 @@ async function recategorizeTransactionCore(
     sourceId: transaction.externalId,
     categoryAccountId: args.categoryAccountId,
     memoSuffix: "recategorized",
+    contactId: transaction.contactId,
   });
   const now = Date.now();
   await ctx.db.patch(transaction._id, {

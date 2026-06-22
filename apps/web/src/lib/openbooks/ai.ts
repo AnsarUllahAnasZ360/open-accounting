@@ -9,7 +9,6 @@ export type AiStatus = {
   detail: string;
   provider: string;
   chatModel: string;
-  embeddingsModel: string;
 };
 
 export type AiAnswer =
@@ -92,6 +91,14 @@ export type AiAnswer =
 
 export const OPENBOOKS_AI_EVENT = "openbooks:ask-ai";
 
+// A structured pending-prompt payload. The nonce is a separate field (not a
+// "::"-joined string) so prompts containing "::" — a time range, a ratio — are
+// never truncated. The widget re-submits whenever the nonce changes.
+export type PendingAiPrompt = {
+  prompt: string;
+  nonce: number;
+};
+
 export const aiAutonomyOptions: Array<{
   value: AiAutonomyMode;
   label: string;
@@ -128,10 +135,9 @@ export const aiSuggestedPrompts = [
 
 type BackendAiStatus = {
   mode: "active" | "degraded";
-  activeProvider: "bedrock" | null;
+  activeProvider: string | null;
   model: string | null;
-  embeddingsModel: string | null;
-  configuredProvider: "bedrock" | "anthropic" | "openai" | "google" | "ollama";
+  configuredProvider: string;
   degradedReason: string | null;
 };
 
@@ -140,22 +146,22 @@ export function frontendAiStatus(status?: BackendAiStatus): AiStatus {
     return {
       configured: true,
       mode: "active",
-      label: "Bedrock provider is configured",
-      detail: "OpenBooks can use Bedrock-backed categorization when pipeline actions request model proposals.",
+      // Provider-agnostic: the conversational surface never names a vendor.
+      // The Settings card keeps the technical provider/model fields below.
+      label: "AI is on",
+      detail: "AI can read your books and draft proposals. Nothing posts to the ledger until you confirm it.",
       provider: status.activeProvider ?? status.configuredProvider,
       chatModel: status.model ?? "Configured in Convex",
-      embeddingsModel: status.embeddingsModel ?? "Configured in Convex",
     };
   }
 
   return {
     configured: false,
     mode: "degraded",
-    label: "AI provider is not configured",
-    detail: status?.degradedReason ?? "OpenBooks is running in degraded mode: rules, Plaid priors, reports, and manual review still work.",
+    label: "AI is off",
+    detail: status?.degradedReason ?? "AI is off, but rules, bank priors, reports, and manual review still work.",
     provider: "None connected",
     chatModel: "Unavailable",
-    embeddingsModel: "Unavailable",
   };
 }
 

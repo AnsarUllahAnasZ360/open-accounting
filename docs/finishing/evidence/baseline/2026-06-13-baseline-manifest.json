@@ -1,0 +1,346 @@
+{
+  "stampedAt": "2026-06-13",
+  "note": "Pre-redesign baseline. overflowPx>1 means horizontal overflow at that width.",
+  "widths": [
+    390,
+    768,
+    1306,
+    1440,
+    1758
+  ],
+  "captured": 55,
+  "overflowingCount": 0,
+  "overflowing": [],
+  "rows": [
+    {
+      "surface": "ask-ai",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "ask-ai",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "ask-ai",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "ask-ai",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "ask-ai",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "bills",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "bills",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "bills",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "bills",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "bills",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "contacts",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "contacts",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "contacts",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "contacts",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "contacts",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "dashboard",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "dashboard",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "dashboard",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "dashboard",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "dashboard",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "expenses",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "expenses",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "expenses",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "expenses",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "expenses",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "inbox",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "inbox",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "inbox",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "inbox",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "inbox",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "income",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "income",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "income",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "income",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "income",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "payroll",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "payroll",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "payroll",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "payroll",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "payroll",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "reports",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "reports",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "reports",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "reports",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "reports",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "settings",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "settings",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "settings",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "settings",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "settings",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "transactions",
+      "width": 390,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "transactions",
+      "width": 768,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "transactions",
+      "width": 1306,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "transactions",
+      "width": 1440,
+      "overflowPx": 0,
+      "captured": true
+    },
+    {
+      "surface": "transactions",
+      "width": 1758,
+      "overflowPx": 0,
+      "captured": true
+    }
+  ]
+}

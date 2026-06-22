@@ -262,8 +262,8 @@ export const markPaid = mutation({
       sourceId: `bill-settle-${bill._id}`,
       auditAction: "bill.paid",
       lines: [
-        { accountId: apAccount._id, debitMinor: bill.totalMinor, creditMinor: 0, currency: entity.currency },
-        { accountId: bankAccount.ledgerAccountId, debitMinor: 0, creditMinor: bill.totalMinor, currency: entity.currency },
+        { accountId: apAccount._id, debitMinor: bill.totalMinor, creditMinor: 0, currency: entity.currency, contactId: bill.contactId },
+        { accountId: bankAccount.ledgerAccountId, debitMinor: 0, creditMinor: bill.totalMinor, currency: entity.currency, contactId: bill.contactId },
       ],
     });
 
@@ -362,8 +362,8 @@ export const createBill = mutation({
       sourceId: `bill-${now}`,
       auditAction: "bill.created",
       lines: [
-        { accountId: expenseAccount._id, debitMinor: args.totalMinor, creditMinor: 0, currency: entity.currency },
-        { accountId: apAccount._id, debitMinor: 0, creditMinor: args.totalMinor, currency: entity.currency },
+        { accountId: expenseAccount._id, debitMinor: args.totalMinor, creditMinor: 0, currency: entity.currency, contactId: contact._id },
+        { accountId: apAccount._id, debitMinor: 0, creditMinor: args.totalMinor, currency: entity.currency, contactId: contact._id },
       ],
     });
 

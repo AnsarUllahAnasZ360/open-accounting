@@ -79,3 +79,23 @@ test("G2 — Plaid sync controls expose the cron/manual path without syncing boo
   await expect(panel.getByRole("button", { name: "Sync fixture" })).toBeVisible();
   await page.screenshot({ path: `${EVIDENCE}/2026-06-12-G2-plaid-sync-controls.png`, fullPage: true });
 });
+
+test("E3-T5 — Add bank sheet maps each Plaid account to a business", async ({ page }) => {
+  test.setTimeout(120_000);
+  await openConnections(page, 1440);
+
+  // The "Add bank" entry point only appears once a Plaid app is configured.
+  if ((await page.getByTestId("bank-add-open").count()) === 0) {
+    test.skip(true, "Plaid app not configured in this environment; per-account mapping UI requires a live Link.");
+  }
+
+  await visibleByTestId(page, "bank-add-open").click();
+  const sheet = visibleByTestId(page, "add-bank-sheet");
+  await expect(sheet).toBeVisible({ timeout: 30000 });
+
+  // Pre-link: the owner picks a starting business and is told each account will
+  // be mapped after Plaid returns them (the E3-T5 preview-then-assign promise).
+  await expect(visibleByTestId(page, "add-bank-business")).toBeVisible();
+  await expect(sheet.getByText(/map each connected account to a business/i)).toBeVisible();
+  await page.screenshot({ path: `${EVIDENCE}/2026-06-19-E3-T5-add-bank-mapping.png`, fullPage: true });
+});

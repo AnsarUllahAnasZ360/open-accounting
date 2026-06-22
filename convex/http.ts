@@ -38,6 +38,8 @@ const stripeWebhookSyncRef = makeFunctionReference<
     type: string;
     objectId?: string;
     relatedPaymentIntentId?: string;
+    entityId?: Id<"entities">;
+    connectionId?: Id<"financialConnections">;
   },
   StripeWebhookSyncResult
 >("stripe:syncFromWebhookEvent");
@@ -144,21 +146,56 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const payload = await request.text();
+    const signatureHeader = request.headers.get("stripe-signature");
+    const matchedCredential = await ctx.runAction(internal.connections.verifyStripeWebhookCredential, {
+      payload,
+      ...(signatureHeader ? { signatureHeader } : {}),
+    });
     const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
-    if (!secret) {
+    if (!matchedCredential && !secret) {
       return jsonResponse(
         { ok: false, error: "stripe_webhook_secret_missing" },
         { status: 503 },
       );
     }
 
-    const verified = await verifyStripeWebhookSignature({
-      payload,
-      signatureHeader: request.headers.get("stripe-signature"),
-      secret,
-    });
+    const verified = matchedCredential
+      ? true
+      : await verifyStripeWebhookSignature({
+          payload,
+          signatureHeader,
+          secret: secret!,
+        });
     if (!verified) {
+      // E3-T6: a signed delivery we couldn't verify against a known account's
+      // secret marks that account's webhook "failing" (distinct from an event we
+      // simply ignore), so the owner sees the break. Best-effort, never blocks.
+      if (signatureHeader) {
+        let connectedAccountId: string | undefined;
+        try {
+          const parsed = JSON.parse(payload) as { account?: unknown };
+          if (typeof parsed.account === "string") connectedAccountId = parsed.account;
+        } catch {
+          // ignore malformed JSON; we just won't flag a specific account
+        }
+        if (connectedAccountId) {
+          await ctx.runMutation(internal.connections.markStripeWebhookSignatureFailure, {
+            connectedAccountId,
+          });
+        }
+      }
       return jsonResponse({ ok: false, error: "invalid_signature" }, { status: 400 });
+    }
+
+    // E3-T6: a real verified delivery is the only thing that earns "listening".
+    // The matcher above only returns a credential when the signature verified
+    // against that account's saved secret, so a match here is the confirmation.
+    if (matchedCredential) {
+      await ctx.runMutation(internal.connections.markStripeWebhookDelivery, {
+        connectionId: matchedCredential.connectionId,
+        entityId: matchedCredential.entityId,
+        outcome: "verified",
+      });
     }
 
     let event;
@@ -173,7 +210,16 @@ http.route({
 
 	    const result: { status: "received" | "ignored" | "duplicate"; eventId: string } = await ctx.runMutation(
 	      internal.stripeWebhook.recordEvent,
-	      event,
+	      {
+	        ...event,
+	        ...(matchedCredential
+	          ? {
+	              workspaceId: matchedCredential.workspaceId,
+	              entityId: matchedCredential.entityId,
+	              connectionId: matchedCredential.connectionId,
+	            }
+	          : {}),
+	      },
 	    );
 	    const sync =
 	      result.status === "received"
@@ -182,6 +228,12 @@ http.route({
 	            type: event.type,
 	            objectId: event.objectId,
 	            relatedPaymentIntentId: event.relatedPaymentIntentId,
+	            ...(matchedCredential
+	              ? {
+	                  entityId: matchedCredential.entityId,
+	                  connectionId: matchedCredential.connectionId,
+	                }
+	              : {}),
 	          })
 	        : { status: "skipped" as const, reason: `Stripe event was ${result.status}; no sync run needed.` };
 	    return jsonResponse({

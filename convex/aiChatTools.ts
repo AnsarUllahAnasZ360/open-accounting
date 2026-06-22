@@ -4,6 +4,8 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { query, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import { computeCfoSignals } from "./aiCfoAggregate";
+import { resolveDefaultEntity } from "./entityScope";
 
 const DEFAULT_START_DATE = "2026-01-01";
 const DEFAULT_END_DATE = "2026-12-31";
@@ -75,18 +77,7 @@ async function getEntity(ctx: QueryCtx, entityId?: Id<"entities">) {
   }
 
   const { membership } = await requireAnyWorkspaceRole(ctx, "member");
-  const demoEntity = await ctx.db
-    .query("entities")
-    .withIndex("by_workspace_and_slug", (q) =>
-      q.eq("workspaceId", membership.workspaceId).eq("slug", "acme-studio-llc"),
-    )
-    .unique();
-  if (demoEntity) return demoEntity;
-
-  const entity = await ctx.db
-    .query("entities")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId))
-    .first();
+  const entity = await resolveDefaultEntity(ctx, membership);
   if (!entity) {
     throw new ConvexError("No OpenBooks entity is available for AI tools.");
   }
@@ -302,6 +293,38 @@ export const searchContacts = query({
           };
         }),
     };
+  },
+});
+
+function resolveToolToday(today?: string) {
+  return today && /^\d{4}-\d{2}-\d{2}$/.test(today)
+    ? today
+    : new Date(Date.now()).toISOString().slice(0, 10);
+}
+
+export const getRunwayAndBurn = query({
+  args: { entityId: v.optional(v.id("entities")), today: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const entity = await getEntity(ctx, args.entityId);
+    const signals = await computeCfoSignals(ctx, entity, entity.workspaceId, resolveToolToday(args.today));
+    return {
+      tool: "getRunwayAndBurn" as const,
+      entity: signals.entity,
+      asOf: signals.asOf,
+      cashPositionMinor: signals.cashPositionMinor,
+      monthlyBurnMinor: signals.monthlyBurnMinor,
+      runwayMonths: signals.runwayMonths,
+      forecast: signals.forecast,
+    };
+  },
+});
+
+export const getAdvisories = query({
+  args: { entityId: v.optional(v.id("entities")), today: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const entity = await getEntity(ctx, args.entityId);
+    const signals = await computeCfoSignals(ctx, entity, entity.workspaceId, resolveToolToday(args.today));
+    return { tool: "getAdvisories" as const, ...signals };
   },
 });
 

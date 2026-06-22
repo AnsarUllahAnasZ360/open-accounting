@@ -4,7 +4,10 @@ import { v } from "convex/values";
 
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { action, internalAction, type ActionCtx } from "./_generated/server";
+import { action, internalAction, mutation, type ActionCtx } from "./_generated/server";
+import { CATEGORIZATION_BATCH_PASS_SIZE } from "./ai";
+import { requireWorkspaceRole } from "./authz";
+import { ensureSystemSyncActor } from "./systemActors";
 
 const routeSourceValidator = v.union(v.literal("bank"), v.literal("stripe"), v.literal("manual"));
 const transactionStatusValidator = v.union(v.literal("pending"), v.literal("posted"));
@@ -17,9 +20,20 @@ type CandidateAccount = {
   subtype: string;
 };
 
+// Business context (E2-T9): entity name/type, approved revenue streams, and a
+// recent-vendor/customer hint, used to lift cold-start categorization accuracy.
+type BusinessContext = {
+  entityName: string;
+  entityType: string | null;
+  revenueStreams: string[];
+  recentVendors: string[];
+  recentCustomers: string[];
+};
+
 type CategorizationContext = {
   entity: {
     id: Id<"entities">;
+    workspaceId: Id<"workspaces">;
     name: string;
     currency: string;
   };
@@ -35,6 +49,12 @@ type CategorizationContext = {
     autonomy: "suggest" | "balanced" | "autopilot";
   };
   candidateAccounts: CandidateAccount[];
+  // Optional so a stale/seam context without the block still parses; the prompt
+  // simply omits the Business context section when it is absent.
+  businessContext?: BusinessContext;
+  // Merchant-resolved contact (E2-T9). Optional/undefined-tolerant so a stale
+  // seam context still parses; null when no contact matched the merchant.
+  resolvedContactId?: Id<"contacts"> | null;
 };
 
 type RouteTransactionArgs = {
@@ -56,6 +76,12 @@ type RouteTransactionArgs = {
   evalExpectedAccountId?: Id<"ledgerAccounts">;
   evalSet?: boolean;
   plaidPriorAccountId?: Id<"ledgerAccounts">;
+  // E2-T5: a semantic-recall proposal routed at the "embedding" cascade stage.
+  embeddingProposal?: {
+    categoryAccountId: Id<"ledgerAccounts">;
+    confidence: number;
+    reasoning: string;
+  };
 };
 
 type PipelineProposal = {
@@ -64,11 +90,6 @@ type PipelineProposal = {
   reasoning: string;
   needsHuman: boolean;
   question?: string;
-};
-type SemanticMemoryProposal = {
-  categoryAccountId: Id<"ledgerAccounts">;
-  confidence: number;
-  reasoning: string;
 };
 
 type NormalizedProposal = {
@@ -100,7 +121,7 @@ type BatchItemResult = {
   mode: "bedrock" | "degraded" | "fallback";
   provider: "bedrock" | null;
   model: string | null;
-  proposalSource: "semantic_memory" | "llm" | null;
+  proposalSource: "llm" | null;
   fallbackReason: string | null;
   route: ExistingRouteResult;
 };
@@ -133,8 +154,8 @@ type BedrockEnv = {
 
 const categorizationContextRef = makeFunctionReference<
   "query",
-  { entityId: Id<"entities">; bankAccountId: Id<"bankAccounts">; amountMinor: number },
-  CategorizationContext
+  { entityId: Id<"entities">; bankAccountId: Id<"bankAccounts">; amountMinor: number; merchant?: string },
+  CategorizationContext & { resolvedContactId: Id<"contacts"> | null }
 >("ai:categorizationContext");
 
 const categorizationContextForImportInternalRef = makeFunctionReference<
@@ -144,8 +165,9 @@ const categorizationContextForImportInternalRef = makeFunctionReference<
     bankAccountId: Id<"bankAccounts">;
     amountMinor: number;
     actorUserId: Id<"users">;
+    merchant?: string;
   },
-  CategorizationContext
+  CategorizationContext & { resolvedContactId: Id<"contacts"> | null }
 >("ai:categorizationContextForImportInternal");
 
 function present(value: string | undefined) {
@@ -171,7 +193,7 @@ export function bedrockRuntimeEnv(modelFromConfig: string | null): BedrockEnv {
   };
 }
 
-function bedrockPayload(modelId: string, prompt: string): BedrockPayload {
+export function bedrockPayload(modelId: string, prompt: string): BedrockPayload {
   if (modelId.includes("anthropic.claude")) {
     return {
       contentType: "application/json",
@@ -347,6 +369,74 @@ async function invokeBedrockText(args: {
   return extractBedrockResponseText(args.env.modelId, await invokeBedrockPayload({ env: args.env, payload }));
 }
 
+/**
+ * Provider-agnostic categorization entrypoint (E3-T3).
+ *
+ * Resolves the workspace's active AI provider once, then returns a uniform
+ * shape: `ready` plus a `run(prompt)` that yields raw model text. For
+ * `provider === "bedrock"` it keeps the existing AWS invoke path (low risk,
+ * unchanged contract); for every other catalog provider it delegates to the
+ * `"use node"` AI SDK runtime. When nothing is configured, `ready` is false and
+ * `degradedReason` names the missing provider so the caller routes to Inbox.
+ */
+type CategorizeRuntime = {
+  ready: boolean;
+  provider: string | null;
+  model: string | null;
+  degradedReason: string | null;
+  run: (prompt: string) => Promise<string>;
+};
+
+async function resolveCategorizeRuntime(
+  ctx: ActionCtx,
+  workspaceId: Id<"workspaces">,
+  bedrockModelHint: string | null,
+): Promise<CategorizeRuntime> {
+  const env = bedrockRuntimeEnv(bedrockModelHint);
+  // Prefer the explicit Bedrock env path when it is fully configured: it is the
+  // proven, lowest-risk runtime and preserves the exact existing behavior.
+  if (env.ready && env.modelId) {
+    return {
+      ready: true,
+      provider: "bedrock",
+      model: env.modelId,
+      degradedReason: null,
+      run: (prompt: string) => invokeBedrockText({ env, prompt }),
+    };
+  }
+
+  // Otherwise resolve any saved BYO (or env) provider through the AI SDK runtime.
+  // Readiness is a no-network check; the live call only happens inside run().
+  const readiness = await ctx.runAction(internal.aiCategorizeRuntime.resolveCategorizeReadiness, {
+    workspaceId,
+  });
+  if (!readiness.ready) {
+    return {
+      ready: false,
+      provider: readiness.provider,
+      model: readiness.model,
+      degradedReason: readiness.reason,
+      run: async () => {
+        throw new Error(readiness.reason ?? "AI provider is not configured.");
+      },
+    };
+  }
+  return {
+    ready: true,
+    provider: readiness.provider,
+    model: readiness.model,
+    degradedReason: null,
+    run: async (prompt: string) => {
+      const result = await ctx.runAction(internal.aiCategorizeRuntime.generateCategorizationText, {
+        workspaceId,
+        prompt,
+      });
+      if (!result.ok) throw new Error(result.reason);
+      return result.text;
+    },
+  };
+}
+
 function firstJsonObject(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
   const candidates = [fenced, text].filter((candidate): candidate is string => Boolean(candidate));
@@ -443,6 +533,23 @@ export function normalizeBedrockCategorizationProposal(
   };
 }
 
+function businessContextLines(direction: "inflow" | "outflow", context?: BusinessContext): string[] {
+  if (!context) return [];
+  const lines: string[] = ["", "Business context:"];
+  lines.push(`- Business: ${context.entityName}${context.entityType ? ` (${context.entityType})` : ""}`);
+  if (context.revenueStreams.length > 0) {
+    lines.push(`- Approved revenue streams: ${context.revenueStreams.join(", ")}`);
+  }
+  // Cold-start hint: a recent-vendor/customer sample so the model has signal
+  // even before the owner has approved a revenue-stream taxonomy.
+  const hint = direction === "inflow" ? context.recentCustomers : context.recentVendors;
+  if (hint.length > 0) {
+    const label = direction === "inflow" ? "Recent customers" : "Recent vendors";
+    lines.push(`- ${label}: ${hint.slice(0, 8).join(", ")}`);
+  }
+  return lines;
+}
+
 export function buildCategorizationPrompt(args: {
   entityName: string;
   amountMinor: number;
@@ -451,6 +558,7 @@ export function buildCategorizationPrompt(args: {
   rawDescription: string;
   date: string;
   accounts: CandidateAccount[];
+  businessContext?: BusinessContext;
 }) {
   const direction = args.amountMinor >= 0 ? "inflow" : "outflow";
   const amount = `${args.currency} ${(Math.abs(args.amountMinor) / 100).toFixed(2)} ${direction}`;
@@ -464,6 +572,13 @@ export function buildCategorizationPrompt(args: {
     "Use needsHuman=false only when the merchant and raw description clearly point to one category.",
     "If the merchant or raw description is generic, ambiguous, an adjustment, or says unknown/review/needs human, set needsHuman=true, use confidence <=0.65, and explain what is missing.",
     "For clear recurring software, cloud, rent, utilities, payroll, meals, travel, bank fee, tax, or professional-service vendors, set needsHuman=false and use confidence that reflects the evidence.",
+    // Direction-aware guidance (E2-T6): not every inflow is revenue and not every
+    // outflow is expense. Refunds, transfers, contributions, and loan proceeds
+    // are valid answers — prefer the correct non-income/non-expense account over
+    // inventing sales or a generic expense.
+    "Not every inflow is revenue and not every outflow is expense. The candidate list may include refund/contra, equity-contribution, liability (loan/credit-card) proceeds, and transfer/clearing accounts. Use them when they fit.",
+    "If an inflow looks like a refund, a customer reversal, a transfer between the owner's own accounts, an internal payout deposit, or a loan/owner contribution, prefer a transfer/clearing, contra, liability, or equity account over inventing new revenue.",
+    "If an outflow looks like a refund issued, a transfer, an owner draw, or a loan/credit-card paydown, prefer the matching transfer/clearing, contra-income, equity, or liability account over a generic expense.",
     "Return only JSON. No markdown. No explanation outside JSON.",
     "",
     `Entity: ${args.entityName}`,
@@ -471,6 +586,7 @@ export function buildCategorizationPrompt(args: {
     `Amount: ${amount}`,
     `Merchant: ${args.merchant}`,
     `Raw description: ${args.rawDescription}`,
+    ...businessContextLines(direction, args.businessContext),
     "",
     "Candidate accounts:",
     accounts,
@@ -484,7 +600,6 @@ async function routeThroughPipeline(
   ctx: ActionCtx,
   args: RouteTransactionArgs,
   aiProposal: PipelineProposal | null,
-  semanticMemoryProposal?: SemanticMemoryProposal | null,
 ): Promise<RouteResult> {
   return await ctx.runMutation(api.pipeline.routeTransaction, {
     entityId: args.entityId,
@@ -505,7 +620,7 @@ async function routeThroughPipeline(
     ...(args.evalExpectedAccountId ? { evalExpectedAccountId: args.evalExpectedAccountId } : {}),
     ...(args.evalSet ? { evalSet: args.evalSet } : {}),
     ...(args.plaidPriorAccountId ? { plaidPriorAccountId: args.plaidPriorAccountId } : {}),
-    ...(semanticMemoryProposal ? { semanticMemoryProposal } : {}),
+    ...(args.embeddingProposal ? { embeddingProposal: args.embeddingProposal } : {}),
     ...(aiProposal ? { aiProposal } : {}),
   });
 }
@@ -515,14 +630,12 @@ async function applyProposalToExistingTransaction(
   args: {
     transactionId: Id<"transactions">;
     actorUserId?: Id<"users">;
-    semanticMemoryProposal?: SemanticMemoryProposal | null;
     aiProposal?: PipelineProposal | null;
   },
 ): Promise<ExistingRouteResult> {
   return await ctx.runMutation(internal.pipeline.applyProposalToExistingTransactionInternal, {
     transactionId: args.transactionId,
     ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
-    ...(args.semanticMemoryProposal ? { semanticMemoryProposal: args.semanticMemoryProposal } : {}),
     ...(args.aiProposal ? { aiProposal: args.aiProposal } : {}),
   });
 }
@@ -546,19 +659,49 @@ async function categorizeExistingCandidate(
   candidate: BatchCandidate,
   options: { actorUserId?: Id<"users"> } = {},
 ): Promise<BatchItemResult> {
-  const context: CategorizationContext = options.actorUserId
+  const context = options.actorUserId
     ? await ctx.runQuery(categorizationContextForImportInternalRef, {
         entityId: candidate.entityId,
         bankAccountId: candidate.bankAccountId,
         amountMinor: candidate.amountMinor,
         actorUserId: options.actorUserId,
+        merchant: candidate.merchant,
       })
     : await ctx.runQuery(categorizationContextRef, {
         entityId: candidate.entityId,
         bankAccountId: candidate.bankAccountId,
         amountMinor: candidate.amountMinor,
+        merchant: candidate.merchant,
       });
-  const env = bedrockRuntimeEnv(context.provider.model);
+  // E2-T5: embedding / k-NN recall BEFORE the LLM. A recalled merchant variant
+  // resolves the existing imported row deterministically and skips the model.
+  const recall = await ctx.runAction(internal.embeddings.recallCategoryFromMemory, {
+    entityId: candidate.entityId,
+    workspaceId: context.entity.workspaceId,
+    merchant: candidate.merchant,
+    rawDescription: candidate.rawDescription,
+  });
+  if (recall) {
+    return {
+      transactionId: candidate.transactionId,
+      mode: "fallback",
+      provider: null,
+      model: null,
+      proposalSource: null,
+      fallbackReason: null,
+      route: await ctx.runMutation(internal.pipeline.applyProposalToExistingTransactionInternal, {
+        transactionId: candidate.transactionId,
+        ...(options.actorUserId ? { actorUserId: options.actorUserId } : {}),
+        embeddingProposal: {
+          categoryAccountId: recall.categoryAccountId,
+          confidence: recall.confidence,
+          reasoning: recall.reasoning,
+        },
+      }),
+    };
+  }
+
+  const runtime = await resolveCategorizeRuntime(ctx, context.entity.workspaceId, context.provider.model);
   const skip = (
     mode: "degraded" | "fallback",
     reason: string,
@@ -567,18 +710,17 @@ async function categorizeExistingCandidate(
     transactionId: candidate.transactionId,
     mode,
     provider: mode === "degraded" ? context.provider.activeProvider : "bedrock",
-    model: context.provider.model,
+    model: runtime.model ?? context.provider.model,
     proposalSource: null,
     fallbackReason: reason,
     route: skippedExistingRoute(candidate, stage, reason),
   });
 
-  if (
-    context.provider.mode !== "active" ||
-    context.provider.activeProvider !== "bedrock" ||
-    !env.ready
-  ) {
-    return skip("degraded", "Bedrock env is absent or incomplete; existing imported row was left in review.");
+  if (!runtime.ready) {
+    return skip(
+      "degraded",
+      runtime.degradedReason ?? "AI provider is absent or incomplete; existing imported row was left in review.",
+    );
   }
 
   if (context.candidateAccounts.length === 0) {
@@ -586,32 +728,6 @@ async function categorizeExistingCandidate(
   }
 
   try {
-    const semanticMemoryProposal: SemanticMemoryProposal | null = await ctx.runAction(
-      internal.semanticMemory.proposeCategorizationMemory,
-      {
-        entityId: candidate.entityId,
-        merchant: candidate.merchant,
-        rawDescription: candidate.rawDescription,
-        amountMinor: candidate.amountMinor,
-        currency: candidate.currency,
-      },
-    );
-    if (semanticMemoryProposal) {
-      return {
-        transactionId: candidate.transactionId,
-        mode: "bedrock",
-        provider: "bedrock",
-        model: env.modelId,
-        proposalSource: "semantic_memory",
-        fallbackReason: null,
-        route: await applyProposalToExistingTransaction(ctx, {
-          transactionId: candidate.transactionId,
-          actorUserId: options.actorUserId,
-          semanticMemoryProposal,
-        }),
-      };
-    }
-
     const prompt = buildCategorizationPrompt({
       entityName: context.entity.name,
       amountMinor: candidate.amountMinor,
@@ -620,21 +736,22 @@ async function categorizeExistingCandidate(
       rawDescription: candidate.rawDescription,
       date: candidate.date,
       accounts: context.candidateAccounts,
+      ...(context.businessContext ? { businessContext: context.businessContext } : {}),
     });
-    const text = await invokeBedrockText({ env, prompt });
+    const text = await runtime.run(prompt);
     const normalized = normalizeBedrockCategorizationProposal(
       parseBedrockCategorizationText(text),
       context.candidateAccounts,
     );
     if (!normalized) {
-      return skip("fallback", "Bedrock returned no usable category from the allowed account list.");
+      return skip("fallback", "The model returned no usable category from the allowed account list.");
     }
 
     return {
       transactionId: candidate.transactionId,
       mode: "bedrock",
       provider: "bedrock",
-      model: env.modelId,
+      model: runtime.model,
       proposalSource: "llm",
       fallbackReason: null,
       route: await applyProposalToExistingTransaction(ctx, {
@@ -644,7 +761,7 @@ async function categorizeExistingCandidate(
       }),
     };
   } catch (error) {
-    const reason = error instanceof Error ? truncate(error.message, 160) : "Bedrock batch categorization failed.";
+    const reason = error instanceof Error ? truncate(error.message, 160) : "Batch categorization failed.";
     return skip("fallback", reason);
   }
 }
@@ -684,28 +801,71 @@ export const categorizeAndRouteTransaction = action({
     fallbackReason: string | null;
     route: RouteResult;
   }> => {
-    const context: CategorizationContext = await ctx.runQuery(categorizationContextRef, {
+    const context = await ctx.runQuery(categorizationContextRef, {
       entityId: args.entityId,
       bankAccountId: args.bankAccountId,
       amountMinor: args.amountMinor,
+      merchant: args.merchant,
     });
 
-    const env = bedrockRuntimeEnv(context.provider.model);
+    // Carry contactId (E2-T9): prefer an explicitly-supplied contactId, else the
+    // merchant-resolved contact so the categorized transaction records it for the
+    // downstream journal-line-write epic.
+    const baseRouteArgs: RouteTransactionArgs = {
+      ...args,
+      ...(args.contactId ?? context.resolvedContactId
+        ? { contactId: args.contactId ?? context.resolvedContactId ?? undefined }
+        : {}),
+    };
+
+    // E2-T5: embedding / k-NN recall BEFORE the LLM. If a near-identical past
+    // correction is recalled (merchant variant), route that proposal at the
+    // "embedding" stage and skip the model entirely. Recall NO-OPs (returns null)
+    // when the embedder is degraded, so the cascade proceeds to the LLM.
+    const recall = await ctx.runAction(internal.embeddings.recallCategoryFromMemory, {
+      entityId: args.entityId,
+      workspaceId: context.entity.workspaceId,
+      merchant: args.merchant,
+      rawDescription: args.rawDescription,
+    });
+    if (recall) {
+      return {
+        mode: "fallback" as const,
+        provider: null,
+        model: null,
+        proposal: null,
+        fallbackReason: null,
+        route: await routeThroughPipeline(
+          ctx,
+          {
+            ...baseRouteArgs,
+            embeddingProposal: {
+              categoryAccountId: recall.categoryAccountId,
+              confidence: recall.confidence,
+              reasoning: recall.reasoning,
+            },
+          },
+          null,
+        ),
+      };
+    }
+
+    const routeArgs = baseRouteArgs;
+    const runtime = await resolveCategorizeRuntime(ctx, context.entity.workspaceId, context.provider.model);
     const routeWithoutModel = async (mode: "degraded" | "fallback", reason: string | null) => ({
       mode,
       provider: mode === "degraded" ? context.provider.activeProvider : "bedrock" as const,
-      model: context.provider.model,
+      model: runtime.model ?? context.provider.model,
       proposal: null,
       fallbackReason: reason,
-      route: await routeThroughPipeline(ctx, args, null),
+      route: await routeThroughPipeline(ctx, routeArgs, null),
     });
 
-    if (
-      context.provider.mode !== "active" ||
-      context.provider.activeProvider !== "bedrock" ||
-      !env.ready
-    ) {
-      return await routeWithoutModel("degraded", "Bedrock env is absent or incomplete; routed through deterministic stages.");
+    if (!runtime.ready) {
+      return await routeWithoutModel(
+        "degraded",
+        runtime.degradedReason ?? "AI provider is absent or incomplete; routed through deterministic stages.",
+      );
     }
 
     if (context.candidateAccounts.length === 0) {
@@ -713,33 +873,6 @@ export const categorizeAndRouteTransaction = action({
     }
 
     try {
-      const semanticMemoryProposal: SemanticMemoryProposal | null = await ctx.runAction(
-        internal.semanticMemory.proposeCategorizationMemory,
-        {
-          entityId: args.entityId,
-          merchant: args.merchant,
-          rawDescription: args.rawDescription,
-          amountMinor: args.amountMinor,
-          currency: args.currency,
-        },
-      );
-      if (semanticMemoryProposal) {
-        return {
-          mode: "bedrock" as const,
-          provider: "bedrock" as const,
-          model: env.modelId,
-          proposal: {
-            categoryAccountId: semanticMemoryProposal.categoryAccountId,
-            accountNumber: "memory",
-            categoryName: "Semantic memory",
-            confidence: semanticMemoryProposal.confidence,
-            needsHuman: false,
-          },
-          fallbackReason: null,
-          route: await routeThroughPipeline(ctx, args, null, semanticMemoryProposal),
-        };
-      }
-
       const prompt = buildCategorizationPrompt({
         entityName: context.entity.name,
         amountMinor: args.amountMinor,
@@ -748,20 +881,21 @@ export const categorizeAndRouteTransaction = action({
         rawDescription: args.rawDescription,
         date: args.date,
         accounts: context.candidateAccounts,
+        ...(context.businessContext ? { businessContext: context.businessContext } : {}),
       });
-      const text = await invokeBedrockText({ env, prompt });
+      const text = await runtime.run(prompt);
       const normalized = normalizeBedrockCategorizationProposal(
         parseBedrockCategorizationText(text),
         context.candidateAccounts,
       );
       if (!normalized) {
-        return await routeWithoutModel("fallback", "Bedrock returned no usable category from the allowed account list.");
+        return await routeWithoutModel("fallback", "The model returned no usable category from the allowed account list.");
       }
 
       return {
         mode: "bedrock" as const,
         provider: "bedrock" as const,
-        model: env.modelId,
+        model: runtime.model,
         proposal: {
           categoryAccountId: normalized.account.id,
           accountNumber: normalized.account.number,
@@ -770,12 +904,12 @@ export const categorizeAndRouteTransaction = action({
           needsHuman: normalized.aiProposal.needsHuman,
         },
         fallbackReason: null,
-        route: await routeThroughPipeline(ctx, args, normalized.aiProposal),
+        route: await routeThroughPipeline(ctx, routeArgs, normalized.aiProposal),
       };
     } catch (error) {
       return await routeWithoutModel(
         "fallback",
-        error instanceof Error ? truncate(error.message, 160) : "Bedrock categorization failed.",
+        error instanceof Error ? truncate(error.message, 160) : "Categorization failed.",
       );
     }
   },
@@ -844,3 +978,97 @@ async function runCategorizationBatch(
       results,
     };
 }
+
+// ---------------------------------------------------------------------------
+// E2-T3 — self-rescheduling backlog drainer.
+//
+// The old behavior fired a single min(25) batch with no reschedule, so a backlog
+// of thousands never cleared. The drainer runs one bounded pass, then — if
+// candidates remain AND it made progress AND it is under the maxPasses ceiling —
+// reschedules itself for the next pass after a short delay (which protects the
+// BYO API rate limit + Convex action limits). It terminates on: an empty queue,
+// the maxPasses ceiling, or a no-progress pass (so it never loops forever on
+// rows the LLM/recall keeps abstaining on while the provider is degraded).
+// ---------------------------------------------------------------------------
+
+const BACKLOG_MAX_PASSES_DEFAULT = 200; // 200 * 25 = 5,000 items per drain run.
+const BACKLOG_PASS_DELAY_MS = 1500;
+
+export const drainCategorizationBacklog = internalAction({
+  args: {
+    entityId: v.id("entities"),
+    actorUserId: v.optional(v.id("users")),
+    pass: v.optional(v.number()),
+    maxPasses: v.optional(v.number()),
+    remainingBefore: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ pass: number; attempted: number; remaining: number; rescheduled: boolean }> => {
+    const pass = args.pass ?? 0;
+    const maxPasses = Math.max(1, Math.floor(args.maxPasses ?? BACKLOG_MAX_PASSES_DEFAULT));
+
+    const batch = await runCategorizationBatch(ctx, {
+      entityId: args.entityId,
+      ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
+      limit: CATEGORIZATION_BATCH_PASS_SIZE,
+    });
+
+    const remaining: number = await ctx.runQuery(internal.ai.countCategorizationBacklog, {
+      entityId: args.entityId,
+      ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
+    });
+
+    // Progress guard: if this pass attempted items but the remaining count did
+    // not drop (every item abstained / provider degraded), stop — rescheduling
+    // would just spin without ever draining.
+    const madeProgress =
+      args.remainingBefore === undefined || remaining < args.remainingBefore;
+    const shouldReschedule =
+      remaining > 0 && batch.attemptedCount > 0 && madeProgress && pass + 1 < maxPasses;
+
+    if (shouldReschedule) {
+      await ctx.scheduler.runAfter(BACKLOG_PASS_DELAY_MS, internal.bedrockCategorizer.drainCategorizationBacklog, {
+        entityId: args.entityId,
+        ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
+        pass: pass + 1,
+        maxPasses,
+        remainingBefore: remaining,
+      });
+    }
+
+    return { pass, attempted: batch.attemptedCount, remaining, rescheduled: shouldReschedule };
+  },
+});
+
+/**
+ * Public entrypoint (admin) that kicks off the self-draining backlog job from the
+ * UI. Enqueues pass 0 and returns a handle so the client can poll progress via
+ * `ai.latestCategorizationBatchRuns`.
+ */
+export const startCategorizationBacklog = mutation({
+  args: {
+    entityId: v.id("entities"),
+    maxPasses: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{ status: "started" }> => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new Error("OpenBooks entity not found.");
+    }
+    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    // The drainer reschedules itself in the scheduler context (no interactive
+    // identity), so it must authorize its internal reads/postings through the
+    // workspace's system SYNC actor — the same trusted automation actor the
+    // import path uses. Resolve/ensure it here and thread it through every pass.
+    const actorUserId = await ensureSystemSyncActor(ctx, entity.workspaceId);
+    await ctx.scheduler.runAfter(0, internal.bedrockCategorizer.drainCategorizationBacklog, {
+      entityId: args.entityId,
+      actorUserId,
+      pass: 0,
+      ...(args.maxPasses !== undefined ? { maxPasses: args.maxPasses } : {}),
+    });
+    return { status: "started" };
+  },
+});

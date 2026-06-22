@@ -4,6 +4,7 @@ import { useAction, useQuery } from "convex/react";
 import { anyApi, type FunctionReference } from "convex/server";
 import {
   CheckCircle2,
+  ChevronDown,
   CircleAlert,
   CreditCard,
   DatabaseZap,
@@ -19,16 +20,13 @@ import { Amount } from "@/components/openbooks/primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 type ChecklistStatus = "pass" | "fail" | "needs_check";
@@ -233,43 +231,44 @@ function PayoutRows({ state }: { state: StripeState }) {
               {payout.status === "mismatch" ? "Drift" : "$0 drift"}
             </Badge>
           </summary>
-          <div className="mt-3 overflow-x-auto rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Payment</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Gross</TableHead>
-                  <TableHead className="text-right">Fee</TableHead>
-                  <TableHead className="text-right">Net</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payout.lines.length > 0 ? (
-                  payout.lines.map((line) => (
-                    <TableRow key={line.sourceId}>
-                      <TableCell className="money-figures text-xs">{line.sourceId}</TableCell>
-                      <TableCell>{line.description}</TableCell>
-                      <TableCell className="text-right">
-                        <Amount amountMinor={line.grossMinor} currency={line.currency} tone="income" />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Amount amountMinor={line.feeMinor} currency={line.currency} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Amount amountMinor={line.netMinor} currency={line.currency} />
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-	                  <TableRow>
-	                    <TableCell colSpan={5} className="text-sm text-muted-foreground">
-	                      Stripe has not returned balance-transaction lines for this payout yet.
-	                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+          {/* Payout line detail reflows instead of scrolling: a header row on
+              md+, and each line stacks to label/value pairs on narrow widths so
+              it never overflows the Settings card. */}
+          <div className="mt-3 rounded-md border">
+            <div className="hidden grid-cols-[1fr_1.4fr_auto_auto_auto] gap-3 border-b bg-muted/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.03em] text-muted-foreground md:grid">
+              <span>Payment</span>
+              <span>Description</span>
+              <span className="text-right">Gross</span>
+              <span className="text-right">Fee</span>
+              <span className="text-right">Net</span>
+            </div>
+            {payout.lines.length > 0 ? (
+              payout.lines.map((line) => (
+                <div
+                  key={line.sourceId}
+                  className="flex flex-col gap-1.5 border-b px-3 py-2.5 text-sm last:border-b-0 md:grid md:grid-cols-[1fr_1.4fr_auto_auto_auto] md:items-center md:gap-3"
+                >
+                  <span className="money-figures text-xs text-muted-foreground md:text-foreground">{line.sourceId}</span>
+                  <span className="min-w-0 truncate">{line.description}</span>
+                  <span className="flex items-center justify-between gap-2 md:justify-end">
+                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground md:hidden">Gross</span>
+                    <Amount amountMinor={line.grossMinor} currency={line.currency} tone="income" />
+                  </span>
+                  <span className="flex items-center justify-between gap-2 md:justify-end">
+                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground md:hidden">Fee</span>
+                    <Amount amountMinor={line.feeMinor} currency={line.currency} />
+                  </span>
+                  <span className="flex items-center justify-between gap-2 md:justify-end">
+                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground md:hidden">Net</span>
+                    <Amount amountMinor={line.netMinor} currency={line.currency} />
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="px-3 py-2.5 text-sm text-muted-foreground">
+                Stripe has not returned balance-transaction lines for this payout yet.
+              </div>
+            )}
           </div>
         </details>
       ))}
@@ -352,47 +351,92 @@ export function StripeConnectionPanel({ entityId }: { entityId?: Id<"entities"> 
     );
   }
 
+  const stripeConnected = state.env.mode === "test" && Boolean(state.stripeAccount);
+
   return (
     <section className="rounded-lg border bg-card shadow-xs" data-testid="stripe-connection-panel">
-      <div className="flex flex-col gap-3 border-b px-4 py-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-base font-semibold">
-            <CreditCard className="size-4 text-primary" />
-            Stripe test mode
+      {/* Owner-facing connection card: badge, one status pill, one primary
+          action. The Validate/Seed/Sync/checklist/payout machinery lives in the
+          Advanced disclosure below. */}
+      <div className="flex flex-wrap items-center gap-3 p-4" data-testid="stripe-connection-card">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-muted">
+          <CreditCard className="size-5 text-muted-foreground" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[13.5px] font-semibold">Stripe (test mode)</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
+            {stripeConnected ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-ob-green-50 px-2 py-0.5 text-[11px] font-medium text-ob-green-800">
+                <CheckCircle2 className="size-3" /> Connected · {state.entity?.name ?? "Live Sandbox"}
+              </span>
+            ) : state.env.mode === "test" ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-info-surface px-2 py-0.5 text-[11px] font-medium text-info">
+                Test key set · not seeded
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                Not connected
+              </span>
+            )}
           </div>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Configured from environment. Stripe payments move through a clearing account first; payouts prove gross revenue minus fees before the bank deposit is matched.
-          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!canRun}
-            onClick={() => runAction("Validation", () => validateEnvironment(queryArgs))}
-          >
-            <ShieldCheck className="size-4" />
-            Validate
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!canRun}
-            onClick={() => activeEntityId && runAction("Seed", () => seedTestAccount({ entityId: activeEntityId }))}
-          >
-            <DatabaseZap className="size-4" />
-            Seed test data
-          </Button>
-          <Button
-            size="sm"
-            disabled={!canRun}
-            onClick={() => activeEntityId && runAction("Sync", () => syncNow({ entityId: activeEntityId }))}
-          >
-            <RefreshCw className={cn("size-4", actionState === "submitting" && "animate-spin")} />
-            Sync now
-          </Button>
-        </div>
+        <Button
+          size="sm"
+          disabled={!canRun}
+          data-testid="stripe-primary-action"
+          onClick={() => activeEntityId && runAction("Sync", () => syncNow({ entityId: activeEntityId }))}
+        >
+          <RefreshCw className={cn("size-4", actionState === "submitting" && "animate-spin")} />
+          {stripeConnected ? "Sync Stripe" : "Connect"}
+        </Button>
       </div>
+
+      {/* Default CLOSED (report 6.10): the Validate/Seed/Sync/checklist/payout
+          machinery is sandbox tooling, folded away from the owner's first
+          glance and opened on demand. */}
+      <Collapsible className="border-t" data-testid="stripe-advanced">
+        <CollapsibleTrigger
+          data-testid="stripe-advanced-trigger"
+          className="group flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-[12.5px] font-medium text-muted-foreground"
+        >
+          <span className="flex items-center gap-2">
+            <ShieldCheck className="size-4" />
+            Advanced / sandbox tools
+            <Badge variant={state.env.mode === "test" ? "outline" : "destructive"}>
+              {state.env.mode === "test" ? "Test mode" : "Fixture mode"}
+            </Badge>
+          </span>
+          <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="flex flex-wrap gap-2 border-t px-4 py-3">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!canRun}
+              onClick={() => runAction("Validation", () => validateEnvironment(queryArgs))}
+            >
+              <ShieldCheck className="size-4" />
+              Validate
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!canRun}
+              onClick={() => activeEntityId && runAction("Seed", () => seedTestAccount({ entityId: activeEntityId }))}
+            >
+              <DatabaseZap className="size-4" />
+              Seed test data
+            </Button>
+            <Button
+              size="sm"
+              disabled={!canRun}
+              onClick={() => activeEntityId && runAction("Sync", () => syncNow({ entityId: activeEntityId }))}
+            >
+              <RefreshCw className={cn("size-4", actionState === "submitting" && "animate-spin")} />
+              Sync now
+            </Button>
+          </div>
 
       <div className="grid gap-4 p-4">
         <div className="grid gap-3 lg:grid-cols-3">
@@ -550,6 +594,8 @@ export function StripeConnectionPanel({ entityId }: { entityId?: Id<"entities"> 
           </ul>
         </div>
       </div>
+        </CollapsibleContent>
+      </Collapsible>
     </section>
   );
 }

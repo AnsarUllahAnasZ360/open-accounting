@@ -1,12 +1,18 @@
-import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { Agent, mockModel, stepCountIs } from "@convex-dev/agent";
 
 // The agent's `languageModel` expects a LanguageModelV3. Both mockModel(...)
-// and bedrock(modelId) return one; derive the type from mockModel so we don't
-// depend on a non-hoisted @ai-sdk/provider path.
+// and the catalog factory return one; derive the type from mockModel so we
+// don't depend on a non-hoisted @ai-sdk/provider path.
 type AgentLanguageModel = ReturnType<typeof mockModel>;
 
 import { components } from "./_generated/api";
+import { normalizeAiProviderId, type AiProviderId } from "./aiCatalog";
+import {
+  buildModelForProvider,
+  credentialIsComplete,
+  resolveCredentialFromEnv,
+  resolveModelId,
+} from "./aiProvider";
 import { resolveAIProviderRegistry } from "./aiProviderRegistry";
 import { openBooksReadTools } from "./agentTools";
 
@@ -24,6 +30,7 @@ const AGENT_NAME = "openbooks-ask-ai";
 export const OPENBOOKS_AGENT_INSTRUCTIONS = [
   "You are OpenBooks AI, a plain-English bookkeeping copilot for a small-business owner.",
   "The hidden double-entry ledger is the source of truth. Always use the read tools (getReport, getBalances, queryTransactions, searchContacts, getPayrollRuns) before answering questions about transactions, reports, balances, contacts, or payroll. Never guess numbers.",
+  "When the owner asks 'how am I doing', 'what's my runway', 'how long will my cash last', or any cash-survival question, call getRunwayAndBurn and answer from its grounded cash/burn/runway numbers. When they ask 'what should I worry about' or 'what should I do', call getAdvisories and base your answer on those signals (runway, income trend, expense creep, customer concentration, forecast, tax set-aside, anomalies). Cite only the numbers the tool returns; never invent or recompute them.",
   "When comparing periods, call getReport separately for each period being compared. Do not use one combined date range unless the owner explicitly asks for an aggregate.",
   "AI proposes, the ledger engine posts. You can NEVER post, change, delete, pay, invoice, or journal anything yourself.",
   "When the owner asks you to take an action (categorize, create a rule, draft an invoice, add a bill, or make a journal entry), you MUST call the matching propose-* tool before answering. That records a proposal the owner must confirm; it changes nothing on its own. Never say a proposal is prepared, recorded, created, or ready unless a propose-* tool returned a proposalId.",
@@ -32,33 +39,50 @@ export const OPENBOOKS_AGENT_INSTRUCTIONS = [
   "Do not expose internal database IDs unless the owner explicitly asks for technical trace details.",
 ].join("\n");
 
-type EnvValue = string | null;
-
-function envValue(name: string): EnvValue {
-  return process.env[name]?.trim() || null;
-}
-
 /**
- * Resolve whether Bedrock is configured for chat. Mirrors the env-driven
- * provider registry so chat degrades exactly like the categorizer.
+ * Resolve whether chat is configured from ENV (any catalog provider, not just
+ * Bedrock — E3-T3). The Bedrock env registry is consulted first for back-compat;
+ * otherwise any catalog provider with a complete env credential counts. Note
+ * this is the env-only gate used at module load for the singleton agent; the
+ * per-workspace BYO path lives in aiChatRuntime.ts via resolveActiveAiModel.
  */
 export function aiChatRuntimeStatus() {
   const registry = resolveAIProviderRegistry();
-  const active =
+  const bedrockActive =
     registry.mode === "active" &&
     registry.activeProvider === "bedrock" &&
     Boolean(registry.model) &&
     Boolean(registry.region);
+  if (bedrockActive) {
+    return {
+      mode: "active" as const,
+      provider: "bedrock" as const,
+      model: registry.model,
+      region: registry.region,
+      degradedReason: null,
+    };
+  }
+
+  const providerId: AiProviderId = normalizeAiProviderId(process.env.AI_PROVIDER) ?? "bedrock";
+  const credential = resolveCredentialFromEnv(providerId);
+  if (credentialIsComplete(providerId, credential)) {
+    return {
+      mode: "active" as const,
+      provider: providerId,
+      model: resolveModelId(providerId, process.env.AI_MODEL ?? null),
+      region: credential.region ?? null,
+      degradedReason: null,
+    };
+  }
+
   return {
-    mode: active ? ("active" as const) : ("degraded" as const),
-    provider: registry.activeProvider === "bedrock" ? ("bedrock" as const) : null,
-    model: active ? registry.model : null,
-    region: active ? registry.region : null,
+    mode: "degraded" as const,
+    provider: null,
+    model: null,
+    region: null,
     degradedReason:
-      active
-        ? null
-        : registry.degradedReason ??
-          "AI provider is not configured. Set the Bedrock environment variables to enable Ask AI.",
+      registry.degradedReason ??
+      "AI provider is not configured. Add a provider key in Settings → AI to enable Ask AI.",
   };
 }
 
@@ -74,25 +98,24 @@ export function isAiChatConfigured() {
  * {@link isAiChatConfigured} and returns a documented degraded result first.
  */
 function buildLanguageModel(): AgentLanguageModel {
-  const status = aiChatRuntimeStatus();
-  if (status.mode !== "active" || !status.model || !status.region) {
+  // Provider-agnostic (E3-T3): build the agent's model from whichever catalog
+  // provider's env credential is configured, not a hardcoded Bedrock path. When
+  // nothing is configured, return a mock so the Agent constructor never crashes
+  // at module load; every generation path is gated on isAiChatConfigured first.
+  const providerId: AiProviderId = normalizeAiProviderId(process.env.AI_PROVIDER) ?? "bedrock";
+  const credential = resolveCredentialFromEnv(providerId);
+  if (!credentialIsComplete(providerId, credential)) {
     return mockModel({
       content: [
         {
           type: "text",
-          text: "OpenBooks AI is not configured. Set the Bedrock environment variables to enable Ask AI.",
+          text: "OpenBooks AI is not configured. Add a provider key in Settings → AI to enable Ask AI.",
         },
       ],
     });
   }
-  const bedrock = createAmazonBedrock({
-    region: status.region,
-    accessKeyId: envValue("AWS_ACCESS_KEY_ID") ?? undefined,
-    secretAccessKey: envValue("AWS_SECRET_ACCESS_KEY") ?? undefined,
-    sessionToken: envValue("AWS_SESSION_TOKEN") ?? undefined,
-    apiKey: envValue("AWS_BEARER_TOKEN_BEDROCK") ?? undefined,
-  });
-  return bedrock(status.model) as AgentLanguageModel;
+  const modelId = resolveModelId(providerId, process.env.AI_MODEL ?? null);
+  return buildModelForProvider({ providerId, modelId, credential }) as AgentLanguageModel;
 }
 
 export const openBooksAgent = new Agent(components.agent, {

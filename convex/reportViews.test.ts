@@ -33,6 +33,10 @@ type ReportPack = {
   apAging: {
     totalMinor: number;
   };
+  cashBasisExcluded: {
+    count: number;
+    amountMinor: number;
+  };
   limits: {
     reportLimit: number;
     truncated: boolean;
@@ -272,6 +276,12 @@ describe("report views", () => {
     expect(accrual.trialBalance.differenceMinor).toBe(0);
     expect(accrual.arAging.totalMinor).toBe(100000);
     expect(accrual.apAging.totalMinor).toBe(20000);
+
+    // E6-T5: cashBasisExcluded reports the open invoice + open bill that a cash
+    // view drops — count 2, $1,200.00 (the open invoice remaining + open bill).
+    // It's reported on BOTH bases (it describes what cash WOULD exclude).
+    expect(accrual.cashBasisExcluded).toMatchObject({ count: 2, amountMinor: 120000 });
+    expect(cash.cashBasisExcluded).toMatchObject({ count: 2, amountMinor: 120000 });
     expect(accrual.limits).toMatchObject({
       reportLimit: 5000,
       truncated: false,
@@ -286,6 +296,66 @@ describe("report views", () => {
         totalRows: 22,
       },
     });
+  });
+
+  it("attaches prior-period totals + signed deltas when compare != none (E6-T6)", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupReportsLedger(t);
+    const session = authed(t, ids.userId);
+
+    // April: $300 services income (the prior period). May: $500 (current).
+    await session.mutation(api.ledger.postEntry, {
+      entityId: ids.entityId,
+      date: "2026-04-10",
+      memo: "April sale",
+      source: "manual",
+      lines: [
+        { accountId: ids.cashId, debitMinor: 30000, creditMinor: 0, currency: "USD" },
+        { accountId: ids.servicesId, debitMinor: 0, creditMinor: 30000, currency: "USD" },
+      ],
+    });
+    await session.mutation(api.ledger.postEntry, {
+      entityId: ids.entityId,
+      date: "2026-05-12",
+      memo: "May sale",
+      source: "manual",
+      lines: [
+        { accountId: ids.cashId, debitMinor: 50000, creditMinor: 0, currency: "USD" },
+        { accountId: ids.servicesId, debitMinor: 0, creditMinor: 50000, currency: "USD" },
+      ],
+    });
+
+    const withCompare = (await session.query(reportPackRef, {
+      entityId: ids.entityId,
+      startDate: "2026-05-01",
+      endDate: "2026-05-31",
+      basis: "accrual",
+      compare: "priorPeriod",
+      columnMode: "total",
+    })) as unknown as {
+      profitAndLoss: {
+        rows: Array<{ accountType: string; totalMinor: number; priorTotalMinor?: number; deltaMinor?: number }>;
+      };
+    };
+    const servicesRow = withCompare.profitAndLoss.rows.find((row) => row.accountType === "income");
+    expect(servicesRow?.totalMinor).toBe(50000);
+    // Prior period (April) was $300; the signed delta is +$200.
+    expect(servicesRow?.priorTotalMinor).toBe(30000);
+    expect(servicesRow?.deltaMinor).toBe(20000);
+
+    // compare=none leaves the rows free of the additive prior fields.
+    const noCompare = (await session.query(reportPackRef, {
+      entityId: ids.entityId,
+      startDate: "2026-05-01",
+      endDate: "2026-05-31",
+      basis: "accrual",
+      compare: "none",
+      columnMode: "total",
+    })) as unknown as {
+      profitAndLoss: { rows: Array<{ accountType: string; priorTotalMinor?: number }> };
+    };
+    const plain = noCompare.profitAndLoss.rows.find((row) => row.accountType === "income");
+    expect(plain?.priorTotalMinor).toBeUndefined();
   });
 
   it("rejects report access without workspace membership", async () => {

@@ -1,17 +1,22 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
-import { Button } from "@/components/ui/button";
+import {
+  SettingsCard,
+  SettingsCardTitle,
+  SettingsEntityPicker,
+  SettingsSaveBar,
+} from "@/components/openbooks/settings/_shell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -58,10 +63,10 @@ export function TaxSection() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   if (data === undefined) {
-    return <div className="rounded-[14px] border bg-card p-5 text-sm text-muted-foreground shadow-xs">Loading…</div>;
+    return <SettingsCard className="text-sm text-muted-foreground">Loading…</SettingsCard>;
   }
   if (!active) {
-    return <div className="rounded-[14px] border bg-card p-5 text-sm text-muted-foreground shadow-xs">Add a business first.</div>;
+    return <SettingsCard className="text-sm text-muted-foreground">Add a business first.</SettingsCard>;
   }
 
   async function save() {
@@ -89,59 +94,55 @@ export function TaxSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      {data.rows.length > 1 ? (
-        <div className="flex items-center gap-2">
-          <Label className="text-[12px] text-muted-foreground">Business</Label>
-          <Select value={active.id} onValueChange={(v) => setEntityId(v)}>
-            <SelectTrigger data-testid="tax-entity-picker" className="h-9 w-64">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {data.rows.map((row) => (
-                <SelectItem key={row.id} value={row.id}>{row.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      ) : null}
+      <SettingsEntityPicker
+        rows={data.rows}
+        value={active.id}
+        onChange={(v) => setEntityId(v)}
+        testId="tax-entity-picker"
+        alwaysShow
+      />
 
-      <div className="flex flex-col gap-3.5 rounded-[14px] border bg-card p-5 shadow-xs">
-        <div className="text-[13.5px] font-semibold">Fiscal year & accounting basis</div>
+      <SettingsCard className="flex flex-col gap-3.5">
+        <SettingsCardTitle>Fiscal year & accounting basis</SettingsCardTitle>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <Label className="mb-1.5 block text-[12px] font-medium text-[#525252]">Fiscal year starts</Label>
+            <Label className="mb-1.5 block text-[12px] font-medium text-muted-foreground">Fiscal year starts</Label>
             <Select value={String(fyMonth)} onValueChange={(v) => setFyMonth(Number(v))}>
               <SelectTrigger data-testid="tax-fy-month" className="h-9 w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {MONTHS.map((m, i) => (
-                  <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>
-                ))}
+                <SelectGroup>
+                  {MONTHS.map((m, i) => (
+                    <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
           <div>
-            <Label className="mb-1.5 block text-[12px] font-medium text-[#525252]">Base currency</Label>
+            <Label className="mb-1.5 block text-[12px] font-medium text-muted-foreground">Base currency</Label>
             <Input value={active.currency} readOnly className="money-figures h-9 bg-muted/40" />
           </div>
         </div>
 
         <div>
-          <div className="mb-2 text-[12px] font-medium text-[#525252]">Default reporting basis</div>
-          <div className="grid gap-2.5 sm:grid-cols-2">
+          <div className="mb-2 text-[12px] font-medium text-muted-foreground">Default reporting basis</div>
+          <div className="grid gap-2.5 sm:grid-cols-2" role="radiogroup" aria-label="Default reporting basis">
             {(["accrual", "cash"] as const).map((option) => {
               const on = basis === option;
               return (
                 <button
                   key={option}
                   type="button"
+                  role="radio"
+                  aria-checked={on}
                   data-testid={`tax-basis-${option}`}
                   data-active={on ? "true" : "false"}
                   onClick={() => setBasis(option)}
                   className={cn(
                     "flex flex-col gap-1.5 rounded-[12px] border-[1.5px] p-3.5 text-left transition-colors",
-                    on ? "border-primary bg-[#fbfdf9]" : "border-border bg-card",
+                    on ? "border-primary bg-ob-green-50/40" : "border-border bg-card",
                   )}
                 >
                   <span className="flex items-center gap-1.5">
@@ -163,30 +164,32 @@ export function TaxSection() {
             })}
           </div>
         </div>
-      </div>
+      </SettingsCard>
 
-      <div className="flex flex-col gap-3.5 rounded-[14px] border bg-card p-5 shadow-xs">
-        <div className="text-[13.5px] font-semibold">Tax identity</div>
+      <SettingsCard className="flex flex-col gap-3.5">
+        <SettingsCardTitle>Tax identity</SettingsCardTitle>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <Label className="mb-1.5 block text-[12px] font-medium text-[#525252]">Legal name</Label>
+            <Label className="mb-1.5 block text-[12px] font-medium text-muted-foreground">Legal name</Label>
             <Input data-testid="tax-legal-name" value={legalName} onChange={(e) => setLegalName(e.target.value)} className="h-9" />
           </div>
           <div>
-            <Label className="mb-1.5 block text-[12px] font-medium text-[#525252]">Entity type</Label>
+            <Label className="mb-1.5 block text-[12px] font-medium text-muted-foreground">Entity type</Label>
             <Select value={entityType} onValueChange={setEntityType}>
               <SelectTrigger data-testid="tax-entity-type" className="h-9 w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {ENTITY_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
+                <SelectGroup>
+                  {ENTITY_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
           <div>
-            <Label className="mb-1.5 block text-[12px] font-medium text-[#525252]">EIN / Tax ID</Label>
+            <Label className="mb-1.5 block text-[12px] font-medium text-muted-foreground">EIN / Tax ID</Label>
             <Input
               data-testid="tax-id"
               value={taxId}
@@ -196,23 +199,19 @@ export function TaxSection() {
             />
           </div>
           <div>
-            <Label className="mb-1.5 block text-[12px] font-medium text-[#525252]">Home state</Label>
+            <Label className="mb-1.5 block text-[12px] font-medium text-muted-foreground">Home state</Label>
             <Input data-testid="tax-home-state" value={homeState} onChange={(e) => setHomeState(e.target.value)} placeholder="Texas" className="h-9" />
           </div>
         </div>
-      </div>
+      </SettingsCard>
 
-      <div className="flex items-center gap-3">
-        <Button data-testid="tax-save" size="sm" disabled={busy} onClick={save}>
-          {busy ? "Saving…" : "Save changes"}
-        </Button>
-        {saved ? (
-          <span className="inline-flex items-center gap-1 text-[12.5px] text-primary" data-testid="tax-saved">
-            <Check className="size-3.5" /> Saved
-          </span>
-        ) : null}
-        {error ? <span className="text-[12.5px] text-destructive">{error}</span> : null}
-      </div>
+      <SettingsSaveBar
+        onSave={save}
+        busy={busy}
+        saved={saved}
+        error={error}
+        testId="tax-save"
+      />
     </div>
   );
 }

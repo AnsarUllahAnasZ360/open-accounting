@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, type ActionCtx, internalMutation, internalQuery, query } from "./_generated/server";
 import { requireAnyWorkspaceRole } from "./authz";
+import { assertNotDemoWrite } from "./demoWorkspace";
 
 const DEMO_SEED = "openbooks-demo-v1-2026-06-11";
 const DEMO_SEED_JOB_KIND = "demo" as const;
@@ -56,7 +57,9 @@ type RouteResult = {
   status: "duplicate" | "posted" | "needs_review";
   transactionId: Id<"transactions">;
   entryId: Id<"journalEntries"> | null;
-  stage: "transfer" | "match" | "rule" | "needs_review";
+  // Includes the additive E2 stages (memory / embedding / plaid_prior / ai) now
+  // that routeProposedCategory returns the truthful stage (E2-T7/E2-T5).
+  stage: "transfer" | "match" | "rule" | "memory" | "embedding" | "plaid_prior" | "ai" | "needs_review";
 };
 
 type DemoSetup = {
@@ -167,6 +170,14 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function demoSeedDisabled() {
+  return (
+    process.env.OPENBOOKS_DISABLE_DEMO_SEED === "1" ||
+    process.env.OPENBOOKS_REAL_TEST_MODE === "1" ||
+    process.env.OPENBOOKS_REAL_TEST_RESET_ENABLED === "1"
+  );
+}
+
 async function waitForSeedJob(
   ctx: ActionCtx,
   args: { workspaceId: Id<"workspaces">; operationId: string },
@@ -194,11 +205,23 @@ async function waitForSeedJob(
 export const resetAndSeed = action({
   args: {},
   handler: async (ctx): Promise<SeedResult> => {
+    if (demoSeedDisabled()) {
+      throw new ConvexError("Demo data seeding is disabled in this real-test environment.");
+    }
     const viewer = await ctx.runQuery(api.session.viewer, {});
     if (!viewer.workspace?.id) {
       throw new ConvexError("OpenBooks requires a workspace before seeding demo data.");
     }
+    if (!viewer.user?.id) {
+      throw new ConvexError("OpenBooks requires a signed-in user before seeding demo data.");
+    }
     const workspaceId = viewer.workspace.id;
+    const actorUserId = viewer.user.id;
+    // E11-T6: never re-seed INTO the public demo workspace from this session-bound
+    // action (the public demo is re-seeded only by the internal cron path,
+    // `publicDemo.resetAndSeedPublicDemo`). Belt-and-suspenders against a viewer
+    // that resolved the demo workspace context.
+    await ctx.runMutation(internal.seedDemo.assertWorkspaceNotDemo, { workspaceId });
     const operationId = seedOperationId();
     const lease: SeedJobLease = await ctx.runMutation(internal.seedDemo.beginSeedJob, {
       workspaceId,
@@ -235,14 +258,68 @@ export const resetAndSeed = action({
         {},
       );
       const entityId = entityResult.entityId;
-      await ctx.runMutation(api.ledger.setPeriodLock, {
+      const result = await runDemoSeedLoop(ctx, {
         entityId,
-        lockedThroughDate: null,
+        actorUserId,
+        heartbeat,
       });
-      const setup: DemoSetup = await ctx.runMutation(internal.seedDemo.setupDemoOperationTables, {
-        entityId,
+      await ctx.runMutation(internal.seedDemo.finishSeedJob, {
+        workspaceId,
+        operationId,
+        status: "succeeded",
+        message: "Demo seed complete.",
+        result,
       });
-      await heartbeat();
+      return result;
+    } catch (error) {
+      const message = errorMessage(error);
+      await ctx.runMutation(internal.seedDemo.finishSeedJob, {
+        workspaceId,
+        operationId,
+        status: "failed",
+        message,
+      });
+      if (error instanceof ConvexError) {
+        throw error;
+      }
+      throw new ConvexError(message);
+    }
+  },
+});
+
+/**
+ * The shared demo seed routine (Epic E11-T4). Populates ONE entity's books with
+ * the full deterministic dataset (invoices, bills, payroll, expenses, Stripe
+ * charges/payouts, receipts, inbox) and returns a verification snapshot. Both
+ * the in-workspace `resetAndSeed` (session owner) and the standalone public demo
+ * (`publicDemo.seedPublicDemo`, system actor) call this with their own
+ * `actorUserId`, so there is exactly one seed implementation.
+ *
+ * It posts through the INTERNAL system-actor paths (`routeTransactionInternal`,
+ * `ledger.postEntryInternal`) so it never needs a live session — but those still
+ * route every entry through the single `postLedgerEntryCore`, so debits ===
+ * credits and the trial balance ties out. The entity + chart of accounts must
+ * already exist (the caller provisions them).
+ */
+export async function runDemoSeedLoop(
+  ctx: ActionCtx,
+  config: {
+    entityId: Id<"entities">;
+    actorUserId: Id<"users">;
+    heartbeat: () => Promise<void>;
+  },
+): Promise<SeedResult> {
+  const { entityId, actorUserId, heartbeat } = config;
+  // Demo books are never period-locked (so a re-seed can always repost).
+  await ctx.runMutation(internal.ledger.setPeriodLockInternal, {
+    entityId,
+    actorUserId,
+    lockedThroughDate: null,
+  });
+  const setup: DemoSetup = await ctx.runMutation(internal.seedDemo.setupDemoOperationTables, {
+    entityId,
+  });
+  await heartbeat();
 
     const next = rng(DEMO_SEED);
     let transactionCount = 0;
@@ -268,8 +345,12 @@ export const resetAndSeed = action({
     }) {
       const evalSet = evalCount < 120 && Boolean(args.evalExpectedAccountId);
       if (evalSet) evalCount += 1;
-      const result: RouteResult = await ctx.runMutation(api.pipeline.routeTransaction, {
+      const result: RouteResult = await ctx.runMutation(internal.pipeline.routeTransactionInternal, {
         entityId,
+        actorUserId,
+        // E11-T4: the demo seed posts AS ITSELF so audit rows read with the real
+        // decided-by actor (rule/ai/user), matching the prior session-bound seed.
+        auditAsSelf: true,
         bankAccountId: args.bankAccountId,
         date: day(args.month, (args.index % 26) + 1),
         amountMinor: args.amountMinor,
@@ -319,8 +400,9 @@ export const resetAndSeed = action({
       const month = months[index % months.length];
       const amountMinor = cents(1800 + index * 225);
       const contactId = setup.contacts[index % 8];
-      const posted: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
+      const posted: { entryId: Id<"journalEntries"> } = await ctx.runMutation(internal.ledger.postEntryInternal, {
         entityId,
+        actorUserId,
         date: day(month, 3),
         memo: `Invoice OB-${1000 + index}`,
         source: "invoice",
@@ -350,8 +432,9 @@ export const resetAndSeed = action({
       const amountMinor = cents(650 + index * 85);
       const vendorId = setup.contacts[8 + (index % 10)];
       const categoryAccountId = index % 2 === 0 ? setup.accounts.professional : setup.accounts.office;
-      const posted: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
+      const posted: { entryId: Id<"journalEntries"> } = await ctx.runMutation(internal.ledger.postEntryInternal, {
         entityId,
+        actorUserId,
         date: day(month, 8),
         memo: `Vendor bill ${index + 1}`,
         source: "bill",
@@ -389,8 +472,9 @@ export const resetAndSeed = action({
         (sum: number, employee: { baseSalaryMinor: number }) => sum + employee.baseSalaryMinor,
         0,
       );
-      const payroll: { entryId: Id<"journalEntries"> } = await ctx.runMutation(api.ledger.postEntry, {
+      const payroll: { entryId: Id<"journalEntries"> } = await ctx.runMutation(internal.ledger.postEntryInternal, {
         entityId,
+        actorUserId,
         date: day(month, 25),
         memo: `Payroll run ${month}`,
         source: "payroll",
@@ -604,7 +688,9 @@ export const resetAndSeed = action({
         matchedReceiptTransactionIds,
       });
 
-      const snapshot: SeedVerificationSnapshot = await ctx.runQuery(api.reports.seedVerification, { entityId });
+      // E11-T4: use the internal (auth-free) verification so the system-actor
+      // public demo seed (no session) can compute its own trial balance.
+      const snapshot: SeedVerificationSnapshot = await ctx.runQuery(internal.reports.seedVerificationInternal, { entityId });
       await ctx.runMutation(internal.seedDemo.recordSeedRun, {
         entityId,
         transactionCount,
@@ -614,7 +700,7 @@ export const resetAndSeed = action({
         trialBalanceDifferenceMinor: snapshot.trialBalanceDifferenceMinor,
       });
 
-      const result = {
+      const result: SeedResult = {
         seed: DEMO_SEED,
         entityId,
         transactionCount,
@@ -625,27 +711,17 @@ export const resetAndSeed = action({
         may2026: snapshot.may2026,
         payoutEntryCount: payoutEntryIds.length,
       };
-      await ctx.runMutation(internal.seedDemo.finishSeedJob, {
-        workspaceId,
-        operationId,
-        status: "succeeded",
-        message: "Demo seed complete.",
-        result,
-      });
-      return result;
-    } catch (error) {
-      const message = errorMessage(error);
-      await ctx.runMutation(internal.seedDemo.finishSeedJob, {
-        workspaceId,
-        operationId,
-        status: "failed",
-        message,
-      });
-      if (error instanceof ConvexError) {
-        throw error;
-      }
-      throw new ConvexError(message);
-    }
+  return result;
+}
+
+// E11-T6: assert the target workspace is NOT the read-only public demo before a
+// session-bound re-seed runs. Throws the friendly read-only message. The public
+// demo is re-seeded only by the internal cron (`publicDemo.resetAndSeedPublicDemo`).
+export const assertWorkspaceNotDemo = internalMutation({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, args) => {
+    await assertNotDemoWrite(ctx, args.workspaceId);
+    return null;
   },
 });
 

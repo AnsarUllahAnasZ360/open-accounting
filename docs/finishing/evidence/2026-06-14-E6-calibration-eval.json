@@ -1,0 +1,150 @@
+{
+  "generatedBy": "scripts/generate-e6-calibration-evidence.mjs",
+  "epic": "E6.1/E6.2/E6.5 confidence calibration + business-impact gate",
+  "generatedAt": "2026-06-14T16:51:08.673Z",
+  "noSecrets": true,
+  "method": "temperature_scaling_logit_space_fit_on_recorded_holdout_pairs",
+  "source": {
+    "recordedFrom": "docs/finishing/evidence/2026-06-12-H3-categorization-holdout-eval.json",
+    "recordedMethod": "label_safe_holdout_unlabeled_route",
+    "recordedProviderMode": "active",
+    "recordedAccuracy": 0.75,
+    "leakageGuard": "The route calls omitted categoryAccountId and evalExpectedAccountId; expected labels were kept only in action memory for scoring after prediction."
+  },
+  "caveat": "Calibration math, ECE, reliability buckets, and the auto-post precision were computed by the SAME convex/calibration.ts code wired into the pipeline gate, driven over the RECORDED leakage-free holdout (confidence, correct, amountMinor) pairs from the 2026-06-12 live Bedrock eval. A fresh live Bedrock pass was not re-run here because the shared dev deployment is contended and the calibration code + unit tests + gate wiring are the hard deliverable; the live-eval numbers above are the recorded ones, re-scored honestly.",
+  "sharedThresholdsUnchanged": {
+    "suggest": null,
+    "balanced": 0.9,
+    "autopilot": 0.75
+  },
+  "baseThresholdUsedForPrecision": 0.75,
+  "sampleCount": 60,
+  "positiveCount": 45,
+  "fittedParams": {
+    "method": "temperature",
+    "a": 1.93339,
+    "b": 0,
+    "temperatureEquivalent": 0.517226,
+    "note": "calibratedProbability = sigmoid(a * logit(rawConfidence) + b); a<1 (T>1) means the model was overconfident and high confidences are pulled DOWN."
+  },
+  "ece": {
+    "before": 0.177667,
+    "after": 0.120428,
+    "improved": true
+  },
+  "reliabilityBefore": [
+    {
+      "label": "0.40-0.50",
+      "count": 13,
+      "meanConfidence": 0.45,
+      "accuracy": 0,
+      "gapAbs": 0.45
+    },
+    {
+      "label": "0.70-0.75",
+      "count": 1,
+      "meanConfidence": 0.72,
+      "accuracy": 1,
+      "gapAbs": 0.28
+    },
+    {
+      "label": "0.75-0.80",
+      "count": 2,
+      "meanConfidence": 0.75,
+      "accuracy": 0,
+      "gapAbs": 0.75
+    },
+    {
+      "label": "0.80-0.90",
+      "count": 2,
+      "meanConfidence": 0.85,
+      "accuracy": 1,
+      "gapAbs": 0.15
+    },
+    {
+      "label": "0.90-1.00",
+      "count": 42,
+      "meanConfidence": 0.935,
+      "accuracy": 1,
+      "gapAbs": 0.065
+    }
+  ],
+  "reliabilityAfter": [
+    {
+      "label": "0.40-0.50",
+      "count": 13,
+      "meanConfidence": 0.404205,
+      "accuracy": 0,
+      "gapAbs": 0.404205
+    },
+    {
+      "label": "0.80-0.90",
+      "count": 3,
+      "meanConfidence": 0.882574,
+      "accuracy": 0.333333,
+      "gapAbs": 0.549241
+    },
+    {
+      "label": "0.90-1.00",
+      "count": 44,
+      "meanConfidence": 0.992653,
+      "accuracy": 1,
+      "gapAbs": 0.007347
+    }
+  ],
+  "autoPostPrecision": {
+    "conservativeClamp": "The gate compares min(calibratedProbability, rawConfidence) to the unchanged threshold, so the calibrated gate is always a SUBSET of the raw gate — calibration can only ever WITHHOLD an auto-post, never create one. This holds even when the data fits a sharpening slope (a>1).",
+    "autopilotThreshold_0_75": {
+      "rawGate": {
+        "autoPostCount": 45,
+        "autoPostCorrect": 44,
+        "precision": 0.977778,
+        "coverage": 0.75
+      },
+      "calibratedGate": {
+        "autoPostCount": 45,
+        "autoPostCorrect": 44,
+        "precision": 0.977778,
+        "coverage": 0.75
+      }
+    },
+    "balancedThreshold_0_90": {
+      "calibratedGate": {
+        "autoPostCount": 42,
+        "autoPostCorrect": 42,
+        "precision": 1,
+        "coverage": 0.7
+      }
+    },
+    "interpretation": "Precision = fraction of auto-posted items that were correct. This is the number to trust before enabling auto-post. On this recorded 60-item holdout the calibrated autopilot (0.75) gate reaches 97.8% precision and the balanced (0.90) gate reaches 100% precision; the single sub-0.90 miss is why balanced is the safer default for auto-post until more labeled holdout volume lifts the 0.75-band precision above 99%."
+  },
+  "businessImpactGate": {
+    "hardCeilingMinor": 500000,
+    "rampFloorMinor": 50000,
+    "blockedTypes": [
+      "equity"
+    ],
+    "blockedSubtypes": [
+      "equity",
+      "draw",
+      "distribution",
+      "distributions",
+      "retained_earnings",
+      "opening_balance",
+      "tax",
+      "taxes",
+      "intercompany"
+    ],
+    "blockedNameFragments": [
+      "owner draw",
+      "owner's draw",
+      "owner distribution",
+      "distribution",
+      "intercompany",
+      "inter-company",
+      "ask my accountant",
+      "ask accountant",
+      "tax"
+    ]
+  }
+}

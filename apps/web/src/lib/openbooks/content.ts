@@ -6,7 +6,6 @@ import {
   Landmark,
   LayoutDashboard,
   PieChart,
-  ReceiptText,
   Settings,
   UsersRound,
   WalletCards,
@@ -53,13 +52,7 @@ export const appRoutes: AppRoute[] = [
     href: "/expenses",
     label: "Expenses",
     icon: PieChart,
-    summary: "Where money goes, by category and vendor, including recurring spend.",
-  },
-  {
-    href: "/bills",
-    label: "Bills",
-    icon: ReceiptText,
-    summary: "Vendor bills, due windows, AP postings, and payment matching.",
+    summary: "Where money goes — settled spend, vendor bills (AP), and recurring costs.",
   },
   {
     href: "/contacts",

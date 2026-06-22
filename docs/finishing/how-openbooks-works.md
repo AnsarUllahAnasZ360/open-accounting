@@ -10,9 +10,12 @@ category math — which is why the reports always reconcile.
 
 ## Running it locally
 
-1. `pnpm install` once, then `pnpm dev:full`. This pushes/watches the cloud
-   Convex dev deployment, starts the local web app, seeds the demo books if
-   needed, and prints the URL.
+1. `pnpm install` once, then `pnpm setup` (writes `.env.local`, mints the auth
+   keypair + encryption key), then `npx convex dev --once` to link your own
+   Convex dev deployment, then `pnpm dev:full`. `pnpm dev:full` auto-runs setup
+   if `.env.local` is incomplete, pushes/watches your cloud Convex dev
+   deployment, starts the local web app, seeds the demo books if needed, and
+   prints the URL. (Full self-host walkthrough: `docs/self-host/`.)
 2. Open the URL → click **"Continue as owner (dev)"** on the sign-in page.
    That button only exists in localhost dev mode. In normal auth mode, a new
    owner can start a first workspace through onboarding, and teammates join

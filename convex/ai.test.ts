@@ -11,12 +11,6 @@ import {
   normalizeBedrockCategorizationProposal,
   parseBedrockCategorizationText,
 } from "./bedrockCategorizer";
-import {
-  SEMANTIC_MEMORY_DIMENSIONS,
-  bedrockEmbeddingPayload,
-  buildMemoryEmbeddingText,
-  extractEmbeddingVector,
-} from "./semanticMemory";
 import { AI_PROVIDER_REGISTRY, resolveAIProviderRegistry } from "./aiProviderRegistry";
 import schema from "./schema";
 
@@ -29,7 +23,6 @@ const providerStatus = makeFunctionReference<
     mode: "active" | "degraded";
     activeProvider: "bedrock" | null;
     model: string | null;
-    embeddingsModel: string | null;
     autonomy: "suggest" | "balanced" | "autopilot";
     thresholds: { suggest: null; balanced: number; autopilot: number };
   }
@@ -104,11 +97,6 @@ const applyProposalToExistingTransactionInternal = makeFunctionReference<
       needsHuman: boolean;
       question?: string;
     };
-    semanticMemoryProposal?: {
-      categoryAccountId: string;
-      confidence: number;
-      reasoning: string;
-    };
   },
   {
     status: "posted" | "needs_review" | "skipped";
@@ -134,7 +122,7 @@ const categorizePendingTransactions = makeFunctionReference<
     results: Array<{
       transactionId: string;
       mode: "bedrock" | "degraded" | "fallback";
-      proposalSource: "semantic_memory" | "llm" | null;
+      proposalSource: "llm" | null;
       fallbackReason: string | null;
       route: {
         status: "posted" | "needs_review" | "skipped";
@@ -162,7 +150,7 @@ const categorizePendingTransactionsForImportInternal = makeFunctionReference<
     results: Array<{
       transactionId: string;
       mode: "bedrock" | "degraded" | "fallback";
-      proposalSource: "semantic_memory" | "llm" | null;
+      proposalSource: "llm" | null;
       fallbackReason: string | null;
       route: {
         status: "posted" | "needs_review" | "skipped";
@@ -375,7 +363,6 @@ describe("M10 AI backend", () => {
         packageName: "@ai-sdk/amazon-bedrock",
         importName: "bedrock",
         languageModel: "bedrock(AI_MODEL)",
-        embeddingModel: "bedrock.embedding(AI_EMBEDDINGS_MODEL)",
       },
     });
     expect(AI_PROVIDER_REGISTRY.anthropic.aiSdk.packageName).toBe("@ai-sdk/anthropic");
@@ -390,7 +377,6 @@ describe("M10 AI backend", () => {
     vi.stubEnv("AWS_SECRET_ACCESS_KEY", "test-secret-key");
     vi.stubEnv("AWS_REGION", "test-region-1");
     vi.stubEnv("AI_MODEL", "anthropic.claude-3-5-sonnet-test");
-    vi.stubEnv("AI_EMBEDDINGS_MODEL", "amazon.titan-embed-text-v2:0");
 
     const status = resolveAIProviderRegistry();
 
@@ -399,7 +385,6 @@ describe("M10 AI backend", () => {
       activeProvider: "bedrock",
       configuredProvider: "bedrock",
       model: "anthropic.claude-3-5-sonnet-test",
-      embeddingsModel: "amazon.titan-embed-text-v2:0",
       region: "test-region-1",
     });
     expect(status.providers.find((provider) => provider.id === "bedrock")).toMatchObject({
@@ -504,44 +489,12 @@ describe("M10 AI backend", () => {
     expect(text).toContain("\"accountNumber\":\"5200\"");
   });
 
-  it("builds bounded semantic memory embedding payloads for Titan", () => {
-    const text = buildMemoryEmbeddingText({
-      merchant: "Cafe Izmir",
-      rawDescription: "Cafe Izmir team meal",
-      amountMinor: -2400,
-      currency: "usd",
-    });
-    const payload = bedrockEmbeddingPayload("amazon.titan-embed-text-v2:0", text);
-    const body = JSON.parse(payload.body) as { inputText: string; dimensions: number; normalize: boolean };
-
-    expect(text).toContain("merchant: Cafe Izmir");
-    expect(text).toContain("direction: outflow");
-    expect(text).not.toContain("AWS_SECRET_ACCESS_KEY");
-    expect(payload).toMatchObject({
-      contentType: "application/json",
-      accept: "application/json",
-    });
-    expect(body).toMatchObject({
-      dimensions: SEMANTIC_MEMORY_DIMENSIONS,
-      normalize: true,
-    });
-  });
-
-  it("validates Bedrock embedding vectors before storage", () => {
-    const vector = Array.from({ length: SEMANTIC_MEMORY_DIMENSIONS }, (_, index) => index / SEMANTIC_MEMORY_DIMENSIONS);
-
-    expect(extractEmbeddingVector({ embedding: vector })).toHaveLength(SEMANTIC_MEMORY_DIMENSIONS);
-    expect(() => extractEmbeddingVector({ embedding: [1, 2, 3] })).toThrow(/1024/);
-    expect(() => bedrockEmbeddingPayload("anthropic.claude-3-5-sonnet", "text")).toThrow(/Titan/);
-  });
-
   it("reports degraded provider status when Bedrock env is absent", async () => {
     vi.stubEnv("AI_PROVIDER", "");
     vi.stubEnv("AWS_ACCESS_KEY_ID", "");
     vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
     vi.stubEnv("AWS_REGION", "");
     vi.stubEnv("AI_MODEL", "");
-    vi.stubEnv("AI_EMBEDDINGS_MODEL", "");
     const t = convexTest(schema, modules);
     const ids = await setupAIBackend(t);
     const session = authed(t, ids.userId);
@@ -552,7 +505,6 @@ describe("M10 AI backend", () => {
       mode: "degraded",
       activeProvider: null,
       model: null,
-      embeddingsModel: null,
       autonomy: "balanced",
       thresholds: { suggest: null, balanced: 0.9, autopilot: 0.75 },
     });
@@ -564,7 +516,6 @@ describe("M10 AI backend", () => {
     vi.stubEnv("AWS_SECRET_ACCESS_KEY", "test-secret-key");
     vi.stubEnv("AWS_REGION", "test-region-1");
     vi.stubEnv("AI_MODEL", "anthropic.claude-3-5-sonnet-test");
-    vi.stubEnv("AI_EMBEDDINGS_MODEL", "test-embed-model");
     const t = convexTest(schema, modules);
     const ids = await setupAIBackend(t);
     const session = authed(t, ids.userId);
@@ -575,7 +526,6 @@ describe("M10 AI backend", () => {
       mode: "active",
       activeProvider: "bedrock",
       model: "anthropic.claude-3-5-sonnet-test",
-      embeddingsModel: "test-embed-model",
     });
   });
 
@@ -724,7 +674,6 @@ describe("M10 AI backend", () => {
     vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
     vi.stubEnv("AWS_REGION", "");
     vi.stubEnv("AI_MODEL", "");
-    vi.stubEnv("AI_EMBEDDINGS_MODEL", "");
     const t = convexTest(schema, modules);
     const ids = await setupAIBackend(t);
     const transactionId = await insertImportedNeedsReviewTransaction(t, ids, {
@@ -784,7 +733,6 @@ describe("M10 AI backend", () => {
     vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
     vi.stubEnv("AWS_REGION", "");
     vi.stubEnv("AI_MODEL", "");
-    vi.stubEnv("AI_EMBEDDINGS_MODEL", "");
     const t = convexTest(schema, modules);
     const ids = await setupAIBackend(t);
     const transactionId = await insertImportedNeedsReviewTransaction(t, ids, {
@@ -850,7 +798,6 @@ describe("M10 AI backend", () => {
         provider: "bedrock",
         chatModel: "claude-test",
         categorizeModel: "claude-test",
-        embedModel: "titan-test",
         autonomy: "suggest",
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -897,7 +844,6 @@ describe("M10 AI backend", () => {
         provider: "bedrock",
         chatModel: "claude-test",
         categorizeModel: "claude-test",
-        embedModel: "titan-test",
         autonomy: "autopilot",
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -924,7 +870,9 @@ describe("M10 AI backend", () => {
       },
     });
 
-    expect(result).toMatchObject({ status: "posted", stage: "rule" });
+    // E2-T7: the posted branch now reports the TRUTHFUL stage ("ai") instead of
+    // the old hardcoded "rule".
+    expect(result).toMatchObject({ status: "posted", stage: "ai" });
     const verification = await session.query(api.reports.seedVerification, { entityId: ids.entityId });
     expect(verification.postedTransactionCount).toBe(1);
     expect(verification.trialBalanceDifferenceMinor).toBe(0);
@@ -979,7 +927,9 @@ describe("M10 AI backend", () => {
       externalId: "txn-memory-1",
     });
 
-    expect(memoryRouted).toMatchObject({ status: "posted", stage: "rule" });
+    // E2-T7: a correction-memory auto-post now reports stage "memory" (was the
+    // hardcoded "rule"), matching the persisted decidedBy.
+    expect(memoryRouted).toMatchObject({ status: "posted", stage: "memory" });
     await t.run(async (ctx) => {
       const transaction = await ctx.db.get(memoryRouted.transactionId);
       expect(transaction?.decidedBy).toBe("memory");
@@ -1008,7 +958,10 @@ describe("M10 AI backend", () => {
     });
   });
 
-  it("routes semantic memory proposals through the existing memory stage", async () => {
+  it("sends items with no deterministic signal or AI proposal to the Inbox", async () => {
+    // Semantic memory was removed: an item that previously matched the semantic
+    // memory stage now has no proposal source (no rule, no correction memory, no
+    // Plaid prior, no AI proposal) and must land in needs-review review instead.
     const t = convexTest(schema, modules);
     const ids = await setupAIBackend(t);
     const session = authed(t, ids.userId);
@@ -1023,19 +976,53 @@ describe("M10 AI backend", () => {
       rawDescription: "Figma monthly subscription",
       status: "posted",
       source: "bank",
-      externalId: "txn-semantic-memory-1",
-      semanticMemoryProposal: {
+      externalId: "txn-no-signal-1",
+    });
+
+    expect(result).toMatchObject({ status: "needs_review", stage: "needs_review", entryId: null });
+    await t.run(async (ctx) => {
+      const transaction = await ctx.db.get(result.transactionId);
+      expect(transaction?.decidedBy).toBe("needs_review");
+      expect(transaction?.entryId).toBeUndefined();
+      const inbox = await ctx.db
+        .query("inboxItems")
+        .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+        .collect();
+      expect(inbox.some((item) => item.transactionId === result.transactionId && item.status === "open")).toBe(true);
+    });
+  });
+
+  it("routes an AI proposal through the LLM stage when no deterministic signal applies", async () => {
+    // The path that semantic memory used to occupy now falls straight through to
+    // the LLM proposal; a confident AI proposal posts via the "ai" stage.
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const session = authed(t, ids.userId);
+
+    const result = await session.mutation(api.pipeline.routeTransaction, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      date: "2026-05-14",
+      amountMinor: -9900,
+      currency: "USD",
+      merchant: "Figma",
+      rawDescription: "Figma monthly subscription",
+      status: "posted",
+      source: "bank",
+      externalId: "txn-ai-stage-1",
+      aiProposal: {
         categoryAccountId: ids.softwareAccountId,
-        confidence: 0.91,
-        reasoning: "Semantic memory matched a prior design-software correction.",
+        confidence: 0.95,
+        reasoning: "Figma is recurring design software.",
+        needsHuman: false,
       },
     });
 
-    expect(result).toMatchObject({ status: "posted", stage: "rule" });
+    expect(result).toMatchObject({ status: "posted" });
     await t.run(async (ctx) => {
       const transaction = await ctx.db.get(result.transactionId);
-      expect(transaction?.decidedBy).toBe("memory");
-      expect(transaction?.reasoning).toContain("Semantic memory matched");
+      expect(transaction?.decidedBy).toBe("ai");
+      expect(transaction?.reasoning).toContain("Pipeline stage 6 LLM proposal");
     });
   });
 
@@ -1098,6 +1085,177 @@ describe("M10 AI backend", () => {
       expectedAccountName: "Software & SaaS",
     });
     expect(Object.keys(prepared.cases[0])).not.toContain("categoryAccountId");
+  });
+
+  it("makes auto-post MORE conservative once an overconfident calibration is fitted (E6.1)", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const session = authed(t, ids.userId);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("aiConfigs", {
+        workspaceId: ids.workspaceId,
+        provider: "bedrock",
+        chatModel: "claude-test",
+        categorizeModel: "claude-test",
+        autonomy: "autopilot",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    });
+
+    // Without calibration, an autopilot 0.80 proposal posts (0.80 >= 0.75).
+    const baselinePosted = await session.mutation(api.pipeline.routeTransaction, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      date: "2026-05-04",
+      amountMinor: -4999,
+      currency: "USD",
+      merchant: "Notion",
+      rawDescription: "Notion workspace",
+      status: "posted",
+      source: "bank",
+      externalId: "cal-baseline-post",
+      aiProposal: {
+        categoryAccountId: ids.softwareAccountId,
+        confidence: 0.8,
+        reasoning: "Recurring software vendor.",
+        needsHuman: false,
+      },
+    });
+    // E2-T7: AI auto-post reports the truthful "ai" stage (was "rule").
+    expect(baselinePosted).toMatchObject({ status: "posted", stage: "ai" });
+
+    // Fit an overconfident calibration: confidence ~0.8 only correct ~50% of
+    // the time, so the calibrated probability of a raw 0.8 drops below 0.75.
+    const samples = Array.from({ length: 120 }, (_, i) => ({
+      rawConfidence: 0.7 + ((i * 17) % 30) / 100, // 0.70..0.99
+      correct: i % 2 === 0,
+    }));
+    const fit = await session.mutation(api.ai.fitWorkspaceCalibration, {
+      workspaceId: ids.workspaceId,
+      samples,
+      method: "temperature",
+    });
+    expect(fit.params.a).toBeLessThan(1);
+    expect(fit.eceAfter).toBeLessThanOrEqual(fit.eceBefore);
+
+    // Same 0.80 proposal now routes to review instead of auto-posting.
+    const calibratedReview = await session.mutation(api.pipeline.routeTransaction, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      date: "2026-05-05",
+      amountMinor: -4999,
+      currency: "USD",
+      merchant: "Notion",
+      rawDescription: "Notion workspace",
+      status: "posted",
+      source: "bank",
+      externalId: "cal-after-fit-review",
+      aiProposal: {
+        categoryAccountId: ids.softwareAccountId,
+        confidence: 0.8,
+        reasoning: "Recurring software vendor.",
+        needsHuman: false,
+      },
+    });
+    expect(calibratedReview).toMatchObject({ status: "needs_review", entryId: null });
+  });
+
+  it("never auto-posts a blocklisted equity category even at confidence 1.0 (E6.2)", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const session = authed(t, ids.userId);
+    const ownerDrawAccountId = await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.insert("aiConfigs", {
+        workspaceId: ids.workspaceId,
+        provider: "bedrock",
+        chatModel: "claude-test",
+        categorizeModel: "claude-test",
+        autonomy: "autopilot",
+        createdAt: now,
+        updatedAt: now,
+      });
+      return await ctx.db.insert("ledgerAccounts", {
+        entityId: ids.entityId,
+        name: "Owner's Draw",
+        type: "equity",
+        subtype: "draw",
+        number: "3100",
+        currency: "USD",
+        isSystem: false,
+        archived: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    const result = await session.mutation(api.pipeline.routeTransaction, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      date: "2026-05-06",
+      amountMinor: -2500,
+      currency: "USD",
+      merchant: "Owner Withdrawal",
+      rawDescription: "Owner draw",
+      status: "posted",
+      source: "bank",
+      externalId: "blocklist-equity-1",
+      aiProposal: {
+        categoryAccountId: ownerDrawAccountId,
+        confidence: 1.0,
+        reasoning: "Looks like an owner draw.",
+        needsHuman: false,
+      },
+    });
+
+    expect(result).toMatchObject({ status: "needs_review", entryId: null, stage: "needs_review" });
+    await t.run(async (ctx) => {
+      const transaction = await ctx.db.get(result.transactionId);
+      expect(transaction?.entryId).toBeUndefined();
+    });
+  });
+
+  it("never auto-posts above the hard dollar ceiling even at confidence 1.0 (E6.2)", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupAIBackend(t);
+    const session = authed(t, ids.userId);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("aiConfigs", {
+        workspaceId: ids.workspaceId,
+        provider: "bedrock",
+        chatModel: "claude-test",
+        categorizeModel: "claude-test",
+        autonomy: "autopilot",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    });
+
+    const result = await session.mutation(api.pipeline.routeTransaction, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      date: "2026-05-07",
+      amountMinor: -2_000_000, // $20,000.00, above the $5,000 ceiling
+      currency: "USD",
+      merchant: "Big Vendor",
+      rawDescription: "Large software invoice",
+      status: "posted",
+      source: "bank",
+      externalId: "ceiling-block-1",
+      aiProposal: {
+        categoryAccountId: ids.softwareAccountId,
+        confidence: 1.0,
+        reasoning: "Large but clear software charge.",
+        needsHuman: false,
+      },
+    });
+
+    expect(result).toMatchObject({ status: "needs_review", entryId: null, stage: "needs_review" });
+    await t.run(async (ctx) => {
+      const transaction = await ctx.db.get(result.transactionId);
+      expect(transaction?.entryId).toBeUndefined();
+    });
   });
 
   it("routes through deterministic stages when Bedrock env is absent", async () => {

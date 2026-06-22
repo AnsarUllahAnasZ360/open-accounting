@@ -1,16 +1,17 @@
 "use node";
 
-import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { generateText, jsonSchema, stepCountIs, tool } from "ai";
 import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 
 import type { Id } from "./_generated/dataModel";
 import { action } from "./_generated/server";
+import { buildModelForProvider } from "./aiProvider";
+import { resolveActiveAiModel } from "./aiResolve";
 
 type ProviderStatus = {
   mode: "active" | "degraded";
-  activeProvider: "bedrock" | null;
+  activeProvider: string | null;
   model: string | null;
   region: string | null;
   degradedReason: string | null;
@@ -72,10 +73,27 @@ const getPayrollRunsRef = makeFunctionReference<
   { entityId?: Id<"entities">; limit?: number },
   unknown
 >("aiChatTools:getPayrollRuns");
+const getRunwayAndBurnRef = makeFunctionReference<
+  "query",
+  { entityId?: Id<"entities">; today?: string },
+  unknown
+>("aiChatTools:getRunwayAndBurn");
+const getAdvisoriesRef = makeFunctionReference<
+  "query",
+  { entityId?: Id<"entities">; today?: string },
+  unknown
+>("aiChatTools:getAdvisories");
+
+// Server-clock as-of date for advisor tool windows (E9-T7 / E9-T2). Convex
+// queries can't read Date.now(), so resolve it here and pass it down.
+function advisorAsOf(): string {
+  return new Date(Date.now()).toISOString().slice(0, 10);
+}
 
 const SYSTEM_PROMPT = [
   "You are OpenBooks AI, a plain-English bookkeeping copilot for a small business owner.",
   "The ledger is the source of truth. Use the available read tools before answering questions about transactions, reports, balances, contacts, or payroll.",
+  "For 'how am I doing' or 'what's my runway' questions, call getRunwayAndBurn. For 'what should I worry about' or 'what should I do', call getAdvisories. Cite only the numbers those tools return; never guess or recompute them.",
   "Never say that you posted, changed, deleted, paid, invoiced, or journaled anything. For write-like requests, explain that OpenBooks will show a confirmation card before any change.",
   "Use concise accounting language. Format integer minor-unit money values as dollars, e.g. 12345 means $123.45.",
   "Do not expose internal IDs unless the owner explicitly asks for technical trace details.",
@@ -85,22 +103,26 @@ function envValue(name: string) {
   return process.env[name]?.trim() || null;
 }
 
-function redactEnvValues(message: string) {
+function redactEnvValues(message: string, extraSecret?: string | null) {
   const secretNames = [
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
     "AWS_SESSION_TOKEN",
     "AWS_BEARER_TOKEN_BEDROCK",
   ];
-  return secretNames.reduce((current, name) => {
+  const withEnv = secretNames.reduce((current, name) => {
     const value = envValue(name);
     return value && value.length >= 4 ? current.split(value).join("[redacted]") : current;
   }, message);
+  // Also redact the resolved BYO credential secret (E3-T3).
+  return extraSecret && extraSecret.length >= 4
+    ? withEnv.split(extraSecret).join("[redacted]")
+    : withEnv;
 }
 
-function safeErrorMessage(error: unknown) {
+function safeErrorMessage(error: unknown, extraSecret?: string | null) {
   const raw = error instanceof Error ? error.message : "OpenBooks AI chat failed.";
-  return redactEnvValues(raw).replace(/\s+/g, " ").slice(0, 300);
+  return redactEnvValues(raw, extraSecret).replace(/\s+/g, " ").slice(0, 300);
 }
 
 function withEntity(entityId: Id<"entities"> | undefined) {
@@ -135,7 +157,13 @@ export const answer = action({
       };
     }
 
-    if (status.mode !== "active" || !status.model || !status.region) {
+    // Resolve the workspace's active provider (BYO or env) for chat. No path is
+    // hardwired to AWS Bedrock anymore (E3-T3).
+    const resolved = await resolveActiveAiModel(ctx, {
+      workspaceId: args.workspaceId,
+      purpose: "chat",
+    });
+    if (status.mode !== "active" || !resolved.ready) {
       return {
         ok: false,
         mode: "degraded" as const,
@@ -148,17 +176,15 @@ export const answer = action({
     }
 
     const toolsUsed = new Set<string>();
-    const bedrock = createAmazonBedrock({
-      region: status.region,
-      accessKeyId: envValue("AWS_ACCESS_KEY_ID") ?? undefined,
-      secretAccessKey: envValue("AWS_SECRET_ACCESS_KEY") ?? undefined,
-      sessionToken: envValue("AWS_SESSION_TOKEN") ?? undefined,
-      apiKey: envValue("AWS_BEARER_TOKEN_BEDROCK") ?? undefined,
+    const model = buildModelForProvider({
+      providerId: resolved.provider,
+      modelId: resolved.modelId,
+      credential: resolved.credential,
     });
 
     try {
       const result: { text: string; finishReason: string } = await generateText({
-        model: bedrock(status.model),
+        model,
         system: SYSTEM_PROMPT,
         prompt: question,
         maxOutputTokens: 700,
@@ -291,6 +317,38 @@ export const answer = action({
               });
             },
           }),
+          getRunwayAndBurn: tool({
+            description:
+              "Read grounded runway and burn: current cash, average monthly net burn, and months of runway. Use for 'how am I doing' / 'what's my runway'. Numbers come from the ledger — never estimate them yourself.",
+            inputSchema: jsonSchema<Record<string, never>>({
+              type: "object",
+              properties: {},
+              additionalProperties: false,
+            }),
+            execute: async (): Promise<unknown> => {
+              toolsUsed.add("getRunwayAndBurn");
+              return await ctx.runQuery(getRunwayAndBurnRef, {
+                ...withEntity(args.entityId),
+                today: advisorAsOf(),
+              });
+            },
+          }),
+          getAdvisories: tool({
+            description:
+              "Read the AI CFO advisory signals: runway/burn, income trend, expense creep, customer concentration, cash-flow forecast, tax set-aside, and anomalies/duplicates. Use for 'what should I worry about' / 'what should I do'. Each signal carries the exact ledger numbers it was computed from — cite those, never guess.",
+            inputSchema: jsonSchema<Record<string, never>>({
+              type: "object",
+              properties: {},
+              additionalProperties: false,
+            }),
+            execute: async (): Promise<unknown> => {
+              toolsUsed.add("getAdvisories");
+              return await ctx.runQuery(getAdvisoriesRef, {
+                ...withEntity(args.entityId),
+                today: advisorAsOf(),
+              });
+            },
+          }),
         },
       });
 
@@ -298,7 +356,7 @@ export const answer = action({
         ok: true,
         mode: status.mode,
         runtime: "ai_sdk_tools" as const,
-        model: status.model,
+        model: resolved.modelId,
         finishReason: result.finishReason,
         text: result.text.trim() || "I could not produce an answer from the available bookkeeping context.",
         toolsUsed: Array.from(toolsUsed).sort(),
@@ -308,8 +366,8 @@ export const answer = action({
         ok: false,
         mode: status.mode,
         runtime: "ai_sdk_tools" as const,
-        model: status.model,
-        text: `OpenBooks AI could not complete the tool-backed answer: ${safeErrorMessage(error)}`,
+        model: resolved.modelId,
+        text: `OpenBooks AI could not complete the tool-backed answer: ${safeErrorMessage(error, resolved.credential.apiKey ?? resolved.credential.secretAccessKey)}`,
         toolsUsed: Array.from(toolsUsed).sort(),
       };
     }

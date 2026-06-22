@@ -48,6 +48,19 @@ async function resolveEntityId(ctx: ToolCtx): Promise<Id<"entities">> {
   return context.entityId;
 }
 
+// Default report window derived from the SERVER CLOCK (E9-T2 / RC6), not a
+// frozen calendar-2026 literal. Convex *queries* can't read the clock, so the
+// window is computed here in the action/tool layer (where `Date.now()` is
+// available) and passed down to the scoped query. "This year so far" — Jan 1 of
+// the current year through today — is the sensible default when the model asks
+// for a report without naming a period; the model can always override with
+// explicit startDate/endDate.
+export function defaultReportWindow(now: number = Date.now()): { startDate: string; endDate: string } {
+  const today = new Date(now).toISOString().slice(0, 10);
+  const year = today.slice(0, 4);
+  return { startDate: `${year}-01-01`, endDate: today };
+}
+
 // ---------------------------------------------------------------------------
 // Read tools (B2)
 // ---------------------------------------------------------------------------
@@ -73,11 +86,15 @@ const getReport = createTool({
   }),
   execute: async (ctx: ToolCtx, input): Promise<unknown> => {
     const entityId = await resolveEntityId(ctx);
+    // Resolve the default window from the server clock HERE (action layer), so
+    // "this period" tracks the real calendar instead of a frozen 2026 window
+    // (E9-T2 / RC6). The model can still override with explicit dates.
+    const fallback = defaultReportWindow();
     return await ctx.runQuery(internal.agentToolQueries.getReportForEntity, {
       entityId,
       report: input.report,
-      startDate: input.startDate,
-      endDate: input.endDate,
+      startDate: input.startDate ?? fallback.startDate,
+      endDate: input.endDate ?? fallback.endDate,
       basis: input.basis,
     });
   },
@@ -150,6 +167,56 @@ const getPayrollRuns = createTool({
     return await ctx.runQuery(internal.agentToolQueries.getPayrollRunsForEntity, {
       entityId,
       limit: input.limit,
+    });
+  },
+});
+
+// Server-clock as-of date for advisor windows (E9-T7 / E9-T2). Computed HERE in
+// the tool (action) layer because Convex queries can't read Date.now().
+function advisorAsOf(now: number = Date.now()): string {
+  return new Date(now).toISOString().slice(0, 10);
+}
+
+const getRunwayAndBurn = createTool({
+  description:
+    "Read the business's grounded runway and burn: current cash position, average monthly net burn, and months of runway (cash ÷ burn). Use this for 'how am I doing', 'what's my runway', or any cash-survival question. Numbers come straight from the ledger — never estimate them yourself.",
+  inputSchema: jsonSchema<Record<string, never>>({
+    type: "object",
+    properties: {},
+    additionalProperties: false,
+  }),
+  execute: async (ctx: ToolCtx): Promise<unknown> => {
+    const entityId = await resolveEntityId(ctx);
+    const signals = await ctx.runQuery(internal.agentToolQueries.getCfoSignalsForEntity, {
+      entityId,
+      today: advisorAsOf(),
+    });
+    // Return only the runway-relevant grounded fields for a focused answer.
+    return {
+      tool: "getRunwayAndBurn" as const,
+      entity: signals.entity,
+      asOf: signals.asOf,
+      cashPositionMinor: signals.cashPositionMinor,
+      monthlyBurnMinor: signals.monthlyBurnMinor,
+      runwayMonths: signals.runwayMonths,
+      forecast: signals.forecast,
+    };
+  },
+});
+
+const getAdvisories = createTool({
+  description:
+    "Read the AI CFO advisory signals for the business: runway/burn, income trend, expense creep, customer concentration, cash-flow forecast, tax set-aside, and anomalies/duplicates. Use this for 'what should I worry about' or 'what should I do' questions. Every signal carries the exact ledger numbers it was computed from — cite those, never guess.",
+  inputSchema: jsonSchema<Record<string, never>>({
+    type: "object",
+    properties: {},
+    additionalProperties: false,
+  }),
+  execute: async (ctx: ToolCtx): Promise<unknown> => {
+    const entityId = await resolveEntityId(ctx);
+    return await ctx.runQuery(internal.agentToolQueries.getCfoSignalsForEntity, {
+      entityId,
+      today: advisorAsOf(),
     });
   },
 });
@@ -307,6 +374,8 @@ export const openBooksReadTools = {
   queryTransactions,
   searchContacts,
   getPayrollRuns,
+  getRunwayAndBurn,
+  getAdvisories,
   proposeCategorize,
   proposeRule,
   proposeInvoiceDraft,

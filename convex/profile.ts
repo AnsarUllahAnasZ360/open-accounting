@@ -3,7 +3,12 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { requireUserId } from "./authz";
+import {
+  requireUserId,
+  rolePermissionList,
+  workspaceRoleDescription,
+  workspaceRoleLabel,
+} from "./authz";
 
 const AVATAR_COLORS = ["#17540f", "#2ca01c", "#454545", "#525252", "#b54708"] as const;
 const DEFAULT_TIMEZONE = "America/Chicago";
@@ -74,10 +79,9 @@ export const me = query({
             workspaceId: membership.workspaceId,
             workspaceName: workspace?.name ?? "OpenBooks workspace",
             role: membership.role,
-            roleLabel:
-              membership.role === "owner" ? "Owner"
-              : membership.role === "admin" ? "Accountant"
-              : "Staff",
+            roleLabel: workspaceRoleLabel(membership.role),
+            roleDescription: workspaceRoleDescription(membership.role),
+            permissions: rolePermissionList(membership.role),
             joinedAt: membership.createdAt,
           };
         }),
@@ -91,6 +95,9 @@ export const me = query({
       },
       profile: await profileSnapshot(ctx, user, userId),
       memberships: workspaceRows,
+      auth: {
+        passwordResetEnabled: Boolean(process.env.PLUNK_SECRET_KEY && process.env.PLUNK_FROM_EMAIL),
+      },
     };
   },
 });

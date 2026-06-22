@@ -9,6 +9,7 @@ type StripeWebhookEvent = {
   type?: unknown;
   livemode?: unknown;
   api_version?: unknown;
+  account?: unknown;
 	  data?: {
 	    object?: {
 	      id?: unknown;
@@ -101,6 +102,9 @@ export function normalizeStripeWebhookEvent(raw: unknown) {
 	      : undefined;
 	  const apiVersion = typeof event.api_version === "string" ? event.api_version : undefined;
 	  const livemode = event.livemode === true;
+	  // Connect events carry the connected account id at the top level; used to
+	  // pin a signed-but-unverified delivery to a known account (E3-T6 "failing").
+	  const connectedAccountId = typeof event.account === "string" ? event.account : undefined;
 	  return {
 	    stripeEventId: event.id,
 	    type: event.type,
@@ -108,11 +112,15 @@ export function normalizeStripeWebhookEvent(raw: unknown) {
 	    relatedPaymentIntentId,
 	    apiVersion,
 	    livemode,
+	    connectedAccountId,
 	  };
 	}
 
 export const recordEvent = internalMutation({
   args: {
+    workspaceId: v.optional(v.id("workspaces")),
+    entityId: v.optional(v.id("entities")),
+    connectionId: v.optional(v.id("financialConnections")),
     stripeEventId: v.string(),
 	    type: v.string(),
 	    objectId: v.optional(v.string()),
@@ -129,11 +137,15 @@ export const recordEvent = internalMutation({
       return { status: "duplicate" as const, eventId: existing._id };
     }
 
-    const status = args.livemode ? "ignored" as const : "received" as const;
-    const summary = args.livemode
+    const realDataAllowed = process.env.OPENBOOKS_REAL_TEST_LIVE_CONNECTORS === "1";
+    const status = args.livemode && !args.connectionId && !realDataAllowed ? "ignored" as const : "received" as const;
+    const summary = status === "ignored"
       ? `Ignored live-mode Stripe event ${args.type}.`
-      : `Received Stripe test-mode event ${args.type}${args.objectId ? ` for ${args.objectId}` : ""}.`;
+      : `Received Stripe ${args.livemode ? "live" : "test"} event ${args.type}${args.objectId ? ` for ${args.objectId}` : ""}.`;
     const eventId = await ctx.db.insert("stripeWebhookEvents", {
+	      workspaceId: args.workspaceId,
+	      entityId: args.entityId,
+	      connectionId: args.connectionId,
 	      stripeEventId: args.stripeEventId,
 	      type: args.type,
 	      objectId: args.objectId,

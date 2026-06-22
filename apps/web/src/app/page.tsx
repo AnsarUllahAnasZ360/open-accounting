@@ -13,6 +13,7 @@ import {
 import { LandingPrototypeFaq, LandingPrototypeTour } from "@/components/openbooks/LandingPrototypeInteractions";
 import { RequestAccessForm } from "@/components/openbooks/RequestAccessForm";
 import { Button } from "@/components/ui/button";
+import { GITHUB_URL } from "@/lib/openbooks/brand-links";
 import { cn } from "@/lib/utils";
 
 const shot = (name: string) => `/prototype-assets/shots/${name}.png`;
@@ -21,7 +22,7 @@ const loopSteps = [
   {
     number: "01",
     title: "Connect your accounts",
-    body: "Banks via Plaid, payments via Stripe, or a plain CSV. Every transaction syncs in on its own — up to 24 months of history.",
+    body: "Banks via Plaid, payments via Stripe, or a plain CSV. Every transaction syncs in on its own — as far back as your bank allows, and you choose your start date.",
   },
   {
     number: "02",
@@ -73,7 +74,7 @@ const compareRows = [
   ["Bank sync", "BYO Plaid", "yes", "yes", "no"],
   ["AI categorization + inbox", "BYO model", "yes", "yes", "no"],
   ["Stripe payout reconciliation", "yes", "partial", "yes", "no"],
-  ["Open source", "MIT", "no", "no", "AGPL"],
+  ["Open source", "MIT", "no", "no", "yes"],
   ["Self-hosted, you own the data", "yes", "no", "no", "yes"],
   ["Price per month", "$0", "$38–275", "$0–200", "$0"],
 ];
@@ -161,9 +162,18 @@ export default function Home() {
             <a className="text-[13.5px] text-muted-foreground hover:text-foreground" href="#faq">
               FAQ
             </a>
+            <Link className="text-[13.5px] text-muted-foreground hover:text-foreground" href="/help">
+              Guide
+            </Link>
+            <Link className="text-[13.5px] text-muted-foreground hover:text-foreground" href="/setup">
+              Set up
+            </Link>
           </nav>
           <Button asChild className="h-9 rounded-[10px] px-4 text-[13.5px]">
-            <Link href="/dashboard">Open the app</Link>
+            {/* E15-T6: "Open the app" is the owner entry point → /sign-in. The
+                no-login demo CTAs (hero/mobile/footer) target E11's merged /demo
+                route directly. */}
+            <Link href="/sign-in">Open the app</Link>
           </Button>
         </div>
       </header>
@@ -181,10 +191,14 @@ export default function Home() {
         </p>
         <div className="mt-7 flex flex-col justify-center gap-2 sm:flex-row">
           <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]">
-            <Link href="/dashboard">Try the live demo</Link>
+            {/* E11-T5: no-login public demo route — server-slug-resolved, read-only. */}
+            <Link href="/demo">Try the live demo</Link>
           </Button>
           <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]" variant="outline">
-            <a href="https://github.com/AnsarUllahAnasZ360/open-accounting" rel="noreferrer" target="_blank">
+            {/* E15-T2: GitHub links target the renamed `openbooks` repo (Q80) via
+                the shared brand-links constant. <!-- REPO-URL --> is the
+                find-replace anchor for a one-sweep owner-prefix update. */}
+            <a href={/* REPO-URL */ GITHUB_URL} rel="noreferrer" target="_blank">
               <GitHubMark />
               Star on GitHub
             </a>
@@ -192,7 +206,9 @@ export default function Home() {
         </div>
         <div className="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-2 text-[12.5px] text-muted-foreground">
           <span>
-            <span className="money-figures font-semibold text-foreground">$0</span>/month, forever
+            {/* E15-T2: the software is $0; the honest footnote (below) names the
+                only real costs — the user's own AI/Plaid usage. */}
+            <span className="money-figures font-semibold text-foreground">$0</span> for the software
           </span>
           <span>
             <span className="money-figures font-semibold text-foreground">15 min</span> to first dashboard
@@ -201,6 +217,11 @@ export default function Home() {
             <span className="money-figures font-semibold text-foreground">MIT</span> licensed
           </span>
         </div>
+        <p className="mx-auto mt-3 max-w-md text-[11.5px] leading-relaxed text-muted-foreground">
+          The software itself is free. Your only costs are your own usage — your AI provider&apos;s
+          API charges (typically a few dollars a month) and Plaid if you outgrow its free tier. CSV
+          import is always free.
+        </p>
 
         <div className="mx-auto mt-12 max-w-[960px] overflow-hidden rounded-t-[14px] bg-background shadow-[0_0_0_1px_rgba(10,10,10,0.09),0_24px_48px_-20px_rgba(0,0,0,0.22)]">
           <div className="flex h-9 items-center gap-1.5 border-b bg-muted/40 px-3.5">
@@ -377,7 +398,8 @@ export default function Home() {
               </div>
             </div>
             <Button asChild className="mt-5 h-10 rounded-[10px] px-4 text-[13.5px]" variant="outline">
-              <Link href="/dashboard">Try the mobile demo →</Link>
+              {/* E11-T5: no-login public demo route — server-slug-resolved, read-only. */}
+              <Link href="/demo">Try the mobile demo →</Link>
             </Button>
           </div>
           <div className="grid grid-cols-3 gap-3 sm:gap-5">
@@ -425,12 +447,12 @@ export default function Home() {
                   "Intelligence costs API pennies when it runs on your model key — Anthropic, OpenAI, Google or local Ollama. No $500/month bookkeeping service in the middle.",
                 ],
                 [
-                  "Self-hosted, one Docker command",
-                  "Your books live on your machine as data you can always export. No vendor can shut down overnight and take your records with it.",
+                  "Self-host it on your own deployment",
+                  "Clone the repo, run two commands, and point it at your own free Convex deployment — the front end runs locally or on Vercel. No vendor can shut it down and take your records with it, and full CSV/JSON export is always one click away.",
                 ],
                 [
                   "Open source, MIT licensed",
-                  "The ledger engine is public, auditable, and free to use anywhere — even inside your own products. No ads, no upsells, no payments funnel disguised as bookkeeping software.",
+                  "MIT is permissive: the ledger engine is public, auditable, and free to use anywhere — fork it, self-host it, even build it into your own products. No ads, no upsells, no payments funnel disguised as bookkeeping software.",
                 ],
               ].map(([title, body]) => (
                 <div key={title} className="flex gap-3.5">
@@ -516,7 +538,8 @@ export default function Home() {
         <p className="mt-3 text-base text-muted-foreground">Your books are always done — and they're yours.</p>
         <div className="mt-7 flex flex-col justify-center gap-2 sm:flex-row">
           <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]">
-            <Link href="/dashboard">Try the live demo</Link>
+            {/* E11-T5: no-login public demo route — server-slug-resolved, read-only. */}
+            <Link href="/demo">Try the live demo</Link>
           </Button>
           <Button asChild className="h-[46px] rounded-xl px-6 text-[15px]" variant="outline">
             <a href="#mobile">See it on mobile</a>
@@ -537,11 +560,30 @@ export default function Home() {
         <span>·</span>
         <span>MIT licensed</span>
         <span>·</span>
-        <a className="hover:text-foreground" href="https://github.com/AnsarUllahAnasZ360/open-accounting" rel="noreferrer" target="_blank">
+        <a className="hover:text-foreground" href={/* REPO-URL */ GITHUB_URL} rel="noreferrer" target="_blank">
           GitHub
         </a>
         <span>·</span>
-        <span>No tracking, no account required</span>
+        {/* E15-T3: plain-English owner help center. */}
+        <Link className="hover:text-foreground" href="/help">
+          Guide
+        </Link>
+        <span>·</span>
+        {/* E13-T7: in-product /setup guide (surfaces the redirect/webhook URLs).
+            Cross-links to docs/self-host/ + the openbooks-self-host skill. */}
+        <Link className="hover:text-foreground" href="/setup">
+          Self-host / Run your own
+        </Link>
+        <span>·</span>
+        <Link className="hover:text-foreground" href="/security">
+          Security
+        </Link>
+        <span>·</span>
+        {/* E11-T10: the claim is now accurate against the real no-login /demo —
+            the public demo requires no account and mints no anonymous identity. */}
+        <Link className="hover:text-foreground" href="/demo">
+          Live demo — no account required
+        </Link>
       </footer>
     </main>
   );

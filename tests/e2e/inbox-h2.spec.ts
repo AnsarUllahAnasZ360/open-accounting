@@ -109,11 +109,27 @@ test("H2 — Inbox keyboard, correction, rule save, confirm, and batch actions w
       .poll(async () => page.getByTestId("inbox-item").count(), { timeout: 60000 })
       .toBeGreaterThanOrEqual(3);
 
+    // E2-T11: the queue footer reports the unreviewed count so the owner can see
+    // the backlog size at a glance.
+    await expect(visibleByTestId(page, "inbox-unreviewed-count")).toBeVisible();
+
     const firstMerchant = await itemMerchantAt(page, 0);
     const secondMerchant = await itemMerchantAt(page, 1);
     await expectClickable(page.getByTestId("inbox-item").nth(0));
     await page.getByTestId("inbox-item").nth(0).click();
     await expect(visibleByTestId(page, "inbox-detail-title")).toHaveText(firstMerchant);
+
+    // E2-T11: a decided item surfaces a provenance line and/or Top-N suggestions.
+    // These are conditional on the item having been auto-decided, so we assert
+    // they render WHEN present rather than forcing a specific decision path.
+    const provenance = page.getByTestId("inbox-provenance");
+    if ((await provenance.count()) > 0) {
+      await expect(provenance.first()).toBeVisible();
+    }
+    const suggestions = page.getByTestId("inbox-suggestion");
+    if ((await suggestions.count()) > 0) {
+      await expect(suggestions.first()).toBeVisible();
+    }
     await page.keyboard.press("j");
     await expect(visibleByTestId(page, "inbox-detail-title")).toHaveText(secondMerchant);
     await page.keyboard.press("k");

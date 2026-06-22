@@ -88,7 +88,7 @@ describe("profile and team identity", () => {
     expect(publicInvite).toMatchObject({
       status: "pending",
       email: "invitee@example.com",
-      roleLabel: "Staff",
+      roleLabel: "HR",
       workspaceName: "Profile Team Workspace",
     });
   });

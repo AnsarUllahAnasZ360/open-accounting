@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Toaster } from "@/components/ui/sonner";
 import { ConvexClientProvider } from "./ConvexClientProvider";
 import "./globals.css";
 
@@ -29,6 +30,7 @@ export default function RootLayout({
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
       <body className="flex min-h-full flex-col antialiased">
         <ConvexClientProvider>{children}</ConvexClientProvider>
+        <Toaster />
       </body>
     </html>
   );

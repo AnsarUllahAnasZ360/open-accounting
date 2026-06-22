@@ -28,14 +28,22 @@ describe("prototype copy guardrails", () => {
     });
   });
 
-  it("keeps the app shell vocabulary aligned with OpenBook - Prototype/OpenBooks.dc.html", () => {
+  it("keeps the app shell vocabulary aligned with the approved redesign (Section 6.12)", () => {
     const shell = readWorkspaceFile("apps/web/src/components/openbooks/AppShell.tsx");
 
+    // The 2026-06-13 foundation redesign decluttered the shell per Section 6.12 of
+    // docs/finishing/frontend-redesign-research-report.md: the static "Jun 2026"
+    // month chip and the wide "Search transactions, contacts, reports" pill were
+    // intentionally removed (search is now a compact icon reachable at every width,
+    // and the period lives on the surfaces that own it). The shell still carries the
+    // brand wordmark, a reachable Search affordance, the Ask AI trigger, and the
+    // Settings + Sync utility cluster relocated to the sidebar footer.
     [
       "open books",
-      "Search transactions, contacts, reports",
-      "Jun 2026",
+      "Search",
       "Ask AI",
+      "Settings",
+      "Sync",
     ].forEach((text) => {
       expect(shell).toContain(text);
     });

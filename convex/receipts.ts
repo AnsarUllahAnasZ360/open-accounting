@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import { makeFunctionReference } from "convex/server";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -14,7 +13,6 @@ import {
 import { requireWorkspaceRole } from "./authz";
 import { ensureDefaultBankAccountForEntity } from "./defaultBankAccount";
 import { assertNonNegativeMinorUnit } from "./money";
-import { embedSemanticText, SEMANTIC_MEMORY_DIMENSIONS } from "./semanticMemory";
 
 const documentKindValidator = v.union(v.literal("receipt"), v.literal("bill"));
 const extractionSourceValidator = v.union(
@@ -40,11 +38,10 @@ type ReceiptExtractionContext = {
     name: string;
     currency: string;
   };
-  embeddingsModel: string | null;
   document: {
     id: Id<"documents">;
     storageId: Id<"_storage"> | null;
-    kind: "receipt" | "bill" | "statement";
+    kind: "receipt" | "bill" | "statement" | "attachment";
     fileName: string | null;
     mimeType: string | null;
   };
@@ -60,55 +57,6 @@ type ApplyBedrockExtractionResult = {
   confidence: number;
   notes: string;
 };
-
-type ReceiptMatchCandidate = {
-  transactionId: Id<"transactions">;
-  merchant: string;
-  rawDescription: string;
-  date: string;
-  amountMinor: number;
-};
-
-type ReceiptEmbeddingMatch = {
-  transactionId: Id<"transactions">;
-  score: number;
-};
-
-type ReceiptTransactionEmbeddingRow = {
-  transactionId: Id<"transactions">;
-  sourceText: string;
-  embedding: number[];
-  embeddingModel: string;
-};
-
-type ReceiptEmbeddingMatchResult = {
-  match: ReceiptEmbeddingMatch | null;
-  sourceText: string;
-  embedding: number[];
-  embeddingModel: string;
-};
-
-const receiptTransactionEmbeddingRowsRef = makeFunctionReference<
-  "query",
-  {
-    entityId: Id<"entities">;
-    transactionIds: Id<"transactions">[];
-    embeddingModel: string;
-  },
-  ReceiptTransactionEmbeddingRow[]
->("receipts:receiptTransactionEmbeddingRows");
-
-const upsertReceiptTransactionEmbeddingRef = makeFunctionReference<
-  "mutation",
-  {
-    entityId: Id<"entities">;
-    transactionId: Id<"transactions">;
-    sourceText: string;
-    embedding: number[];
-    embeddingModel: string;
-  },
-  { receiptTransactionEmbeddingId: Id<"receiptTransactionEmbeddings">; status: "created" | "updated" }
->("receipts:upsertReceiptTransactionEmbedding");
 
 function titleCase(value: string) {
   return value
@@ -534,17 +482,12 @@ export const receiptExtractionContext = internalQuery({
       throw new Error("OpenBooks entity not found.");
     }
     await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
-    const config = await ctx.db
-      .query("aiConfigs")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId))
-      .unique();
     return {
       entity: {
         id: entity._id,
         name: entity.name,
         currency: entity.currency,
       },
-      embeddingsModel: config?.embedModel ?? (present(process.env.AI_EMBEDDINGS_MODEL) ? process.env.AI_EMBEDDINGS_MODEL!.trim() : null),
       document: {
         id: document._id,
         storageId: document.storageId ?? null,
@@ -567,68 +510,6 @@ function merchantMatches(transaction: Doc<"transactions">, vendor: string) {
   const merchant = transaction.merchant.toLowerCase();
   const vendorKey = vendor.toLowerCase();
   return merchant.includes(vendorKey) || vendorKey.includes(merchant);
-}
-
-function present(value: string | undefined) {
-  return Boolean(value && value.trim().length > 0);
-}
-
-export function buildReceiptEmbeddingText(args: {
-  vendor: string;
-  date: string;
-  totalMinor: number;
-  currency: string;
-}) {
-  return [
-    `receipt_vendor: ${args.vendor.trim()}`,
-    `date: ${args.date}`,
-    `direction: outflow`,
-    `amount_minor: ${args.totalMinor}`,
-    `currency: ${args.currency.trim().toUpperCase()}`,
-  ].join("\n");
-}
-
-function buildTransactionReceiptMatchText(candidate: ReceiptMatchCandidate, currency: string) {
-  return [
-    `transaction_merchant: ${candidate.merchant.trim()}`,
-    `description: ${candidate.rawDescription.trim()}`,
-    `date: ${candidate.date}`,
-    `direction: outflow`,
-    `amount_minor: ${Math.abs(candidate.amountMinor)}`,
-    `currency: ${currency.trim().toUpperCase()}`,
-  ].join("\n");
-}
-
-export function cosineSimilarity(left: number[], right: number[]) {
-  if (left.length !== right.length || left.length === 0) return 0;
-  let dot = 0;
-  let leftMagnitude = 0;
-  let rightMagnitude = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    dot += left[index] * right[index];
-    leftMagnitude += left[index] * left[index];
-    rightMagnitude += right[index] * right[index];
-  }
-  if (leftMagnitude === 0 || rightMagnitude === 0) return 0;
-  return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
-}
-
-export function chooseBestReceiptEmbeddingMatch(
-  scores: Array<{ transactionId: Id<"transactions">; score: number }>,
-) {
-  const best = scores
-    .filter((candidate) => candidate.score >= 0.78)
-    .sort((a, b) => b.score - a.score)[0] ?? null;
-  return best;
-}
-
-export function assertReceiptEmbeddingVector(embedding: number[]) {
-  if (
-    embedding.length !== SEMANTIC_MEMORY_DIMENSIONS ||
-    embedding.some((value) => !Number.isFinite(value))
-  ) {
-    throw new Error(`Receipt embeddings must be ${SEMANTIC_MEMORY_DIMENSIONS} finite numbers.`);
-  }
 }
 
 async function findReceiptMatchCandidates(
@@ -766,44 +647,6 @@ async function resolveReceiptInboxItems(
   );
 }
 
-export const receiptEmbeddingCandidates = internalQuery({
-  args: {
-    entityId: v.id("entities"),
-    date: v.string(),
-    totalMinor: v.number(),
-  },
-  handler: async (ctx, args): Promise<ReceiptMatchCandidate[]> => {
-    const entity = await ctx.db.get(args.entityId);
-    if (!entity) {
-      throw new Error("OpenBooks entity not found.");
-    }
-    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
-    if (!args.date || args.totalMinor <= 0) return [];
-    const [transactions, documents] = await Promise.all([
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
-      ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
-    ]);
-    const alreadyMatched = new Set(
-      documents
-        .map((document) => document.matchedTransactionId)
-        .filter((id): id is Id<"transactions"> => Boolean(id)),
-    );
-    return transactions
-      .filter((transaction) => transaction.amountMinor < 0)
-      .filter((transaction) => !alreadyMatched.has(transaction._id))
-      .filter((transaction) => Math.abs(Math.abs(transaction.amountMinor) - args.totalMinor) <= 100)
-      .filter((transaction) => daysBetween(transaction.date, args.date) <= 3)
-      .slice(0, 8)
-      .map((transaction) => ({
-        transactionId: transaction._id,
-        merchant: transaction.merchant,
-        rawDescription: transaction.rawDescription,
-        date: transaction.date,
-        amountMinor: transaction.amountMinor,
-      }));
-  },
-});
-
 export const generateUploadUrl = mutation({
   args: {
     entityId: v.id("entities"),
@@ -904,6 +747,42 @@ export const recordUpload = mutation({
   },
 });
 
+// Explicitly attach an uploaded file to a specific transaction (no vendor/date
+// auto-matching — the owner chose this transaction). Reuses generateUploadUrl
+// for the signed upload URL; this records the document linked to the row.
+export const attachToTransaction = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+    mimeType: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const transaction = await ctx.db.get(args.transactionId);
+    if (!transaction) {
+      throw new Error("Transaction not found.");
+    }
+    const entity = await requireEntityForAdmin(ctx, transaction.entityId);
+    const now = Date.now();
+    const documentId = await ctx.db.insert("documents", {
+      entityId: entity._id,
+      kind: "attachment",
+      storageId: args.storageId,
+      fileName: args.fileName,
+      mimeType: args.mimeType,
+      vendor: args.fileName,
+      date: new Date().toISOString().slice(0, 10),
+      totalMinor: 0,
+      currency: entity.currency,
+      matchedTransactionId: args.transactionId,
+      status: "matched",
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { documentId };
+  },
+});
+
 export const applyBedrockExtraction = internalMutation({
   args: {
     documentId: v.id("documents"),
@@ -914,8 +793,6 @@ export const applyBedrockExtraction = internalMutation({
     confidence: v.number(),
     notes: v.string(),
     extractionSource: v.optional(extractionSourceValidator),
-    embeddingMatchedTransactionId: v.optional(v.id("transactions")),
-    embeddingMatchScore: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<ApplyBedrockExtractionResult> => {
     const document = await ctx.db.get(args.documentId);
@@ -933,19 +810,13 @@ export const applyBedrockExtraction = internalMutation({
     });
     const match = matchCandidates.find((candidate) => candidate.score >= 4)?.transaction ?? null;
     const candidate = matchCandidates[0]?.transaction ?? null;
-    const embeddingMatch = args.embeddingMatchedTransactionId
-      ? await ctx.db.get(args.embeddingMatchedTransactionId)
-      : null;
-    if (embeddingMatch && embeddingMatch.entityId !== entity._id) {
-      throw new Error("Receipt embedding match must use a transaction from the same entity.");
-    }
     const existingMatch = document.matchedTransactionId
       ? await ctx.db.get(document.matchedTransactionId)
       : null;
     if (existingMatch && existingMatch.entityId !== entity._id) {
       throw new Error("Existing receipt match must use a transaction from the same entity.");
     }
-    const finalMatch = match ?? embeddingMatch ?? existingMatch;
+    const finalMatch = match ?? existingMatch;
     const extractionLabel = args.extractionSource === "pdf_text"
       ? "PDF text extraction"
       : args.notes.toLowerCase().includes("pdf raster")
@@ -953,10 +824,8 @@ export const applyBedrockExtraction = internalMutation({
         : "Bedrock extraction";
     const notes = match
       ? `${extractionLabel} auto-matched to ${match.merchant} on ${match.date}.`
-      : embeddingMatch
-        ? `${extractionLabel} embedding-matched to ${embeddingMatch.merchant} on ${embeddingMatch.date} with score ${(args.embeddingMatchScore ?? 0).toFixed(2)}.`
-        : existingMatch
-          ? `${extractionLabel} kept the existing match to ${existingMatch.merchant} on ${existingMatch.date}.`
+      : existingMatch
+        ? `${extractionLabel} kept the existing match to ${existingMatch.merchant} on ${existingMatch.date}.`
         : args.notes;
     await ctx.db.patch(args.documentId, {
       vendor: args.vendor,
@@ -991,149 +860,6 @@ export const applyBedrockExtraction = internalMutation({
       confidence: args.confidence,
       notes,
     };
-  },
-});
-
-export const upsertReceiptEmbedding = internalMutation({
-  args: {
-    entityId: v.id("entities"),
-    documentId: v.id("documents"),
-    vendor: v.string(),
-    date: v.string(),
-    totalMinor: v.number(),
-    currency: v.string(),
-    sourceText: v.string(),
-    embedding: v.array(v.float64()),
-    embeddingModel: v.string(),
-    matchedTransactionId: v.optional(v.id("transactions")),
-    matchScore: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    assertReceiptEmbeddingVector(args.embedding);
-    const entity = await ctx.db.get(args.entityId);
-    if (!entity) {
-      throw new Error("OpenBooks entity not found.");
-    }
-    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
-    const document = await ctx.db.get(args.documentId);
-    if (!document || document.entityId !== entity._id) {
-      throw new Error("Receipt embedding must belong to a document on this entity.");
-    }
-    const matchedTransaction = args.matchedTransactionId
-      ? await ctx.db.get(args.matchedTransactionId)
-      : null;
-    if (matchedTransaction && matchedTransaction.entityId !== entity._id) {
-      throw new Error("Receipt embedding match must use a transaction from the same entity.");
-    }
-    assertNonNegativeMinorUnit(args.totalMinor, "Receipt total");
-    const now = Date.now();
-    const existing = await ctx.db
-      .query("receiptEmbeddings")
-      .withIndex("by_document", (q) => q.eq("documentId", document._id))
-      .first();
-    const row = {
-      entityId: entity._id,
-      documentId: document._id,
-      vendor: args.vendor,
-      date: args.date,
-      totalMinor: args.totalMinor,
-      currency: args.currency.trim().toUpperCase() || entity.currency,
-      sourceText: args.sourceText,
-      embedding: args.embedding,
-      embeddingModel: args.embeddingModel,
-      ...(matchedTransaction ? { matchedTransactionId: matchedTransaction._id } : {}),
-      ...(args.matchScore !== undefined ? { matchScore: args.matchScore } : {}),
-      status: "active" as const,
-      updatedAt: now,
-    };
-    if (existing) {
-      await ctx.db.replace(existing._id, {
-        ...row,
-        createdAt: existing.createdAt,
-      });
-      return { receiptEmbeddingId: existing._id, status: "updated" as const };
-    }
-    const receiptEmbeddingId = await ctx.db.insert("receiptEmbeddings", {
-      ...row,
-      createdAt: now,
-    });
-    return { receiptEmbeddingId, status: "created" as const };
-  },
-});
-
-export const receiptTransactionEmbeddingRows = internalQuery({
-  args: {
-    entityId: v.id("entities"),
-    transactionIds: v.array(v.id("transactions")),
-    embeddingModel: v.string(),
-  },
-  handler: async (ctx, args): Promise<ReceiptTransactionEmbeddingRow[]> => {
-    const entity = await ctx.db.get(args.entityId);
-    if (!entity) {
-      throw new Error("OpenBooks entity not found.");
-    }
-    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
-    const wanted = new Set(args.transactionIds);
-    return (await ctx.db
-      .query("receiptTransactionEmbeddings")
-      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-      .take(1000))
-      .filter((row) => wanted.has(row.transactionId) && row.embeddingModel === args.embeddingModel && row.status === "ready")
-      .map((row) => ({
-        transactionId: row.transactionId,
-        sourceText: row.sourceText,
-        embedding: row.embedding,
-        embeddingModel: row.embeddingModel,
-      }));
-  },
-});
-
-export const upsertReceiptTransactionEmbedding = internalMutation({
-  args: {
-    entityId: v.id("entities"),
-    transactionId: v.id("transactions"),
-    sourceText: v.string(),
-    embedding: v.array(v.float64()),
-    embeddingModel: v.string(),
-  },
-  handler: async (ctx, args) => {
-    assertReceiptEmbeddingVector(args.embedding);
-    const entity = await ctx.db.get(args.entityId);
-    if (!entity) {
-      throw new Error("OpenBooks entity not found.");
-    }
-    await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
-    const transaction = await ctx.db.get(args.transactionId);
-    if (!transaction || transaction.entityId !== entity._id) {
-      throw new Error("Receipt transaction embedding must belong to this entity.");
-    }
-    const now = Date.now();
-    const existing = (await ctx.db
-      .query("receiptTransactionEmbeddings")
-      .withIndex("by_transaction", (q) => q.eq("transactionId", transaction._id))
-      .collect())
-      .find((row) => row.embeddingModel === args.embeddingModel);
-    const row = {
-      entityId: entity._id,
-      transactionId: transaction._id,
-      sourceText: args.sourceText,
-      embedding: args.embedding,
-      embeddingModel: args.embeddingModel,
-      status: "ready" as const,
-      updatedAt: now,
-    };
-    if (existing) {
-      await ctx.db.replace(existing._id, {
-        ...row,
-        createdAt: existing.createdAt,
-      });
-      return { receiptTransactionEmbeddingId: existing._id, status: "updated" as const };
-    }
-    const receiptTransactionEmbeddingId = await ctx.db.insert("receiptTransactionEmbeddings", {
-      ...row,
-      createdAt: now,
-    });
-    return { receiptTransactionEmbeddingId, status: "created" as const };
   },
 });
 
@@ -1209,92 +935,13 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary);
 }
 
-async function findReceiptEmbeddingMatch(
-  ctx: ActionCtx,
-  args: {
-    entityId: Id<"entities">;
-    vendor: string;
-    date: string;
-    totalMinor: number;
-    currency: string;
-    embeddingsModel: string | null;
-  },
-): Promise<ReceiptEmbeddingMatchResult | null> {
-  if (!args.embeddingsModel) return null;
-  const sourceText = buildReceiptEmbeddingText(args);
-  const receiptEmbedding = await embedSemanticText({
-    modelId: args.embeddingsModel,
-    text: sourceText,
-  });
-  const candidates: ReceiptMatchCandidate[] = await ctx.runQuery(internal.receipts.receiptEmbeddingCandidates, {
-    entityId: args.entityId,
-    date: args.date,
-    totalMinor: args.totalMinor,
-  });
-  const cachedRows = await ctx.runQuery(receiptTransactionEmbeddingRowsRef, {
-    entityId: args.entityId,
-    transactionIds: candidates.map((candidate) => candidate.transactionId),
-    embeddingModel: receiptEmbedding.modelId,
-  });
-  const cachedByTransactionId = new Map(cachedRows.map((row) => [row.transactionId, row]));
-  const scored = await Promise.all(
-    candidates.map(async (candidate) => {
-      const sourceText = buildTransactionReceiptMatchText(candidate, args.currency);
-      const cached = cachedByTransactionId.get(candidate.transactionId);
-      let vector = cached?.sourceText === sourceText ? cached.embedding : null;
-      if (!vector) {
-        const candidateEmbedding = await embedSemanticText({
-          modelId: args.embeddingsModel!,
-          text: sourceText,
-        });
-        vector = candidateEmbedding.vector;
-        try {
-          await ctx.runMutation(upsertReceiptTransactionEmbeddingRef, {
-            entityId: args.entityId,
-            transactionId: candidate.transactionId,
-            sourceText,
-            embedding: vector,
-            embeddingModel: candidateEmbedding.modelId,
-          });
-        } catch {
-          // Matching can still use the live vector if persistence is unavailable.
-        }
-      }
-      return {
-        transactionId: candidate.transactionId,
-        score: cosineSimilarity(receiptEmbedding.vector, vector),
-      };
-    }),
-  );
-  return {
-    match: chooseBestReceiptEmbeddingMatch(scored),
-    sourceText,
-    embedding: receiptEmbedding.vector,
-    embeddingModel: receiptEmbedding.modelId,
-  };
-}
-
 async function applyReceiptVisionExtraction(
   ctx: ActionCtx,
   context: ReceiptExtractionContext,
   extracted: ExtractedReceipt & { vendor: string; date: string; totalMinor: number },
   notesPrefix?: string,
 ): Promise<ApplyBedrockExtractionResult> {
-  let embeddingResult: ReceiptEmbeddingMatchResult | null = null;
-  try {
-    embeddingResult = await findReceiptEmbeddingMatch(ctx, {
-      entityId: context.entity.id,
-      vendor: extracted.vendor,
-      date: extracted.date,
-      totalMinor: extracted.totalMinor,
-      currency: context.entity.currency,
-      embeddingsModel: context.embeddingsModel,
-    });
-  } catch {
-    embeddingResult = null;
-  }
-
-  const result: ApplyBedrockExtractionResult = await ctx.runMutation(internal.receipts.applyBedrockExtraction, {
+  return await ctx.runMutation(internal.receipts.applyBedrockExtraction, {
     documentId: context.document.id,
     vendor: extracted.vendor,
     date: extracted.date,
@@ -1302,38 +949,7 @@ async function applyReceiptVisionExtraction(
     currency: context.entity.currency,
     confidence: extracted.confidence,
     notes: notesPrefix ? `${notesPrefix} ${extracted.notes}` : extracted.notes,
-    ...(embeddingResult?.match
-      ? {
-          embeddingMatchedTransactionId: embeddingResult.match.transactionId,
-          embeddingMatchScore: embeddingResult.match.score,
-        }
-      : {}),
   });
-  if (embeddingResult) {
-    try {
-      const _: { receiptEmbeddingId: Id<"receiptEmbeddings">; status: "created" | "updated" } = await ctx.runMutation(
-        internal.receipts.upsertReceiptEmbedding,
-        {
-          entityId: context.entity.id,
-          documentId: context.document.id,
-          vendor: extracted.vendor,
-          date: extracted.date,
-          totalMinor: extracted.totalMinor,
-          currency: context.entity.currency,
-          sourceText: embeddingResult.sourceText,
-          embedding: embeddingResult.embedding,
-          embeddingModel: embeddingResult.embeddingModel,
-          ...(result.matchedTransactionId ? { matchedTransactionId: result.matchedTransactionId } : {}),
-          ...(embeddingResult.match?.transactionId === result.matchedTransactionId
-            ? { matchScore: embeddingResult.match.score }
-            : {}),
-        },
-      );
-    } catch {
-      // Receipt extraction remains useful even if vector persistence falls back.
-    }
-  }
-  return result;
 }
 
 export const extractWithBedrock = action({

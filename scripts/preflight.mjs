@@ -1,31 +1,185 @@
 #!/usr/bin/env node
 import { InvokeModelCommand, BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const guardOnly = process.argv.includes("--guard-only");
+const writeRequirements = process.argv.includes("--write-requirements");
 
-const requiredEnv = [
+// Provider-agnostic core: required for every self-hoster regardless of which AI
+// provider they chose. AI_PROVIDER selects the provider-conditional set below.
+const coreRequiredEnv = [
   "OWNER_EMAIL",
   "OWNER_PASSWORD",
   "NEXT_PUBLIC_CONVEX_URL",
   "CONVEX_DEPLOYMENT",
+  "AI_PROVIDER",
+];
+
+// Encryption-at-rest stays a HARD requirement (decisions.md Q16 retains it even
+// with live connectors allowed). Either env name satisfies secretBox.ts.
+const encryptionEnvNames = ["OPENBOOKS_SECRET_ENCRYPTION_KEY", "OPENBOOKS_TOKEN_ENCRYPTION_KEY"];
+
+/**
+ * Provider-conditional required env, mirroring the canonical 14-provider catalog
+ * in convex/aiCatalog.ts (AI_PROVIDER_IDS / AI_PROVIDER_CATALOG). Kept as a plain
+ * JS mirror because preflight is a Node .mjs script and cannot import the .ts
+ * catalog directly; aiCatalog.ts remains the source of truth and a unit test
+ * cross-checks that this mirror covers exactly the same provider ids.
+ *
+ * `reachable` marks the common set we 1-token-ping for liveness (decisions.md
+ * Q71 — Bedrock/OpenAI/Anthropic/Google). The long tail (ollama, the
+ * openai-compatible gateways, and the Vercel AI Gateway) is name-checked only:
+ * its env presence is verified but no network ping is made, so a self-hoster on
+ * Groq/DeepSeek/etc. passes the env-name check without preflight needing a
+ * bespoke probe per provider.
+ *
+ * `credentialKind: "none"` providers (ollama) require only a base URL, not a
+ * secret — handled by listing OLLAMA_BASE_URL rather than an API key.
+ */
+const providerCatalog = {
+  gateway: {
+    label: "Vercel AI Gateway",
+    requiredEnv: ["AI_GATEWAY_API_KEY"],
+    reachable: false,
+  },
+  openai: {
+    label: "OpenAI",
+    requiredEnv: ["OPENAI_API_KEY"],
+    reachable: true,
+  },
+  anthropic: {
+    label: "Anthropic",
+    requiredEnv: ["ANTHROPIC_API_KEY"],
+    reachable: true,
+  },
+  google: {
+    label: "Google AI Studio",
+    requiredEnv: ["GOOGLE_GENERATIVE_AI_API_KEY"],
+    reachable: true,
+  },
+  bedrock: {
+    label: "Amazon Bedrock",
+    requiredEnv: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", "AI_MODEL"],
+    reachable: true,
+  },
+  azure: {
+    label: "Azure OpenAI",
+    requiredEnv: ["AZURE_API_KEY", "AZURE_BASE_URL"],
+    reachable: false,
+  },
+  groq: {
+    label: "Groq",
+    requiredEnv: ["GROQ_API_KEY"],
+    reachable: false,
+  },
+  deepseek: {
+    label: "DeepSeek",
+    requiredEnv: ["DEEPSEEK_API_KEY"],
+    reachable: false,
+  },
+  mistral: {
+    label: "Mistral",
+    requiredEnv: ["MISTRAL_API_KEY"],
+    reachable: false,
+  },
+  moonshot: {
+    label: "Moonshot (Kimi)",
+    requiredEnv: ["MOONSHOT_API_KEY"],
+    reachable: false,
+  },
+  xai: {
+    label: "xAI (Grok)",
+    requiredEnv: ["XAI_API_KEY"],
+    reachable: false,
+  },
+  fireworks: {
+    label: "Fireworks",
+    requiredEnv: ["FIREWORKS_API_KEY"],
+    reachable: false,
+  },
+  ollama: {
+    label: "Ollama (local)",
+    requiredEnv: ["OLLAMA_BASE_URL"],
+    reachable: false,
+  },
+  openai_compatible: {
+    label: "OpenAI-compatible (custom)",
+    requiredEnv: ["OPENAI_COMPATIBLE_API_KEY", "OPENAI_COMPATIBLE_BASE_URL"],
+    reachable: false,
+  },
+};
+
+const optionalEnv = [
+  "STRIPE_WEBHOOK_SECRET",
+  "PLUNK_SECRET_KEY",
+  "PLUNK_FROM_EMAIL",
+  "AI_EMBEDDINGS_MODEL",
   "PLAID_CLIENT_ID",
   "PLAID_SECRET",
   "PLAID_ENV",
   "STRIPE_SECRET_KEY",
-  "AI_PROVIDER",
-  "AWS_ACCESS_KEY_ID",
-  "AWS_SECRET_ACCESS_KEY",
-  "AWS_REGION",
-  "AI_MODEL",
-  "AI_EMBEDDINGS_MODEL",
 ];
 
-const optionalEnv = ["STRIPE_WEBHOOK_SECRET", "PLUNK_SECRET_KEY", "PLUNK_FROM_EMAIL"];
+function normalizeProvider(value) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return null;
+  return Object.prototype.hasOwnProperty.call(providerCatalog, normalized) ? normalized : null;
+}
+
+/** Provider-conditional required names for the configured AI_PROVIDER. */
+function providerRequiredEnv(env) {
+  const provider = normalizeProvider(env.AI_PROVIDER);
+  if (!provider) return [];
+  return providerCatalog[provider].requiredEnv;
+}
+
+/**
+ * Pre-network classification of a Stripe key. Returns the status preflight will
+ * report BEFORE any reachability call: absent → SKIP, live or test → eligible to
+ * PASS (no test-only ban), malformed → FAIL. Pulled out so it is unit-testable
+ * without hitting the Stripe API.
+ */
+function classifyStripeKey(key) {
+  if (!key) {
+    return { status: "SKIP", detail: "STRIPE_SECRET_KEY absent; paste a key in Settings → Connections" };
+  }
+  if (!/^((sk|rk)_(test|live)_)/.test(key)) {
+    return { status: "FAIL", detail: "STRIPE_SECRET_KEY is not a recognized sk_/rk_ key" };
+  }
+  const live = /^((sk|rk)_live_)/.test(key);
+  return { status: "PASS", live };
+}
+
+/**
+ * Pre-network classification of Plaid env: absent → SKIP, unknown PLAID_ENV →
+ * FAIL, otherwise eligible to PASS (live development/production permitted).
+ */
+function classifyPlaidEnv(env) {
+  if (!env.PLAID_CLIENT_ID || !env.PLAID_SECRET || !env.PLAID_ENV) {
+    return { status: "SKIP", detail: "PLAID_* absent; paste keys in Settings → Connections" };
+  }
+  if (!plaidBaseUrl(env.PLAID_ENV)) {
+    return { status: "FAIL", detail: `PLAID_ENV must be sandbox/development/production (got ${env.PLAID_ENV})` };
+  }
+  const live = env.PLAID_ENV === "development" || env.PLAID_ENV === "production";
+  return { status: "PASS", live };
+}
+
+/** The full env requirements surface, exported for the env-docs checklist (E13-T6). */
+function envRequirements() {
+  return {
+    core: coreRequiredEnv,
+    encryption: { anyOf: encryptionEnvNames },
+    providerConditional: Object.fromEntries(
+      Object.entries(providerCatalog).map(([id, def]) => [id, def.requiredEnv]),
+    ),
+    optional: optionalEnv,
+  };
+}
 
 function parseEnvFile(path) {
   const env = {};
@@ -81,12 +235,10 @@ function sanitizeError(error) {
   return parts.join(" - ") || "Failed";
 }
 
-function addResult(results, name, ok, detail) {
-  results.push({
-    name,
-    status: ok ? "PASS" : "FAIL",
-    detail,
-  });
+function addResult(results, name, status, detail) {
+  // status is "PASS" | "FAIL" | "SKIP" | "INFO"; legacy boolean maps to PASS/FAIL.
+  const resolved = typeof status === "boolean" ? (status ? "PASS" : "FAIL") : status;
+  results.push({ name, status: resolved, detail });
 }
 
 function isLocalUrl(value) {
@@ -134,15 +286,19 @@ function plaidBaseUrl(env) {
   return null;
 }
 
+/**
+ * Plaid reachability. Self-hosters paste Plaid keys in-app later, so absent keys
+ * are a SKIP, not a FAIL. Live (development/production) keys are PERMITTED
+ * (decisions.md Q16) — they pass like sandbox; we only INFO-note the HTTPS
+ * redirect requirement. No sandbox-only ban.
+ */
 async function checkPlaid(env) {
+  const classified = classifyPlaidEnv(env);
+  if (classified.status !== "PASS") {
+    return classified;
+  }
   const baseUrl = plaidBaseUrl(env.PLAID_ENV);
-  if (!baseUrl) {
-    throw new Error("PLAID_ENV must be sandbox for this goal");
-  }
-  if (env.PLAID_ENV !== "sandbox") {
-    throw new Error("Only Plaid sandbox is allowed for this goal");
-  }
-
+  const live = classified.live;
   const response = await fetch(`${baseUrl}/institutions/get`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -164,17 +320,29 @@ async function checkPlaid(env) {
     }
     throw new Error(code);
   }
-  return "sandbox endpoint reached";
+  return {
+    status: "PASS",
+    detail: live
+      ? `${env.PLAID_ENV} endpoint reached (live; HTTPS redirect required)`
+      : "sandbox endpoint reached",
+  };
 }
 
+/**
+ * Stripe reachability. Absent key → SKIP. Live keys (sk_live_/rk_live_) are
+ * PERMITTED (decisions.md Q16) and PASS; we only INFO-note HTTPS. No test-only
+ * ban.
+ */
 async function checkStripe(env) {
-  if (!/^((sk|rk)_test_)/.test(env.STRIPE_SECRET_KEY || "")) {
-    throw new Error("Only Stripe test-mode keys are allowed for this goal");
+  const key = env.STRIPE_SECRET_KEY;
+  const classified = classifyStripeKey(key);
+  if (classified.status !== "PASS") {
+    return classified;
   }
-
+  const live = classified.live;
   const response = await fetch("https://api.stripe.com/v1/balance", {
     headers: {
-      authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      authorization: `Bearer ${key}`,
     },
   });
   if (!response.ok) {
@@ -187,7 +355,10 @@ async function checkStripe(env) {
     }
     throw new Error(code);
   }
-  return "test balance endpoint reached";
+  return {
+    status: "PASS",
+    detail: live ? "live balance endpoint reached (HTTPS webhook required)" : "test balance endpoint reached",
+  };
 }
 
 function bedrockPayload(modelId) {
@@ -237,10 +408,6 @@ function bedrockPayload(modelId) {
 }
 
 async function checkBedrock(env) {
-  if (env.AI_PROVIDER !== "bedrock") {
-    throw new Error("AI_PROVIDER must be bedrock for this goal");
-  }
-
   const client = new BedrockRuntimeClient({
     region: env.AWS_REGION,
     credentials: {
@@ -255,6 +422,11 @@ async function checkBedrock(env) {
   try {
     payload = bedrockPayload(modelId);
   } catch {
+    if (!env.AI_EMBEDDINGS_MODEL) {
+      // Unrecognized model and no embeddings fallback: don't crash the builder,
+      // report a name-check SKIP instead.
+      return { status: "SKIP", detail: "AI_MODEL not recognized by tiny-invoke builder; name-check only" };
+    }
     modelId = env.AI_EMBEDDINGS_MODEL;
     modelRole = "AI_EMBEDDINGS_MODEL";
     payload = bedrockPayload(modelId);
@@ -266,7 +438,68 @@ async function checkBedrock(env) {
       ...payload,
     }),
   );
-  return `runtime accepted ${modelRole} tiny invoke`;
+  return { status: "PASS", detail: `runtime accepted ${modelRole} tiny invoke` };
+}
+
+async function checkOpenAI(env) {
+  const response = await fetch("https://api.openai.com/v1/models", {
+    headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` },
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return { status: "PASS", detail: "models endpoint reached" };
+}
+
+async function checkAnthropic(env) {
+  const response = await fetch("https://api.anthropic.com/v1/models", {
+    headers: {
+      "x-api-key": env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return { status: "PASS", detail: "models endpoint reached" };
+}
+
+async function checkGoogle(env) {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(env.GOOGLE_GENERATIVE_AI_API_KEY)}`,
+  );
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return { status: "PASS", detail: "models endpoint reached" };
+}
+
+/**
+ * AI provider dispatch. Reachability-ping the common set; name-check the long
+ * tail (ollama, unrecognized providers) so an unrecognized provider/model never
+ * throws an unhandled error.
+ */
+async function checkAIProvider(env) {
+  const provider = normalizeProvider(env.AI_PROVIDER);
+  if (!provider) {
+    return {
+      status: "SKIP",
+      detail: `AI_PROVIDER='${env.AI_PROVIDER ?? ""}' not in the 14-provider catalog (${Object.keys(providerCatalog).join("|")}); name-check only`,
+    };
+  }
+  const def = providerCatalog[provider];
+  const missing = def.requiredEnv.filter((name) => !env[name]);
+  if (missing.length > 0) {
+    return { status: "FAIL", detail: `${def.label}: missing ${missing.join(", ")}` };
+  }
+  if (!def.reachable) {
+    return { status: "SKIP", detail: `${def.label}: env present; reachability name-check only` };
+  }
+  if (provider === "bedrock") return checkBedrock(env);
+  if (provider === "openai") return checkOpenAI(env);
+  if (provider === "anthropic") return checkAnthropic(env);
+  if (provider === "google") return checkGoogle(env);
+  return { status: "SKIP", detail: `${def.label}: env present; name-check only` };
 }
 
 async function checkConvex(env) {
@@ -275,16 +508,16 @@ async function checkConvex(env) {
     if (response.status >= 500) {
       throw new Error(`HTTP ${response.status}`);
     }
-    return "deployment URL responded";
+    return { status: "PASS", detail: "deployment URL responded" };
   } catch (error) {
     await execFileAsync("npx", ["convex", "function-spec"], { timeout: 30_000 });
-    return "deployment metadata reachable";
+    return { status: "PASS", detail: "deployment metadata reachable" };
   }
 }
 
 async function checkVercel() {
   await execFileAsync("vercel", ["whoami"], { timeout: 20_000 });
-  return "CLI authenticated";
+  return { status: "PASS", detail: "CLI authenticated" };
 }
 
 function printResults(results) {
@@ -295,36 +528,71 @@ function printResults(results) {
   }
 }
 
+async function runCheck(results, name, fn) {
+  try {
+    const outcome = await fn();
+    // Checks may return a {status, detail} object or a legacy success string.
+    if (outcome && typeof outcome === "object" && "status" in outcome) {
+      addResult(results, name, outcome.status, outcome.detail);
+    } else {
+      addResult(results, name, "PASS", outcome);
+    }
+  } catch (error) {
+    addResult(results, name, "FAIL", sanitizeError(error));
+  }
+}
+
 async function main() {
   const envPath = resolve(process.cwd(), ".env.local");
   const env = { ...parseEnvFile(envPath), ...process.env };
   const results = [];
 
+  if (writeRequirements) {
+    const target = resolve(process.cwd(), "docs/self-host/env-requirements.json");
+    writeFileSync(target, `${JSON.stringify(envRequirements(), null, 2)}\n`);
+    console.log(`Wrote env requirements to ${target}`);
+    return;
+  }
+
   addResult(
     results,
     ".env.local",
-    existsSync(envPath),
+    existsSync(envPath) ? "PASS" : "FAIL",
     existsSync(envPath) ? "present" : "missing; create it from .env.example",
   );
 
+  // Required = provider-agnostic core + the provider-conditional set for the
+  // configured AI_PROVIDER. A self-hoster on OpenAI is NOT asked for AWS keys.
+  const requiredEnv = [...coreRequiredEnv, ...providerRequiredEnv(env)];
   const missing = requiredEnv.filter((name) => !env[name]);
   addResult(
     results,
     "Required env names",
-    missing.length === 0,
-    missing.length === 0 ? "all required names present" : `missing: ${missing.join(", ")}`,
+    missing.length === 0 ? "PASS" : "FAIL",
+    missing.length === 0 ? `all required names present (provider=${env.AI_PROVIDER ?? "?"})` : `missing: ${missing.join(", ")}`,
+  );
+
+  // Encryption-at-rest is a HARD gate (retained guarantee, decisions.md Q16).
+  const encryptionPresent = encryptionEnvNames.some((name) => Boolean(env[name]));
+  addResult(
+    results,
+    "Encryption at rest",
+    encryptionPresent ? "PASS" : "FAIL",
+    encryptionPresent
+      ? "OPENBOOKS_SECRET_ENCRYPTION_KEY set"
+      : "set OPENBOOKS_SECRET_ENCRYPTION_KEY (run `pnpm setup`) before storing any credential",
   );
 
   const optionalPresent = optionalEnv.filter((name) => Boolean(env[name]));
   addResult(
     results,
     "Optional env names",
-    true,
+    "INFO",
     optionalPresent.length === 0 ? "none configured" : `configured: ${optionalPresent.join(", ")}`,
   );
 
   const bypassGuard = devBypassGuard(env);
-  addResult(results, "Dev auth bypass guard", bypassGuard.ok, bypassGuard.detail);
+  addResult(results, "Dev auth bypass guard", bypassGuard.ok ? "PASS" : "FAIL", bypassGuard.detail);
 
   if (guardOnly) {
     printResults(results);
@@ -332,40 +600,37 @@ async function main() {
     return;
   }
 
-  if (missing.length === 0) {
-    const checks = [
-      ["Plaid sandbox institutions/get", () => checkPlaid(env)],
-      ["Stripe test balance", () => checkStripe(env)],
-      ["Bedrock tiny invoke", () => checkBedrock(env)],
-      ["Convex deployment", () => checkConvex(env)],
-      ["Vercel whoami", () => checkVercel()],
-    ];
-
-    for (const [name, check] of checks) {
-      try {
-        const successDetail = await check();
-        addResult(results, name, true, successDetail);
-      } catch (error) {
-        addResult(results, name, false, sanitizeError(error));
-      }
-    }
-  } else {
-    for (const name of [
-      "Plaid sandbox institutions/get",
-      "Stripe test balance",
-      "Bedrock tiny invoke",
-      "Convex deployment",
-      "Vercel whoami",
-    ]) {
-      addResult(results, name, false, "skipped because required env names are missing");
-    }
-  }
+  // Reachability checks. Plaid/Stripe degrade to SKIP when absent; live keys
+  // PASS. The AI provider dispatch covers the catalog. The core gate (required
+  // names + encryption) is what can turn the run red.
+  await runCheck(results, "Plaid connectivity", () => checkPlaid(env));
+  await runCheck(results, "Stripe connectivity", () => checkStripe(env));
+  await runCheck(results, "AI provider reachability", () => checkAIProvider(env));
+  await runCheck(results, "Convex deployment", () => checkConvex(env));
+  await runCheck(results, "Vercel whoami", () => checkVercel());
 
   printResults(results);
   process.exitCode = results.some((result) => result.status === "FAIL") ? 1 : 0;
 }
 
-main().catch((error) => {
-  console.error(sanitizeError(error));
-  process.exitCode = 1;
-});
+// Only run the preflight when invoked directly (`node scripts/preflight.mjs`),
+// not when imported for its exported pure helpers (check-env-docs, unit tests).
+const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename);
+if (invokedDirectly) {
+  main().catch((error) => {
+    console.error(sanitizeError(error));
+    process.exitCode = 1;
+  });
+}
+
+export {
+  envRequirements,
+  providerCatalog,
+  coreRequiredEnv,
+  encryptionEnvNames,
+  optionalEnv,
+  normalizeProvider,
+  providerRequiredEnv,
+  classifyStripeKey,
+  classifyPlaidEnv,
+};

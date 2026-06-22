@@ -23,6 +23,7 @@ import {
 } from "./_generated/server";
 import { openBooksAgent, aiChatRuntimeStatus, isAiChatConfigured } from "./agent";
 import { authorizeThreadAccess, requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import { resolveDefaultEntity } from "./entityScope";
 
 const MAX_TITLE_LENGTH = 80;
 const DEFAULT_TITLE = "New conversation";
@@ -36,9 +37,9 @@ function deriveTitle(message: string | undefined): string {
 
 /**
  * Resolve the active entity for a workspace member. Prefers the explicit
- * entityId argument (workspace-checked) and otherwise falls back to the demo
- * entity, then the first entity. Mirrors aiChatTools.getEntity so chat context
- * matches the rest of the app.
+ * entityId argument (workspace-checked) and otherwise falls back to the
+ * deterministic default business via `resolveDefaultEntity` (Epic E5-T1), so
+ * chat context matches the rest of the app.
  */
 async function resolveEntityForWorkspace(
   ctx: QueryCtx | MutationCtx,
@@ -52,21 +53,11 @@ async function resolveEntityForWorkspace(
     }
     return entity;
   }
-  const demo = await ctx.db
-    .query("entities")
-    .withIndex("by_workspace_and_slug", (q) =>
-      q.eq("workspaceId", workspaceId).eq("slug", "acme-studio-llc"),
-    )
-    .unique();
-  if (demo) return demo;
-  const first = await ctx.db
-    .query("entities")
-    .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
-    .first();
-  if (!first) {
+  const fallback = await resolveDefaultEntity(ctx, { workspaceId });
+  if (!fallback) {
     throw new ConvexError("No OpenBooks entity is available for Ask AI.");
   }
-  return first;
+  return fallback;
 }
 
 function threadSummary(record: Doc<"chatThreads">) {

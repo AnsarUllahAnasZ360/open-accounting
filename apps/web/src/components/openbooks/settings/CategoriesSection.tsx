@@ -22,22 +22,27 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
+// Group dots use semantic tokens: income is the one brand green; expenses and
+// "other" stay neutral so ordinary spend never reads as alarm.
 const GROUP_DOT: Record<string, string> = {
-  Income: "#2ca01c",
-  Expenses: "#a3a3a3",
-  Other: "#d4d4d4",
+  Income: "bg-primary",
+  Expenses: "bg-muted-foreground/50",
+  Other: "bg-muted-foreground/30",
 };
 
 export function CategoriesSection({ entityId }: { entityId: Id<"entities"> | null }) {
   const data = useQuery(api.categories.list, entityId ? { entityId } : "skip");
   const rename = useMutation(api.categories.rename);
   const setArchived = useMutation(api.categories.setArchived);
+  const moveGroup = useMutation(api.categories.moveGroup);
   const [acctMode, setAcctMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -73,23 +78,31 @@ export function CategoriesSection({ entityId }: { entityId: Id<"entities"> | nul
     }
   }
 
+  async function move(id: Id<"ledgerAccounts">, group: "Income" | "Expenses" | "Other") {
+    setError("");
+    try {
+      await moveGroup({ accountId: id, group });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not move the category.");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3" data-testid="categories-section">
       <div className="flex items-center gap-3">
         <span className="text-[13px] text-muted-foreground">Categories are your chart of accounts wearing plain clothes.</span>
         <div className="flex-1" />
         <AddCategoryModal entityId={entityId} />
-        <label className="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-[#525252]">
+        <label htmlFor="categories-accountant-mode" className="flex cursor-pointer select-none items-center gap-2 text-[12.5px] text-muted-foreground">
           Accountant mode
-          <button
-            type="button"
+          <Switch
+            id="categories-accountant-mode"
             data-testid="categories-accountant-mode"
             data-active={acctMode ? "true" : "false"}
-            onClick={() => setAcctMode((v) => !v)}
-            className={cn("relative h-[19px] w-[34px] rounded-full transition-colors", acctMode ? "bg-primary" : "bg-muted-foreground/40")}
-          >
-            <span className={cn("absolute top-0.5 size-[15px] rounded-full bg-white shadow transition-all", acctMode ? "left-[17px]" : "left-0.5")} />
-          </button>
+            checked={acctMode}
+            onCheckedChange={setAcctMode}
+            aria-label="Toggle accountant mode"
+          />
         </label>
       </div>
 
@@ -107,7 +120,7 @@ export function CategoriesSection({ entityId }: { entityId: Id<"entities"> | nul
                 data-testid="category-row"
                 className="flex items-center gap-2.5 border-t px-[18px] py-2.5 first:border-t-0"
               >
-                <span className="size-1.5 shrink-0 rounded-full" style={{ background: GROUP_DOT[group.label] }} />
+                <span className={cn("size-1.5 shrink-0 rounded-full", GROUP_DOT[group.label] ?? "bg-muted-foreground/30")} />
                 {editingId === cat.id ? (
                   <Input
                     autoFocus
@@ -125,14 +138,32 @@ export function CategoriesSection({ entityId }: { entityId: Id<"entities"> | nul
                   <span className="flex-1 text-[13px]">{cat.name}</span>
                 )}
                 {acctMode ? (
-                  <span className="font-mono text-[11px] text-muted-foreground/70">
-                    {cat.number} · {cat.type}
+                  <span className="font-mono text-[11px] text-muted-foreground/70" data-testid={`category-meta-${cat.number}`}>
+                    {cat.number} · {cat.type} · {cat.normalSide}
                     {cat.isSystem ? " · system" : ""}
                   </span>
                 ) : null}
                 <span className="money-figures text-[12px] text-muted-foreground">
                   <Amount amountMinor={cat.ytdMinor} currency={data.currency} />
                 </span>
+                {!cat.isSystem ? (
+                  <Select value={group.label} onValueChange={(v) => move(cat.id as Id<"ledgerAccounts">, v as "Income" | "Expenses" | "Other")}>
+                    <SelectTrigger
+                      data-testid={`category-move-${cat.number}`}
+                      className="h-7 w-[112px] text-[11.5px]"
+                      aria-label={`Move ${cat.name} to another group`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="Income">Income</SelectItem>
+                        <SelectItem value="Expenses">Expenses</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                ) : null}
                 {!cat.isSystem ? (
                   <div className="flex items-center gap-1">
                     {editingId === cat.id ? (
@@ -230,9 +261,11 @@ function AddCategoryModal({ entityId }: { entityId: Id<"entities"> }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Expenses">Expenses</SelectItem>
-                <SelectItem value="Income">Income</SelectItem>
-                <SelectItem value="Other">Other</SelectItem>
+                <SelectGroup>
+                  <SelectItem value="Expenses">Expenses</SelectItem>
+                  <SelectItem value="Income">Income</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>

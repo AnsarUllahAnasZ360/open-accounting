@@ -95,9 +95,61 @@ test("D4 — a payroll run row opens its detail with the editable grid and total
   await expect(page.getByTestId("payroll-line-row").first()).toBeVisible();
   await expect(page.getByTestId("payroll-base-total")).toBeVisible();
   await page.screenshot({ path: "docs/finishing/evidence/2026-06-11-D4-payroll-run-detail.png", fullPage: true });
+
+  // E10-T1: the multi-currency roster (USD/PKR/INR) surfaces per-currency
+  // footer totals plus the base total. This is a NON-MUTATING read assertion —
+  // it never approves or pays, so the shared demo books are untouched.
+  const currencyTotals = page.getByTestId("payroll-currency-totals");
+  await expect(currencyTotals).toBeVisible();
+  // The seeded roster spans three currencies; each renders its own footer cell.
+  const currencyCells = currencyTotals.locator(":scope > span");
+  await expect(currencyCells).toHaveCount(3);
+  // The base-total testid carries the run's USD total.
+  const baseTotal = (await page.getByTestId("payroll-base-total").innerText()).trim();
+  expect(baseTotal.length).toBeGreaterThan(0);
+  await page.screenshot({
+    path: "docs/finishing/evidence/2026-06-18-E10-payroll-multicurrency-detail.png",
+    fullPage: true,
+  });
   // (Approve / mark-paid post real ledger entries to the shared demo books, so
   // the approve->pay->balanced lifecycle is asserted in payroll unit tests, not
   // here, to avoid mutating shared data on every CI run.)
+});
+
+test("E10-T5 — pay-schedule toggles, and Statements renders one block + CSV per currency", async ({ page }) => {
+  // ---- Pay-schedule control (People tab) ---------------------------------
+  await gotoApp(page, "/payroll/people");
+  const toggle = page.getByTestId("payroll-auto-draft-toggle");
+  await expect(toggle).toBeVisible();
+  const stateLine = page.getByTestId("payroll-schedule-state");
+  const startedOn = (await toggle.getAttribute("data-state")) === "checked";
+
+  // Flip it: the state copy and the switch reflect the new value. Auto-draft is
+  // config only — it never posts (the unit suite proves the NO-OP / no-ledger
+  // guarantees). Restore the original value afterwards so shared data is calm.
+  await toggle.click();
+  await expect(stateLine).toContainText(startedOn ? "Off" : "On");
+  await toggle.click();
+  await expect(stateLine).toContainText(startedOn ? "On" : "Off");
+
+  // ---- Per-currency statements (Statements tab) --------------------------
+  await gotoApp(page, "/payroll/statements");
+  // The seeded roster spans USD/PKR/INR, so each renders its own statement block.
+  for (const currency of ["USD", "PKR", "INR"]) {
+    await expect(page.getByTestId(`payroll-statement-${currency}`)).toBeVisible();
+    await expect(page.getByTestId(`payroll-statement-base-${currency}`)).toBeVisible();
+  }
+  await page.screenshot({
+    path: "docs/finishing/evidence/2026-06-20-E10-payroll-statements-per-currency.png",
+    fullPage: true,
+  });
+
+  // A per-currency CSV export actually downloads (one file per currency).
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByTestId("payroll-statement-csv-USD").click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("openbooks-payroll-statement-usd.csv");
 });
 
 test("D5 — the dashboard period selector drives the P&L snapshot, and tiles drill through", async ({ page }) => {

@@ -1,4 +1,11 @@
-# Convex Auth and Request-Access Email
+# Convex Auth and Request-Access Email — Ansar's reference (NOT for self-hosters)
+
+> **Maintainer-only reference.** This describes the project owner's own Convex
+> Auth + Plunk production setup, including a specific site URL and rollback
+> deployment ids. **Self-hosters: do NOT copy these values** — the generic
+> walkthrough is [`docs/self-host/deploy.md`](../self-host/deploy.md), and the
+> auth keypair + JWKS are minted for you by `pnpm setup` (`scripts/setup.mjs`).
+> The values here are kept only for the maintainer's operational continuity.
 
 OpenBooks v1 uses Convex Auth with the password provider only. Magic-link auth
 is intentionally not enabled in this slice, so Plunk is used only for optional

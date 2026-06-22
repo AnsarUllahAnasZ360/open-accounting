@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { SignInForm } from "@/components/openbooks/SignInForm";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,9 @@ export default function SignInPage() {
           </p>
         </div>
         {convexConfigured ? (
-          <SignInForm devAuthBypass={devAuthBypass} />
+          <Suspense fallback={<div className="rounded-lg border bg-card p-5 text-sm text-muted-foreground shadow-xs">Loading sign-in…</div>}>
+            <SignInForm devAuthBypass={devAuthBypass} />
+          </Suspense>
         ) : (
           <div className="rounded-lg border bg-card p-5 text-sm text-muted-foreground shadow-xs">
             Configure `NEXT_PUBLIC_CONVEX_URL` to activate sign-in locally.

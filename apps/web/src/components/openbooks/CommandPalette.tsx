@@ -21,6 +21,7 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
+  CommandShortcut,
 } from "@/components/ui/command";
 import { appRoutes, settingsRoute } from "@/lib/openbooks/content";
 import { formatMinorMoney } from "@/components/openbooks/primitives";
@@ -104,15 +105,38 @@ export function CommandPalette({
   }
 
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange}>
+    <CommandDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      className="w-[min(46rem,calc(100vw-2rem))] sm:max-w-[46rem]"
+    >
       <CommandInput
         placeholder="Search transactions, contacts, reports…"
         data-testid="command-palette-input"
       />
-      <CommandList data-testid="command-palette-list">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">OpenBooks search</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <CommandShortcut className="ml-0">⌘K</CommandShortcut>
+          <span>Search</span>
+          <CommandShortcut className="ml-1">↑↓</CommandShortcut>
+          <span>Move</span>
+          <CommandShortcut className="ml-1">Enter</CommandShortcut>
+          <span>Open</span>
+          <CommandShortcut className="ml-1">Esc</CommandShortcut>
+          <span>Close</span>
+        </div>
+      </div>
+      <CommandList
+        className="max-h-[min(62vh,34rem)] scroll-py-2 px-2 py-2"
+        data-testid="command-palette-list"
+      >
         <CommandEmpty>No matches found.</CommandEmpty>
 
-        <CommandGroup heading="Go to">
+        <CommandGroup
+          heading="Go to"
+          className="[&_[cmdk-group-heading]]:px-3"
+        >
           {[...appRoutes, ...(canAccessSettings ? [settingsRoute] : [])].map((route) => {
             const Icon = NAV_ICONS[route.href] ?? route.icon;
             return (
@@ -120,9 +144,14 @@ export function CommandPalette({
                 key={route.href}
                 value={`nav ${route.label}`}
                 onSelect={() => go(route.href)}
+                className="min-h-11 gap-3 px-3"
               >
                 <Icon />
-                <span>{route.label}</span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span>{route.label}</span>
+                  <span className="truncate text-xs text-muted-foreground">{route.summary}</span>
+                </span>
+                <CommandShortcut>Enter</CommandShortcut>
               </CommandItem>
             );
           })}
@@ -130,16 +159,23 @@ export function CommandPalette({
 
         <CommandSeparator />
 
-        <CommandGroup heading="Reports">
+        <CommandGroup
+          heading="Reports"
+          className="[&_[cmdk-group-heading]]:px-3"
+        >
           {REPORT_ACTIONS.map((report) => (
             <CommandItem
               key={report.id}
               value={`report ${report.name}`}
               onSelect={() => go(`/reports?report=${report.id}`)}
+              className="min-h-11 gap-3 px-3"
             >
               <BarChart3 />
-              <span>{report.name}</span>
-              <span className="ml-auto text-xs text-muted-foreground">{report.hint}</span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span>{report.name}</span>
+                <span className="truncate text-xs text-muted-foreground">{report.hint}</span>
+              </span>
+              <CommandShortcut>Enter</CommandShortcut>
             </CommandItem>
           ))}
         </CommandGroup>
@@ -147,18 +183,25 @@ export function CommandPalette({
         {contactItems.length ? (
           <>
             <CommandSeparator />
-            <CommandGroup heading="Contacts">
+            <CommandGroup
+              heading="Contacts"
+              className="[&_[cmdk-group-heading]]:px-3"
+            >
               {contactItems.slice(0, 12).map((contact: ContactItem) => (
                 <CommandItem
                   key={contact.id}
                   value={`contact ${contact.name} ${contact.aliases.join(" ")}`}
                   onSelect={() => go(`/contacts?contact=${contact.id}`)}
+                  className="min-h-11 gap-3 px-3"
                 >
                   <UsersRound />
-                  <span>{contact.name}</span>
-                  <span className="ml-auto text-xs text-muted-foreground capitalize">
-                    {contact.roles[0] ?? "contact"}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate">{contact.name}</span>
+                    <span className="truncate text-xs text-muted-foreground capitalize">
+                      {contact.roles[0] ?? "contact"}
+                    </span>
                   </span>
+                  <CommandShortcut>Enter</CommandShortcut>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -168,16 +211,25 @@ export function CommandPalette({
         {transactionItems.length ? (
           <>
             <CommandSeparator />
-            <CommandGroup heading="Transactions">
+            <CommandGroup
+              heading="Transactions"
+              className="[&_[cmdk-group-heading]]:px-3"
+            >
               {transactionItems.map((transaction: TransactionItem) => (
                 <CommandItem
                   key={transaction.id}
                   value={`transaction ${transaction.merchant} ${transaction.rawDescription}`}
                   onSelect={() => go(`/transactions?focus=${transaction.id}`)}
+                  className="min-h-11 gap-3 px-3"
                 >
                   <Receipt />
-                  <span className="truncate">{transaction.merchant}</span>
-                  <span className="money-figures ml-auto text-xs text-muted-foreground">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate">{transaction.merchant}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {transaction.rawDescription}
+                    </span>
+                  </span>
+                  <span className="money-figures text-xs text-muted-foreground">
                     {formatMinorMoney(transaction.amountMinor, { currency })}
                   </span>
                 </CommandItem>

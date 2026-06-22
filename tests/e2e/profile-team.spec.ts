@@ -116,6 +116,9 @@ test("F3 — owner invite link creates Staff account with no Settings entry poin
     await staffPage.getByRole("button", { name: /Create invited account/ }).click();
     await expect(staffPage.getByTestId("app-sidebar")).toBeVisible({ timeout: 30000 });
     await expect(staffPage.getByTestId("profile-trigger")).toContainText("Staff", { timeout: 30000 });
+    // E4-T6: an invited teammate lands directly in the existing workspace and
+    // NEVER sees the self-host owner's first-run business-creation step.
+    await expect(staffPage.getByTestId("onboarding-business-step")).toHaveCount(0);
     await expect(staffPage.getByRole("link", { name: "Settings" })).toHaveCount(0);
     await expect(staffPage.getByTestId("entity-add-business")).toHaveCount(0);
 

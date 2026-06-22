@@ -6,12 +6,9 @@ import {
   AlertTriangle,
   Banknote,
   Check,
-  ChevronRight,
-  Link,
   RefreshCw,
-  ShieldCheck,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePlaidLink, type PlaidLinkError, type PlaidLinkOnSuccessMetadata } from "react-plaid-link";
 
 import { api } from "../../../../../convex/_generated/api";
@@ -21,19 +18,22 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
-  openBooksPlaidFixtureTransactions,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   plaidEnvLabel,
-  plaidModeTone,
+  type PlaidAccountUpsertResult,
   type PlaidConnectionState,
   type PlaidEnvState,
-  type PlaidFixtureTransaction,
   type PlaidSelectableAccount,
 } from "@/lib/openbooks/plaid";
+import { clearPlaidOAuthSession, storePlaidOAuthSession } from "@/lib/openbooks/plaid-oauth";
 import { cn } from "@/lib/utils";
 
 type ActionState = "idle" | "working" | "success" | "error";
@@ -46,50 +46,38 @@ type PlaidApi = {
       "action",
       "public",
       { entityId: string; clientName?: string },
-      { mode: "sandbox" | "fixture"; linkToken: string; env: PlaidEnvState }
-    >;
-    createSandboxPublicToken: FunctionReference<
-      "action",
-      "public",
-      { entityId: string; institutionId?: string },
-      { mode: "sandbox" | "fixture"; publicToken: string; request: unknown }
+      { mode: "sandbox" | "development" | "production" | "fixture"; linkToken: string; env: PlaidEnvState }
     >;
     exchangePublicTokenAndPreviewAccounts: FunctionReference<
       "action",
       "public",
-      { entityId: string; publicToken: string },
+      { entityId: string; publicToken: string; previewOnly?: boolean },
       {
-        mode: "sandbox" | "fixture";
+        mode: "sandbox" | "development" | "production" | "fixture";
         accessTokenPersisted: boolean;
         persistenceBlocker?: string;
+        previewOnly?: boolean;
+        plaidItemId?: string;
         accounts: PlaidSelectableAccount[];
+        accountsCreated?: number;
+        accountsUpdated?: number;
+        institutionName?: string;
       }
     >;
-    selectSandboxFixtureAccounts: FunctionReference<
+    assignPlaidAccountsToBusinesses: FunctionReference<
       "mutation",
       "public",
-      { entityId: string; accounts: PlaidSelectableAccount[] },
-      { createdCount: number; accounts: Array<{ bankAccountId: string; ledgerAccountId: string; plaidAccountId: string }> }
+      { entityId: string; plaidItemId?: string; accounts: PlaidSelectableAccount[] },
+      { createdCount: number; updatedCount: number; accounts: Array<{ plaidAccountId: string; entityId: string }> }
     >;
-    syncFixtureTransactions: FunctionReference<
-      "mutation",
+    refreshPlaidItemAccounts: FunctionReference<
+      "action",
       "public",
-      {
-        entityId: string;
-        bankAccountId: string;
-        transactions: PlaidFixtureTransaction[];
-        removedTransactionIds?: string[];
-        nextCursor?: string;
-      },
-      {
-        stagedCount: number;
-        postedCount: number;
-        needsReviewCount: number;
-        duplicateCount: number;
-        plaidPriorCount: number;
-        removedCount: number;
-        removedReversalCount: number;
-        nextCursor: string;
+      { entityId: string; plaidItemId: string },
+      PlaidAccountUpsertResult & {
+        status: "refreshed" | "missing_item" | "skipped" | "locked";
+        reason?: string;
+        institutionName?: string;
       }
     >;
     syncItemNow: FunctionReference<
@@ -108,12 +96,6 @@ type PlaidApi = {
         reason?: string;
       }
     >;
-    handleItemLoginRequired: FunctionReference<
-      "mutation",
-      "public",
-      { entityId: string; institutionName: string; itemId: string },
-      { inboxItemId: string; payloadSummary: string }
-    >;
   };
 };
 
@@ -124,61 +106,6 @@ function readableError(error: unknown, fallback: string) {
   const uncaught = error.message.match(/Uncaught Error: ([\s\S]+)/);
   if (uncaught) return uncaught[1].trim().split("\n")[0] ?? fallback;
   return error.message;
-}
-
-function StatusBadge({ env }: { env: PlaidEnvState | undefined }) {
-  const tone = plaidModeTone(env);
-  if (tone === "ready") {
-    return (
-      <Badge className="bg-primary text-primary-foreground">
-        <ShieldCheck className="size-3" />
-        Sandbox ready
-      </Badge>
-    );
-  }
-  if (tone === "blocked") {
-    return (
-      <Badge variant="destructive">
-        <AlertTriangle className="size-3" />
-        Sandbox required
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="outline">
-      <Banknote className="size-3" />
-      Fixture mode
-    </Badge>
-  );
-}
-
-function StepRow({
-  icon: Icon,
-  title,
-  detail,
-  complete,
-}: {
-  icon: typeof Link;
-  title: string;
-  detail: string;
-  complete?: boolean;
-}) {
-  return (
-    <div className="flex items-start gap-3 rounded-lg border bg-background px-3 py-2">
-      <div
-        className={cn(
-          "mt-0.5 flex size-7 items-center justify-center rounded-lg border",
-          complete ? "border-primary/30 bg-primary/10 text-primary" : "text-muted-foreground",
-        )}
-      >
-        {complete ? <Check className="size-4" /> : <Icon className="size-4" />}
-      </div>
-      <div className="min-w-0">
-        <div className="text-sm font-medium">{title}</div>
-        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{detail}</p>
-      </div>
-    </div>
-  );
 }
 
 function PlaidOpenButton({
@@ -227,9 +154,23 @@ function PlaidOpenButton({
 
 export function PlaidConnectionPanel({
   entityId,
+  businessName,
+  businesses,
+  showConnectAction = true,
+  showSetupProblems = true,
+  compact = false,
   className,
 }: {
   entityId?: string | null;
+  businessName?: string | null;
+  // E3-T5: when a workspace has more than one business, pass the full list so a
+  // single Plaid login can be split — each previewed account gets its own
+  // business picker after Link success. Omit (or pass one) for the single-
+  // business auto-persist flow (back-compat).
+  businesses?: Array<{ id: string; name: string }>;
+  showConnectAction?: boolean;
+  showSetupProblems?: boolean;
+  compact?: boolean;
   className?: string;
 }) {
   const envState = useQuery(plaidApi.plaid.envState, {});
@@ -238,29 +179,30 @@ export function PlaidConnectionPanel({
     entityId ? { entityId } : "skip",
   );
   const createLinkToken = useAction(plaidApi.plaid.createLinkToken);
-  const createSandboxPublicToken = useAction(plaidApi.plaid.createSandboxPublicToken);
   const exchangePublicToken = useAction(plaidApi.plaid.exchangePublicTokenAndPreviewAccounts);
-  const selectAccounts = useMutation(plaidApi.plaid.selectSandboxFixtureAccounts);
-  const syncTransactions = useMutation(plaidApi.plaid.syncFixtureTransactions);
+  const assignAccounts = useMutation(plaidApi.plaid.assignPlaidAccountsToBusinesses);
+  const refreshPlaidItemAccounts = useAction(plaidApi.plaid.refreshPlaidItemAccounts);
   const syncItemNow = useAction(plaidApi.plaid.syncItemNow);
-  const createRelinkCard = useMutation(plaidApi.plaid.handleItemLoginRequired);
+
+  // E3-T5 split flow: when 2+ businesses exist, after Link success we preview the
+  // accounts and let the owner map each to a business before persisting.
+  const canSplit = (businesses?.length ?? 0) > 1;
+  const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const [pendingAccounts, setPendingAccounts] = useState<PlaidSelectableAccount[] | null>(null);
+  const [assignments, setAssignments] = useState<Record<string, string>>({});
 
   const [state, setState] = useState<ActionState>("idle");
   const [message, setMessage] = useState("");
-  const [linkTokenMode, setLinkTokenMode] = useState<"sandbox" | "fixture" | null>(null);
+  const [linkTokenMode, setLinkTokenMode] = useState<"sandbox" | "development" | "production" | "fixture" | null>(null);
   const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [previewAccounts, setPreviewAccounts] = useState<PlaidSelectableAccount[]>([]);
-  const [createdBankAccountId, setCreatedBankAccountId] = useState<string | null>(null);
-
-  const activeBankAccountId = useMemo(() => {
-    return createdBankAccountId ?? connectionState?.accounts[0]?.id ?? null;
-  }, [connectionState?.accounts, createdBankAccountId]);
-  const activePlaidItemId = connectionState?.items.find((item) => item.status === "active")?.plaidItemId ?? null;
+  const rawActiveItem = connectionState?.items.find((item) => item.status === "active") ?? null;
+  const hasStoredBankAccounts = (connectionState?.accounts.length ?? 0) > 0;
+  const activePlaidItemId = rawActiveItem?.plaidItemId ?? null;
 
   async function runStep(label: string, operation: () => Promise<string>) {
     if (!entityId) {
       setState("error");
-      setMessage("Create or select the Live Sandbox entity before connecting Plaid.");
+      setMessage("Create or select a business before connecting a bank.");
       return;
     }
     setState("working");
@@ -275,14 +217,6 @@ export function PlaidConnectionPanel({
     }
   }
 
-  function updateAccountSelection(plaidAccountId: string, include: boolean) {
-    setPreviewAccounts((accounts) =>
-      accounts.map((account) =>
-        account.plaidAccountId === plaidAccountId ? { ...account, include } : account,
-      ),
-    );
-  }
-
   const handlePlaidSuccess = useCallback(
     (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
       if (!entityId) return;
@@ -291,26 +225,68 @@ export function PlaidConnectionPanel({
       void exchangePublicToken({
         entityId,
         publicToken,
+        // Split flow: preview the accounts without persisting so the owner can
+        // map each to a business; otherwise persist all to this business.
+        ...(canSplit ? { previewOnly: true } : {}),
       })
-        .then((preview) => {
-          setPreviewAccounts(preview.accounts);
-          setLinkTokenMode(preview.mode);
+        .then((result) => {
+          setLinkTokenMode(result.mode);
           setLinkToken(null);
           setState("success");
-          const institution = metadata.institution?.name ?? "Plaid sandbox bank";
-          if (preview.mode === "sandbox" && preview.accessTokenPersisted) {
-            setMessage(`${institution} connected. Access token is stored server-side; choose the accounts to add.`);
+          const institution = result.institutionName ?? metadata.institution?.name ?? "Plaid bank";
+          // E3-T5 split: hold the previewed accounts and let the owner assign
+          // each one a business before confirming.
+          if (canSplit && result.previewOnly && result.accessTokenPersisted) {
+            clearPlaidOAuthSession();
+            setPendingItemId(result.plaidItemId ?? null);
+            setPendingAccounts(result.accounts);
+            // Default every account to the started-from business.
+            setAssignments(
+              Object.fromEntries(result.accounts.map((account) => [account.plaidAccountId, entityId])),
+            );
+            setMessage(`${institution} connected. Assign each account to a business, then confirm.`);
             return;
           }
-          setMessage(preview.persistenceBlocker ?? "Plaid exchange fell back to fixture mode; choose fixture accounts to continue.");
+          if (result.mode !== "fixture" && result.accessTokenPersisted) {
+            clearPlaidOAuthSession();
+            const touched = (result.accountsCreated ?? 0) + (result.accountsUpdated ?? 0);
+            setMessage(`${institution} connected. ${touched} account${touched === 1 ? "" : "s"} saved to this business.`);
+            return;
+          }
+          setMessage(result.persistenceBlocker ?? "Plaid exchange could not persist a bank token. Open Setup and check the saved credentials.");
         })
         .catch((error) => {
           setState("error");
           setMessage(readableError(error, "Plaid Link completed, but token exchange failed."));
         });
     },
-    [entityId, exchangePublicToken],
+    [entityId, exchangePublicToken, canSplit],
   );
+
+  const handleConfirmAssignments = useCallback(() => {
+    if (!entityId || !pendingAccounts) return;
+    setState("working");
+    setMessage("Saving account-to-business assignments.");
+    const accounts = pendingAccounts.map((account) => ({
+      ...account,
+      entityId: assignments[account.plaidAccountId] ?? entityId,
+    }));
+    void assignAccounts({
+      entityId,
+      ...(pendingItemId ? { plaidItemId: pendingItemId } : {}),
+      accounts,
+    })
+      .then((result) => {
+        setState("success");
+        setPendingAccounts(null);
+        setPendingItemId(null);
+        setMessage(`Saved ${result.createdCount} account${result.createdCount === 1 ? "" : "s"} across your businesses.`);
+      })
+      .catch((error) => {
+        setState("error");
+        setMessage(readableError(error, "Could not save the account assignments."));
+      });
+  }, [entityId, pendingAccounts, pendingItemId, assignments, assignAccounts]);
 
   const handlePlaidExit = useCallback((error: PlaidLinkError | null) => {
     if (!error) {
@@ -324,87 +300,129 @@ export function PlaidConnectionPanel({
 
   const handlePlaidLoadError = useCallback(() => {
     setState("error");
-    setMessage("Plaid Link could not load in this browser session. Use sandbox bypass or retry after checking the network.");
+    setMessage("Plaid Link could not load in this browser session. Check the setup values and retry.");
   }, []);
 
-  const env = connectionState?.env ?? envState;
+  // Owner-facing connection status. An active stored item reads as "Connected";
+  // a stored item that needs re-auth reads as "Sign-in expired"; nothing stored
+  // yet reads as "Not connected".
+  const activeItem = rawActiveItem;
+  const expiredItem = connectionState?.items.find((item) => item.status !== "active") ?? null;
+  const primaryItem = activeItem ?? expiredItem ?? null;
+  const accountsNeedRefresh = Boolean(activeItem && !hasStoredBankAccounts);
+  const connectionTone: "connected" | "pending_accounts" | "expired" | "none" = activeItem
+    ? accountsNeedRefresh
+      ? "pending_accounts"
+      : "connected"
+    : expiredItem
+      ? "expired"
+      : "none";
+  const lastSyncedLabel = activeItem?.lastSyncedAt
+    ? `synced ${new Date(activeItem.lastSyncedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+    : "not synced yet";
 
   return (
     <Card className={cn("shadow-xs", className)} data-testid="plaid-connection-panel">
-      <CardHeader className="border-b">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Banknote className="size-4 text-primary" />
-              Bank connection
-            </CardTitle>
-            <CardDescription>
-              Plaid sandbox imports bank and card activity, then stages each item through the
-              OpenBooks categorization pipeline.
-            </CardDescription>
+      <CardContent className={cn("space-y-4", compact ? "p-4" : "pt-6")}>
+        {/* Owner-facing connection card: logo badge, one status pill, one primary
+            action. Everything operational happens here; everything diagnostic is
+            in the Advanced disclosure. */}
+        <div className="flex flex-wrap items-center gap-3 rounded-[12px] border bg-card p-4" data-testid="plaid-connection-card">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-muted">
+            <Banknote className="size-5 text-muted-foreground" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold">
+              {primaryItem?.institutionName ?? "Bank account"}
+            </div>
+            {businessName ? (
+              <div className="mt-0.5 text-[11.5px] text-muted-foreground">{businessName}</div>
+            ) : null}
+            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
+              {connectionTone === "connected" ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-ob-green-50 px-2 py-0.5 text-[11px] font-medium text-ob-green-800">
+                  <Check className="size-3" /> Connected · {lastSyncedLabel}
+                </span>
+              ) : connectionTone === "pending_accounts" ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-warning-surface px-2 py-0.5 text-[11px] font-medium text-warning">
+                  <AlertTriangle className="size-3" /> Connected · accounts need refresh
+                </span>
+              ) : connectionTone === "expired" ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-negative-surface px-2 py-0.5 text-[11px] font-medium text-negative">
+                  <AlertTriangle className="size-3" /> Sign-in expired
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  Not connected
+                </span>
+              )}
+            </div>
           </div>
-          <StatusBadge env={env} />
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-3">
-          <StepRow
-            icon={ShieldCheck}
-            title="Environment"
-            detail={plaidEnvLabel(env)}
-            complete={Boolean(env?.ready)}
-          />
-          <StepRow
-            icon={Link}
-            title="Link launch"
-            detail={linkTokenMode ? `${linkTokenMode} token prepared` : "Open Plaid Link from a sandbox token or use fixture bypass."}
-            complete={Boolean(linkTokenMode)}
-          />
-          <StepRow
-            icon={RefreshCw}
-            title="Pipeline sync"
-            detail={activePlaidItemId ? "Stored Plaid item can sync through Convex actions and cron." : "Fixture sync sends Plaid-shaped transactions to stages 1-3."}
-            complete={Boolean(activeBankAccountId || activePlaidItemId)}
-          />
-        </div>
-
-        {!entityId ? (
-          <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
-            Main integration should pass the Live Sandbox entity id into this panel.
-          </div>
-        ) : null}
-
-        {env?.problems.length ? (
-          <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
-            <div className="font-medium">Plaid configuration</div>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-              {env.problems.map((problem) => (
-                <li key={problem}>{problem}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            disabled={!entityId || state === "working"}
-            onClick={() =>
-              runStep("Create Link token", async () => {
-                const result = await createLinkToken({ entityId: entityId!, clientName: "OpenBooks" });
-                setLinkTokenMode(result.mode);
-                setLinkToken(result.mode === "sandbox" ? result.linkToken : null);
-                return result.mode === "sandbox"
-                  ? "Sandbox Link token is ready. Open Plaid Link to connect a bank."
-                  : "Fixture Link token is ready because Plaid sandbox env is absent.";
-              })
-            }
-          >
-            <Link className="size-4" />
-            Prepare Link
-          </Button>
-          {linkToken && linkTokenMode === "sandbox" ? (
+          {connectionTone === "pending_accounts" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!entityId || !activePlaidItemId || state === "working"}
+              data-testid="plaid-refresh-accounts"
+              onClick={() =>
+                runStep("Refresh Plaid accounts", async () => {
+                  const result = await refreshPlaidItemAccounts({
+                    entityId: entityId!,
+                    plaidItemId: activePlaidItemId!,
+                  });
+                  if (result.status !== "refreshed") {
+                    return `Account refresh ${result.status}${result.reason ? `: ${result.reason}` : ""}.`;
+                  }
+                  const touched = result.createdCount + (result.updatedCount ?? 0);
+                  return `Account list refreshed. ${touched} account${touched === 1 ? "" : "s"} saved.`;
+                })
+              }
+            >
+              <RefreshCw className={cn("size-4", state === "working" && "animate-spin")} />
+              Refresh accounts
+            </Button>
+          ) : connectionTone === "connected" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!entityId || !activePlaidItemId || state === "working"}
+              data-testid="plaid-primary-sync"
+              onClick={() =>
+                runStep("Sync Plaid item", async () => {
+                  const result = await syncItemNow({ entityId: entityId!, plaidItemId: activePlaidItemId! });
+                  if (result.status !== "synced") {
+                    return `Plaid sync ${result.status}${result.reason ? `: ${result.reason}` : ""}.`;
+                  }
+                  return `Synced; posted ${result.postedCount ?? 0}, inbox ${result.needsReviewCount ?? 0}.`;
+                })
+              }
+            >
+              <RefreshCw className={cn("size-4", state === "working" && "animate-spin")} />
+              Sync bank
+            </Button>
+          ) : connectionTone === "expired" && showConnectAction ? (
+            <Button
+              size="sm"
+              disabled={!entityId || state === "working"}
+              data-testid="plaid-primary-reconnect"
+              onClick={() =>
+                runStep("Prepare Plaid Link", async () => {
+                  const result = await createLinkToken({ entityId: entityId!, clientName: "OpenBooks" });
+                  setLinkTokenMode(result.mode);
+                  setLinkToken(result.mode !== "fixture" ? result.linkToken : null);
+                  if (result.mode !== "fixture") {
+                    storePlaidOAuthSession({ linkToken: result.linkToken, entityId: entityId! });
+                  }
+                  return result.mode !== "fixture"
+                    ? `${plaidEnvLabel(result.env)}. Open Plaid Link to reconnect this bank.`
+                    : "Plaid setup is missing. Save credentials before reconnecting.";
+                })
+              }
+            >
+              <RefreshCw className="size-4" />
+              Reconnect
+            </Button>
+          ) : linkToken && linkTokenMode !== "fixture" && showConnectAction ? (
             <PlaidOpenButton
               token={linkToken}
               disabled={!entityId || state === "working"}
@@ -416,104 +434,59 @@ export function PlaidConnectionPanel({
               }}
               onLoadError={handlePlaidLoadError}
             />
-          ) : (
-            <Button disabled data-testid="plaid-open-link">
+          ) : showConnectAction ? (
+            <Button
+              size="sm"
+              disabled={!entityId || state === "working"}
+              data-testid="plaid-primary-connect"
+              onClick={() =>
+                runStep("Prepare Plaid Link", async () => {
+                  const result = await createLinkToken({ entityId: entityId!, clientName: "OpenBooks" });
+                  setLinkTokenMode(result.mode);
+                  setLinkToken(result.mode !== "fixture" ? result.linkToken : null);
+                  if (result.mode !== "fixture") {
+                    storePlaidOAuthSession({ linkToken: result.linkToken, entityId: entityId! });
+                  }
+                  return result.mode !== "fixture"
+                    ? `${plaidEnvLabel(result.env)}. Open Plaid Link to connect a bank.`
+                    : "Plaid setup is missing. Open Setup to save credentials.";
+                })
+              }
+            >
               <Banknote className="size-4" />
-              Open Plaid Link
+              Add bank
             </Button>
-          )}
-          <Button
-            disabled={!entityId || state === "working"}
-            onClick={() =>
-              runStep("Sandbox bypass", async () => {
-                const token = await createSandboxPublicToken({ entityId: entityId!, institutionId: "ins_109508" });
-                const preview = await exchangePublicToken({
-                  entityId: entityId!,
-                  publicToken: token.publicToken,
-                });
-                setPreviewAccounts(preview.accounts);
-                setLinkTokenMode(token.mode);
-                if (preview.mode === "sandbox") {
-                  return preview.accessTokenPersisted
-                    ? "Sandbox public token exchanged. Access token is stored server-side; accounts are ready for selection."
-                    : (preview.persistenceBlocker ?? "Sandbox public token exchanged, but access-token storage was not confirmed.");
-                }
-                return "Fixture accounts are ready for selection.";
-              })
-            }
-          >
-            <ChevronRight className="size-4" />
-            Use sandbox bypass
-          </Button>
-          <Button
-            variant="outline"
-            disabled={!entityId || state === "working"}
-            onClick={() =>
-              runStep("Relink card", async () => {
-                const result = await createRelinkCard({
-                  entityId: entityId!,
-                  institutionName: "Plaid Sandbox Bank",
-                  itemId: "fixture-item-login-required",
-                });
-                return result.payloadSummary;
-              })
-            }
-          >
-            <AlertTriangle className="size-4" />
-            Simulate relink
-          </Button>
+          ) : null}
         </div>
 
-        {previewAccounts.length ? (
-          <div className="space-y-3 rounded-lg border p-3" data-testid="plaid-account-selection">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-medium">Account selection</div>
-                <p className="text-xs text-muted-foreground">
-                  Included accounts get ledger accounts and bank-account records.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                disabled={state === "working" || !previewAccounts.some((account) => account.include)}
-                onClick={() =>
-                  runStep("Create accounts", async () => {
-                    const result = await selectAccounts({ entityId: entityId!, accounts: previewAccounts });
-                    setCreatedBankAccountId(result.accounts[0]?.bankAccountId ?? null);
-                    return result.createdCount > 0
-                      ? `Created ${result.createdCount} Plaid account${result.createdCount === 1 ? "" : "s"}.`
-                      : "Plaid accounts already exist; refreshed account selection.";
-                  })
-                }
-              >
-                <Check className="size-4" />
-                Create selected
-              </Button>
-            </div>
-            <div className="grid gap-2">
-              {previewAccounts.map((account) => (
-                <label
-                  key={account.plaidAccountId}
-                  className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
-                >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={account.include}
-                      onChange={(event) => updateAccountSelection(account.plaidAccountId, event.target.checked)}
-                      className="size-4 accent-[#2ca01c]"
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">{account.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {account.subtype} ending {account.mask}
-                      </span>
-                    </span>
-                  </span>
-                  <Amount amountMinor={account.balanceMinor} currency={account.currency} />
-                </label>
+        {message ? (
+          <div
+            className={cn(
+              "rounded-lg border px-4 py-3 text-sm",
+              state === "error"
+                ? "border-negative/30 bg-negative-surface text-negative"
+                : "border-primary/20 bg-primary/5 text-primary",
+            )}
+            data-testid="plaid-panel-message"
+          >
+            {message}
+          </div>
+        ) : null}
+
+        {!entityId ? (
+          <div className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
+            Main integration should pass a business id into this panel.
+          </div>
+        ) : null}
+
+        {showSetupProblems && envState?.problems.length ? (
+          <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+            <div className="font-medium">Plaid configuration</div>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+              {envState.problems.map((problem) => (
+                <li key={problem}>{problem}</li>
               ))}
-            </div>
+            </ul>
           </div>
         ) : null}
 
@@ -522,57 +495,90 @@ export function PlaidConnectionPanel({
             <div>
               <div className="text-sm font-medium">Transactions sync</div>
               <p className="text-xs text-muted-foreground">
-                Real sync uses the stored Plaid item cursor; fixture sync stays available when sandbox keys are absent.
+                Sync uses the stored Plaid item cursor and stages uncertain rows for review.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                disabled={!entityId || !activePlaidItemId || state === "working"}
-                data-testid="plaid-sync-now"
-                onClick={() =>
-                  runStep("Sync Plaid item", async () => {
-                    const result = await syncItemNow({
-                      entityId: entityId!,
-                      plaidItemId: activePlaidItemId!,
-                    });
-                    if (result.status !== "synced") {
-                      return `Plaid sync ${result.status}${result.reason ? `: ${result.reason}` : ""}.`;
-                    }
-                    return `Plaid sync finished; staged ${result.stagedCount ?? 0}; posted ${result.postedCount ?? 0}; inbox ${result.needsReviewCount ?? 0}; duplicates ${result.duplicateCount ?? 0}; unmatched accounts ${result.unmatchedAccountCount ?? 0}.`;
-                  })
-                }
-              >
-                <RefreshCw className={cn("size-4", state === "working" && "animate-spin")} />
-                Sync now
-              </Button>
-              <Button
-                variant="outline"
-                disabled={!entityId || !activeBankAccountId || state === "working"}
-                onClick={() =>
-                  runStep("Sync fixture transactions", async () => {
-                    const result = await syncTransactions({
-                      entityId: entityId!,
-                      bankAccountId: activeBankAccountId!,
-                      transactions: openBooksPlaidFixtureTransactions,
-                    });
-                    return `Synced ${result.stagedCount}; posted ${result.postedCount}; inbox ${result.needsReviewCount}; duplicates ${result.duplicateCount}; Plaid priors ${result.plaidPriorCount}.`;
-                  })
-                }
-              >
-                <RefreshCw className={cn("size-4", state === "working" && "animate-spin")} />
-                Sync fixture
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              disabled={!entityId || !activePlaidItemId || state === "working"}
+              data-testid="plaid-sync-now"
+              onClick={() =>
+                runStep("Sync Plaid item", async () => {
+                  const result = await syncItemNow({
+                    entityId: entityId!,
+                    plaidItemId: activePlaidItemId!,
+                  });
+                  if (result.status !== "synced") {
+                    return `Plaid sync ${result.status}${result.reason ? `: ${result.reason}` : ""}.`;
+                  }
+                  return `Plaid sync finished; staged ${result.stagedCount ?? 0}; posted ${result.postedCount ?? 0}; inbox ${result.needsReviewCount ?? 0}; duplicates ${result.duplicateCount ?? 0}; unmatched accounts ${result.unmatchedAccountCount ?? 0}.`;
+                })
+              }
+            >
+              <RefreshCw className={cn("size-4", state === "working" && "animate-spin")} />
+              Sync now
+            </Button>
           </div>
         </div>
 
-        {connectionState?.items.length ? (
+        {pendingAccounts && pendingAccounts.length ? (
+          <div className="space-y-3 rounded-lg border p-3" data-testid="plaid-assign-accounts">
+            <div>
+              <div className="text-sm font-medium">Assign accounts to a business</div>
+              <p className="text-xs text-muted-foreground">
+                One Plaid login can hold accounts for more than one business. Route each account to the right books.
+              </p>
+            </div>
+            <div className="grid gap-2">
+              {pendingAccounts.map((account) => (
+                <div
+                  key={account.plaidAccountId}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2"
+                  data-testid="plaid-assign-row"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{account.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {account.subtype} ending {account.mask}
+                    </div>
+                  </div>
+                  <Select
+                    value={assignments[account.plaidAccountId] ?? entityId ?? ""}
+                    onValueChange={(value) =>
+                      setAssignments((prev) => ({ ...prev, [account.plaidAccountId]: value }))
+                    }
+                  >
+                    <SelectTrigger className="w-48" data-testid="plaid-assign-business">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(businesses ?? []).map((business) => (
+                        <SelectItem key={business.id} value={business.id}>
+                          {business.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+            </div>
+            <Button
+              onClick={handleConfirmAssignments}
+              disabled={state === "working"}
+              data-testid="plaid-assign-confirm"
+            >
+              <Check className="size-4" />
+              Confirm assignments
+            </Button>
+          </div>
+        ) : null}
+
+        {connectionState?.items.length && !hasStoredBankAccounts ? (
           <div className="grid gap-2" data-testid="plaid-connected-items">
             {connectionState.items.map((item) => (
               <div key={item.plaidItemId} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
                 <div>
-                  <div className="font-medium">{item.institutionName ?? "Plaid item"}</div>
+                  <div className="font-medium">{item.institutionName ?? "Connected bank"}</div>
                   <div className="text-xs text-muted-foreground">
                     {item.status.replace("_", " ")}
                     {item.lastSyncedAt ? ` · last sync ${new Date(item.lastSyncedAt).toLocaleString()}` : " · not synced yet"}
@@ -585,7 +591,7 @@ export function PlaidConnectionPanel({
           </div>
         ) : null}
 
-        {connectionState?.accounts.length ? (
+        {activeItem && connectionState?.accounts.length ? (
           <div className="grid gap-2" data-testid="plaid-connected-accounts">
             {connectionState.accounts.map((account) => (
               <div key={account.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
@@ -601,7 +607,7 @@ export function PlaidConnectionPanel({
           </div>
         ) : null}
 
-        {connectionState?.recentTransactions.length ? (
+        {activeItem && connectionState?.recentTransactions.length ? (
           <div className="space-y-2 rounded-lg border p-3" data-testid="plaid-recent-transactions">
             <div>
               <div className="text-sm font-medium">Recent bank imports</div>
@@ -633,20 +639,6 @@ export function PlaidConnectionPanel({
                 {issue.payloadSummary}
               </div>
             ))}
-          </div>
-        ) : null}
-
-        {message ? (
-          <div
-            className={cn(
-              "rounded-lg border px-4 py-3 text-sm",
-              state === "error"
-                ? "border-destructive/30 bg-destructive/5 text-destructive"
-                : "border-primary/20 bg-primary/5 text-primary",
-            )}
-            data-testid="plaid-panel-message"
-          >
-            {message}
           </div>
         ) : null}
       </CardContent>

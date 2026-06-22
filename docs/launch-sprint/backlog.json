@@ -1,0 +1,2469 @@
+[
+ {
+  "id": "E1-T1",
+  "epic": "E1",
+  "title": "Gate Stripe fixture payouts to demo entities only",
+  "files": [
+   "convex/stripe.ts:1824",
+   "convex/stripe.ts:1851",
+   "convex/stripe.ts:1828",
+   "convex/stripe.ts:1069-1153",
+   "convex/stripe.ts:348-480 (buildFixtureProjection)",
+   "convex/schema.ts:72 (entity.isDemo)"
+  ],
+  "dependsOn": [],
+  "size": "S",
+  "risk": "med"
+ },
+ {
+  "id": "E1-T2",
+  "epic": "E1",
+  "title": "Book opening balance (Dr Bank / Cr 3900) on bank connect",
+  "files": [
+   "convex/plaid.ts:1874-1945 (upsertPlaidAccountsForItemCore)",
+   "convex/ledger.ts:53 (3900 seed)",
+   "convex/ledger.ts:345 (postLedgerEntryCore)",
+   "convex/stripe.ts:507 (findAccountByNumber pattern)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E1-T3",
+  "epic": "E1",
+  "title": "Loosen the Stripe payout\u2194deposit matcher + add an explicit Inbox 'Match deposit to payout' action",
+  "files": [
+   "convex/stripe.ts:1197-1257 (tolerances + matcher)",
+   "convex/stripe.ts:1259-1274 (candidate loader)",
+   "convex/stripe.ts:1285-1412 (reconcile + tryMatch)",
+   "convex/schema.ts:821-845 (stripePayouts indexes)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E1-T4",
+  "epic": "E1",
+  "title": "Per-payout clearing-zeroes invariant + drain residual 1160 In-Transit",
+  "files": [
+   "convex/stripe.ts:1069-1153 (payout loop + drift)",
+   "convex/stripe.ts:1285-1360 (reconcile path)",
+   "convex/ledger.ts:345 (single posting path for corrections)",
+   "convex/schema.ts:821-845 (stripePayouts)"
+  ],
+  "dependsOn": [
+   "E1-T3"
+  ],
+  "size": "L",
+  "risk": "high"
+ },
+ {
+  "id": "E1-T5",
+  "epic": "E1",
+  "title": "Replace reports .take(5000) with date-ordered, complete loading (no half-posted entries)",
+  "files": [
+   "convex/reportViews.ts:32 (REPORT_LIMIT)",
+   "convex/reportViews.ts:484-502 (loaders)",
+   "convex/reportViews.ts:913-918 (truncated flag)",
+   "convex/coreViews.ts:100,114-126 (dashboard loaders)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E1-T6",
+  "epic": "E1",
+  "title": "Fix cash-flow statement transfer/split double-counting + classification",
+  "files": [
+   "convex/reportViews.ts:598-646 (cash accounts + cash-flow groups)",
+   "convex/reportViews.ts:621-643 (the related-line classifier)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E1-T7",
+  "epic": "E1",
+  "title": "Fix income-by-customer / expense-by-vendor double-count",
+  "files": [
+   "convex/reportViews.ts:676-732 (customer/vendor rollups)",
+   "convex/reportViews.ts:507-522 (unsettled/excluded entry sets)",
+   "convex/reportViews.ts:535-539 (P&L totals for the equality assert)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E1-T8",
+  "epic": "E1",
+  "title": "'$X / N transactions unreviewed & excluded' signal on Reports + Dashboard",
+  "files": [
+   "convex/reportViews.ts:890-918 (limits block in reportPack)",
+   "convex/coreViews.ts:192-200 (inbox/reviewed counts already computed)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx",
+   "apps/web/src/components/openbooks/CoreScreens.tsx (dashboard)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E1-T9",
+  "epic": "E1",
+  "title": "Write contactId on journal lines so customer/vendor reports light up",
+  "files": [
+   "convex/ledger.ts:322-327 (LedgerLineInput)",
+   "convex/ledger.ts:413-422 (line insert)",
+   "convex/schema.ts:220-221 (fxRate, contactId fields)",
+   "convex/stripe.ts:1022-1046 (invoice posting)",
+   "convex/reportViews.ts:676-705 (consumer)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E1-T10",
+  "epic": "E1",
+  "title": "Unify dashboard cash with report cash (one source) + bank-vs-books comparison",
+  "files": [
+   "convex/coreViews.ts:175-190 (bankBalances)",
+   "convex/reportViews.ts:598-611 (report cash)",
+   "apps/web/src/components/openbooks/CoreScreens.tsx (dashboard cash tile)"
+  ],
+  "dependsOn": [
+   "E1-T8"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E1-T11",
+  "epic": "E1",
+  "title": "Replace coreViews hardcoded 12-month window + raw-transaction cash flow with server-clock, ledger-derived series",
+  "files": [
+   "convex/coreViews.ts:12-25 (months array)",
+   "convex/coreViews.ts:133-137 (latestMonth/selectedMonth)",
+   "convex/coreViews.ts:201-216 (cashFlowByMonth)"
+  ],
+  "dependsOn": [
+   "E1-T6"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E1-T12",
+  "epic": "E1",
+  "title": "Bank reconciliation surface (mark cleared / adjust to bank / complete at diff=0) + period-close UI",
+  "files": [
+   "convex/schema.ts:227-247 (periodLocks + bankAccounts; add bankReconciliations)",
+   "convex/ledger.ts:345 (postLedgerEntryCore for adjusting entries)",
+   "convex/ledger.ts:471 (setPeriodLock)",
+   "convex/reportViews.ts:956 (reportPeriodLock read)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx (close-the-books banner host)"
+  ],
+  "dependsOn": [
+   "E1-T2"
+  ],
+  "size": "L",
+  "risk": "high"
+ },
+ {
+  "id": "E2-T1",
+  "epic": "E2",
+  "title": "Write & resolve BYO AI credentials (close RC9 at the data layer)",
+  "files": [
+   "convex/aiCredentialStore.ts (new)",
+   "convex/ai.ts",
+   "convex/aiProvider.ts",
+   "convex/aiCatalog.ts",
+   "convex/secretBox.ts",
+   "convex/schema.ts"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E2-T2",
+  "epic": "E2",
+  "title": "Provider-agnostic categorizer runtime on the AI SDK factory",
+  "files": [
+   "convex/categorizer.ts (new)",
+   "convex/bedrockCategorizer.ts",
+   "convex/plaid.ts",
+   "convex/ai.ts",
+   "apps/web/src/components/openbooks/CoreScreens.tsx",
+   "apps/web/src/components/openbooks/ModuleScreens.tsx"
+  ],
+  "dependsOn": [
+   "E2-T1"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E2-T3",
+  "epic": "E2",
+  "title": "Self-rescheduling backlog drainer (kill the 25-item cap)",
+  "files": [
+   "convex/categorizer.ts",
+   "convex/ai.ts",
+   "convex/plaid.ts",
+   "apps/web/src/components/openbooks/CoreScreens.tsx",
+   "apps/web/src/components/openbooks/ModuleScreens.tsx"
+  ],
+  "dependsOn": [
+   "E2-T2"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E2-T4",
+  "epic": "E2",
+  "title": "Embedding generator + write semantic memory on every correction",
+  "files": [
+   "convex/embeddings.ts (new)",
+   "convex/aiProvider.ts",
+   "convex/aiCatalog.ts",
+   "convex/pipeline.ts",
+   "convex/schema.ts"
+  ],
+  "dependsOn": [
+   "E2-T1"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E2-T5",
+  "epic": "E2",
+  "title": "Insert embedding/k-NN recall as a cascade stage before the LLM",
+  "files": [
+   "convex/categorizer.ts",
+   "convex/embeddings.ts",
+   "convex/pipeline.ts",
+   "convex/schema.ts"
+  ],
+  "dependsOn": [
+   "E2-T2",
+   "E2-T4"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E2-T6",
+  "epic": "E2",
+  "title": "Direction-aware candidate set (stop forcing refunds into income)",
+  "files": [
+   "convex/ai.ts",
+   "convex/categorizer.ts",
+   "convex/bedrockCategorizer.ts"
+  ],
+  "dependsOn": [
+   "E2-T2"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E2-T7",
+  "epic": "E2",
+  "title": "Truthful stage attribution + validate every LLM-returned id before posting",
+  "files": [
+   "convex/pipeline.ts",
+   "convex/categorizer.ts"
+  ],
+  "dependsOn": [
+   "E2-T2",
+   "E2-T5"
+  ],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E2-T8",
+  "epic": "E2",
+  "title": "Populate the live-Plaid first pass with plaidPriorAccountId (and stop the empty first route)",
+  "files": [
+   "convex/plaid.ts"
+  ],
+  "dependsOn": [
+   "E2-T7"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E2-T9",
+  "epic": "E2",
+  "title": "Feed business context into the categorizer prompt + carry contactId",
+  "files": [
+   "convex/ai.ts",
+   "convex/categorizer.ts",
+   "convex/bedrockCategorizer.ts",
+   "convex/pipeline.ts"
+  ],
+  "dependsOn": [
+   "E2-T2"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E2-T10",
+  "epic": "E2",
+  "title": "Activate calibration: fit from the holdout and gate on the calibrated probability",
+  "files": [
+   "convex/ai.ts",
+   "convex/pipeline.ts",
+   "convex/crons.ts",
+   "apps/web/src/components/openbooks/settings/AiSection.tsx"
+  ],
+  "dependsOn": [
+   "E2-T7"
+  ],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E2-T11",
+  "epic": "E2",
+  "title": "BYO key-entry UI + per-decision provenance + Top-N Inbox suggestions",
+  "files": [
+   "apps/web/src/components/openbooks/settings/AiSection.tsx",
+   "apps/web/src/components/openbooks/CoreScreens.tsx",
+   "apps/web/src/components/openbooks/ModuleScreens.tsx"
+  ],
+  "dependsOn": [
+   "E2-T1",
+   "E2-T7"
+  ],
+  "size": "L",
+  "risk": "low"
+ },
+ {
+  "id": "E3-T1",
+  "epic": "E3",
+  "title": "Backend: write + read encrypted aiCredentials (saveAiCredential / deleteAiCredential / aiCredentialStatus)",
+  "files": [
+   "convex/aiCredentials.ts (new)",
+   "convex/ai.ts",
+   "convex/schema.ts (aiCredentials table, line 326 \u2014 read only, no change expected)",
+   "convex/secretBox.ts (encryptSecret/decryptSecret \u2014 reuse)",
+   "convex/aiCatalog.ts (normalizeAiProviderId, getProviderEntry \u2014 reuse)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E3-T2",
+  "epic": "E3",
+  "title": "Backend: provider-agnostic resolver + make providerStatus/setConfig credential-aware",
+  "files": [
+   "convex/aiResolve.ts (new)",
+   "convex/ai.ts (setConfig:838, providerStatus:608)",
+   "convex/aiProvider.ts (reuse buildModelForProvider/credentialIsComplete/resolveModelId/decryptCredentialRow)",
+   "convex/aiProviderRegistry.ts (line 141 active flag)",
+   "convex/aiCatalog.ts (validation source of truth)"
+  ],
+  "dependsOn": [
+   "E3-T1"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E3-T3",
+  "epic": "E3",
+  "title": "Backend: route categorizer + Ask-AI chat + test-connection through the provider-agnostic runtime",
+  "files": [
+   "convex/aiSdkRuntime.ts (testProviderConnection:42, createAmazonBedrock:70)",
+   "convex/bedrockCategorizer.ts (bedrockRuntimeEnv:150, payload switch:169)",
+   "convex/agent.ts (createAmazonBedrock:88)",
+   "convex/aiResolve.ts (from E3-T2)",
+   "convex/aiProvider.ts"
+  ],
+  "dependsOn": [
+   "E3-T2"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E3-T4",
+  "epic": "E3",
+  "title": "UI: replace the dead AI provider/model field with a real BYO provider+model switcher",
+  "files": [
+   "apps/web/src/components/openbooks/settings/AiSection.tsx",
+   "apps/web/src/components/openbooks/settings/connections/shared.tsx (SecretInput \u2014 reuse)",
+   "convex/aiCatalog.ts (add list query, or new convex/aiCatalog public wrapper)",
+   "convex/ai.ts (providerStatus/setConfig from E3-T2), convex/aiCredentials.ts (from E3-T1)"
+  ],
+  "dependsOn": [
+   "E3-T1",
+   "E3-T2"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E3-T5",
+  "epic": "E3",
+  "title": "Plaid: map each linked account \u2192 a business at link time (split a multi-LLC Plaid item)",
+  "files": [
+   "convex/plaid.ts (exchangePublicTokenAndPreviewAccounts:1716, upsertPlaidAccountsForItemCore:1874, upsertPlaidAccountsForItemInternal:1947)",
+   "apps/web/src/components/openbooks/settings/connections/AddBankSheet.tsx",
+   "apps/web/src/components/openbooks/settings/connections/shared.tsx (BusinessSelect \u2014 reuse)"
+  ],
+  "dependsOn": [],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E3-T6",
+  "epic": "E3",
+  "title": "Stripe: require + verify the webhook before a connection reports 'listening'",
+  "files": [
+   "convex/connections.ts (upsertConnectionCredential:845, verifyStripeWebhookCredential:986; add verifyStripeWebhook action)",
+   "convex/stripeWebhook.ts (mark webhookStatus on real verified delivery)",
+   "convex/schema.ts (webhookStatus unions ~723/751, additive)",
+   "apps/web/src/components/openbooks/settings/connections/StripeConnectSheet.tsx",
+   "apps/web/src/components/openbooks/settings/connections/shared.tsx (humanizeWebhookStatus)",
+   "apps/web/src/components/openbooks/settings/ConnectionsSection.tsx (status pill)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E3-T7",
+  "epic": "E3",
+  "title": "Plunk: in-UI BYO key entry + validate + prefer saved key over env",
+  "files": [
+   "convex/schema.ts (new plunkCredentials table, additive)",
+   "convex/plunk.ts (new: savePlunkCredential/deletePlunkCredential/plunkStatus + internal resolve)",
+   "packages/email/src/plunk.ts (sendPlunkEmail key resolution)",
+   "convex/auth.ts (PLUNK_SECRET_KEY:53), convex/requestAccess.ts (:91), convex/settings.ts (:50), convex/team.ts (:88)",
+   "apps/web settings UI (new PlunkSection or card in ConnectionsSection.tsx)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E3-T8",
+  "epic": "E3",
+  "title": "Per-connection health/validate/re-link across all providers + connectionsHealth query",
+  "files": [
+   "convex/connections.ts (list:276; add health query + validate actions)",
+   "convex/plaid.ts (testWorkspacePlaidApp \u2014 reuse)",
+   "convex/aiCredentials.ts / convex/plunk.ts (status from T1/T7)",
+   "apps/web/src/components/openbooks/settings/ConnectionsSection.tsx",
+   "apps/web/src/components/openbooks/settings/connections/shared.tsx (status helpers)"
+  ],
+  "dependsOn": [
+   "E3-T1",
+   "E3-T3",
+   "E3-T6",
+   "E3-T7"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E3-T9",
+  "epic": "E3",
+  "title": "Redesign the Connections settings surface: responsive, grouped-by-business, guide links, copyable URLs",
+  "files": [
+   "apps/web/src/components/openbooks/settings/ConnectionsSection.tsx",
+   "apps/web/src/components/openbooks/settings/connections/shared.tsx",
+   "apps/web/src/components/openbooks/settings/AiSection.tsx (if AI card is hoisted here)",
+   "convex/connections.ts (webhookConfig:414 \u2014 reuse), convex/connections.ts (health from T8)"
+  ],
+  "dependsOn": [
+   "E3-T4",
+   "E3-T8"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E3-T10",
+  "epic": "E3",
+  "title": "Secret-safety audit + redaction tests across all integration queries and errors",
+  "files": [
+   "convex/connections.ts",
+   "convex/aiCredentials.ts",
+   "convex/plunk.ts",
+   "convex/aiSdkRuntime.ts (redactEnvValues:24 \u2192 shared helper)",
+   "new convex/secretSafety.test.ts",
+   "docs/finishing (short secret-flow note)"
+  ],
+  "dependsOn": [
+   "E3-T1",
+   "E3-T6",
+   "E3-T7",
+   "E3-T8"
+  ],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E4-T1",
+  "epic": "E4",
+  "title": "Onboarding data model + state machine: persisted, resumable, multi-business progress",
+  "files": [
+   "convex/schema.ts:56-65",
+   "convex/onboarding.ts:82-100 (ensureChecklist)",
+   "convex/onboarding.ts:181-240 (checklist query)",
+   "convex/onboarding.test.ts"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E4-T2",
+  "epic": "E4",
+  "title": "Multi-business creation in onboarding + bootstrap rework",
+  "files": [
+   "convex/onboarding.ts:110-179 (createFirstBusinessForWorkspace)",
+   "convex/onboarding.ts:242-349 (bootstrapWorkspace)",
+   "convex/entities.ts:135-184 (create)",
+   "apps/web/src/components/openbooks/OnboardingScreen.tsx:138-207 (business step)"
+  ],
+  "dependsOn": [
+   "E4-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E4-T3",
+  "epic": "E4",
+  "title": "BYO AI key + provider/model picker wired end-to-end (the activation blocker)",
+  "files": [
+   "convex/ai.ts:838-872 (setConfig)",
+   "convex/ai.ts:608-650 (providerStatus)",
+   "convex/ai.ts:874-881 (testProviderConnection)",
+   "convex/aiProviderRegistry.ts:132-175",
+   "convex/secretBox.ts",
+   "convex/aiCatalog.ts",
+   "apps/web/src/components/openbooks/settings/AiSection.tsx:99-154"
+  ],
+  "dependsOn": [
+   "E4-T1"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E4-T4",
+  "epic": "E4",
+  "title": "Inline setup steps do REAL work: AI, Plunk, Plaid+mapping, Stripe-per-business, with URLs + guide links",
+  "files": [
+   "apps/web/src/components/openbooks/OnboardingScreen.tsx:209-346",
+   "convex/connections.ts:414-426 (webhookConfig)",
+   "convex/connections.ts:468-591 (saveWorkspacePlaidApp/saveStripeCredential)",
+   "apps/web/src/components/openbooks/connections/AddBankSheet.tsx",
+   "apps/web/src/components/openbooks/connections/StripeConnectSheet.tsx",
+   "convex/team.ts:99-151 (invite, for E4-T5 cross-ref)"
+  ],
+  "dependsOn": [
+   "E4-T1",
+   "E4-T3"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E4-T5",
+  "epic": "E4",
+  "title": "Opening balances step: book balanced opening entries into account 3900",
+  "files": [
+   "convex/ledger.ts:53 (3900 account)",
+   "convex/ledger.ts:345 (postLedgerEntryCore)",
+   "convex/onboarding.ts",
+   "apps/web/src/components/openbooks/OnboardingScreen.tsx",
+   "convex/onboarding.test.ts"
+  ],
+  "dependsOn": [
+   "E4-T1",
+   "E4-T2"
+  ],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E4-T6",
+  "epic": "E4",
+  "title": "Invite-team step + self-host vs invited-join branching",
+  "files": [
+   "convex/team.ts:99-151 (invite)",
+   "convex/auth.ts:110-170 (invite acceptance)",
+   "convex/session.ts:5-41 (viewer)",
+   "apps/web/src/components/openbooks/AppShell.tsx:437-444",
+   "apps/web/src/components/openbooks/OnboardingScreen.tsx"
+  ],
+  "dependsOn": [
+   "E4-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E4-T7",
+  "epic": "E4",
+  "title": "AI bulk-setup engine: sync, review ~6mo history, ask questions, PROPOSE income streams + categories + rules",
+  "files": [
+   "convex/proposals.ts:31-37 (PROPOSAL_KIND)",
+   "convex/proposals.ts:379-405 (recordProposal)",
+   "convex/pipeline.ts (cascade reference for merchant/category signals)",
+   "convex/rules.ts (rule shape)",
+   "convex/agentToolQueries.ts:35 (avoid the hardcoded 2026 default-dates antipattern)",
+   "convex/onboarding.ts"
+  ],
+  "dependsOn": [
+   "E4-T1",
+   "E4-T3",
+   "E4-T4"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E4-T8",
+  "epic": "E4",
+  "title": "Human review & approve screen for AI onboarding proposals",
+  "files": [
+   "convex/proposals.ts:611-681 (confirmProposal/dismissProposal)",
+   "convex/proposals.ts:682-704 (listProposals)",
+   "convex/ai.ts:883-952 (createConfirmedRule)",
+   "apps/web/src/components/openbooks/OnboardingScreen.tsx",
+   "apps/web/src/components/openbooks/settings/RulesSection.tsx (rule UI reference)"
+  ],
+  "dependsOn": [
+   "E4-T7"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E4-T9",
+  "epic": "E4",
+  "title": "Finish: AI runs the books + land on a fully-populated org",
+  "files": [
+   "apps/web/src/components/openbooks/OnboardingScreen.tsx:70-87 (finish)",
+   "convex/pipeline.ts (cascade entry points)",
+   "convex/coreViews.ts:180 (dashboard)",
+   "convex/onboarding.ts"
+  ],
+  "dependsOn": [
+   "E4-T5",
+   "E4-T8"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E4-T10",
+  "epic": "E4",
+  "title": "Owner data reset / re-onboard + public no-login demo",
+  "files": [
+   "convex/realTestReset.ts:409-451 (deleteBatch pattern)",
+   "convex/seedDemo.ts:202 (resetAndSeed)",
+   "apps/web/src/components/openbooks/settings/DataSection.tsx:81-90 (danger zone)",
+   "convex/session.ts:5-41 (viewer status)",
+   "apps/web/src (new /demo route)"
+  ],
+  "dependsOn": [
+   "E4-T1",
+   "E4-T2"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E5-T1",
+  "epic": "E5",
+  "title": "Schema + deterministic default business; kill the hardcoded acme-studio-llc fallback",
+  "files": [
+   "convex/schema.ts:28",
+   "convex/schema.ts:66",
+   "convex/entityScope.ts (new)",
+   "convex/reportViews.ts:34-57",
+   "convex/coreViews.ts:27-40",
+   "convex/incomeViews.ts:13-26",
+   "convex/expensesViews.ts:18-30",
+   "convex/moduleViews.ts:17-30",
+   "convex/entities.ts:135-184",
+   "convex/session.ts:5-41",
+   "convex/aiThreads.ts",
+   "convex/performance.ts",
+   "apps/web/src/components/openbooks/AppShell.tsx:150-160"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E5-T2",
+  "epic": "E5",
+  "title": "Scope contract: 'all' | entityId end-to-end (validators, ActiveEntityProvider, entityArg)",
+  "files": [
+   "apps/web/src/lib/openbooks/active-entity.tsx:5-50",
+   "apps/web/src/components/openbooks/AppShell.tsx:130-170",
+   "apps/web/src/components/openbooks/AppShell.tsx:363-376",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:151",
+   "convex/entityScope.ts"
+  ],
+  "dependsOn": [
+   "E5-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E5-T3",
+  "epic": "E5",
+  "title": "AppShell scope switcher UI: 'All businesses / Zikra / Z360' replacing business-type filter",
+  "files": [
+   "apps/web/src/components/openbooks/AppShell.tsx:998-1041",
+   "apps/web/src/components/openbooks/AppShell.tsx:1011-1025",
+   "apps/web/src/components/openbooks/workbench/WorkbenchToolbar.tsx",
+   "apps/web/src/components/openbooks/InsightsScreen.tsx"
+  ],
+  "dependsOn": [
+   "E5-T2"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E5-T4",
+  "epic": "E5",
+  "title": "Base-currency FX policy + portfolio money helpers (multi-currency normalization)",
+  "files": [
+   "convex/portfolioMoney.ts (new)",
+   "convex/schema.ts:28 (workspace.baseCurrency from T1)",
+   "convex/workspaces.ts (or settings mutation file)",
+   "docs/finishing/portfolio-currency-policy.md (new)"
+  ],
+  "dependsOn": [
+   "E5-T1"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E5-T5",
+  "epic": "E5",
+  "title": "Intercompany transfer detection + flagging between workspace entities",
+  "files": [
+   "convex/intercompany.ts (new)",
+   "convex/schema.ts (new intercompanyLinks table)",
+   "convex/pipeline.ts:1-80 (reuse transfer-match heuristics; read-only)",
+   "apps/web/src/components/openbooks/CoreScreens.tsx (Inbox surface, optional)"
+  ],
+  "dependsOn": [
+   "E5-T1"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E5-T6",
+  "epic": "E5",
+  "title": "Portfolio roll-up read model + Portfolio dashboard query (combined cash/AR/AP/revenue/expense/runway + by-business)",
+  "files": [
+   "convex/portfolioViews.ts (new)",
+   "convex/entityMetrics.ts (new \u2014 extracted from coreViews.ts:104-300)",
+   "convex/coreViews.ts:104-300",
+   "convex/entityScope.ts (scopeValidator)",
+   "convex/portfolioMoney.ts"
+  ],
+  "dependsOn": [
+   "E5-T2",
+   "E5-T4",
+   "E5-T5"
+  ],
+  "size": "L",
+  "risk": "high"
+ },
+ {
+  "id": "E5-T7",
+  "epic": "E5",
+  "title": "Consolidated reports with intercompany elimination (scope=all P&L / Balance Sheet)",
+  "files": [
+   "convex/reportViews.ts:449-520",
+   "convex/reportViews.ts:32 (REPORT_LIMIT)",
+   "convex/intercompany.ts",
+   "convex/portfolioMoney.ts",
+   "convex/entityScope.ts"
+  ],
+  "dependsOn": [
+   "E5-T4",
+   "E5-T5",
+   "E5-T6"
+  ],
+  "size": "L",
+  "risk": "high"
+ },
+ {
+  "id": "E5-T8",
+  "epic": "E5",
+  "title": "Portfolio dashboard UI + per-page portfolio behavior + reconcile cash source",
+  "files": [
+   "apps/web/src/components/openbooks/CoreScreens.tsx:245-260",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:1450-1460",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:1585-1610",
+   "apps/web/src/components/openbooks/dashboard/DashboardViz.tsx",
+   "convex/entityMetrics.ts:cash (from T6)",
+   "convex/coreViews.ts:180"
+  ],
+  "dependsOn": [
+   "E5-T6",
+   "E5-T7"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E5-T9",
+  "epic": "E5",
+  "title": "First-class bank/Stripe\u2192business association (re-map mutation + Connections UI)",
+  "files": [
+   "convex/connections.ts",
+   "convex/schema.ts:233-247 (bankAccounts) ",
+   "convex/schema.ts:708+ (stripeAccounts)",
+   "apps/web/src/components/openbooks/settings/ConnectionsSection.tsx",
+   "apps/web/src/components/openbooks/AddBankSheet.tsx",
+   "apps/web/src/components/openbooks/StripeConnectSheet.tsx"
+  ],
+  "dependsOn": [
+   "E5-T1"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E5-T10",
+  "epic": "E5",
+  "title": "Multi-entity authorization hardening + scope=all authz tests",
+  "files": [
+   "convex/entityScope.ts",
+   "convex/portfolioViews.ts",
+   "convex/reportViews.ts:449-520",
+   "convex/intercompany.ts",
+   "convex/authz.ts:140-230 (requireWorkspaceRole/requireAnyWorkspaceRole)",
+   "convex/portfolio.authz.test.ts (new)"
+  ],
+  "dependsOn": [
+   "E5-T6",
+   "E5-T7"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E6-T1",
+  "epic": "E6",
+  "title": "Fix Cash Flow report responsiveness \u2014 kill horizontal overflow, add mobile stacked layout",
+  "files": [
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:895-956 (CashFlow)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:1500-1501 (ActiveReport cash-flow case)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:188-208 (ACCENT_BG, PreviewViz reused by bridge)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E6-T2",
+  "epic": "E6",
+  "title": "Redesign report home grid + viewer chrome for ledger-grade clarity and responsiveness",
+  "files": [
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:335-361 (ReportsHome)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:142-208 (REPORT_GROUPS, PreviewViz, ACCENT_BG)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:384-549 (ViewerToolbar)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:839-849 (ReportHeader)"
+  ],
+  "dependsOn": [
+   "E6-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E6-T3",
+  "epic": "E6",
+  "title": "CSV export \u21c4 on-screen parity for all 12 reports + parity test harness",
+  "files": [
+   "apps/web/src/lib/openbooks/reports-export.ts:244-468 (statementCsv/agingCsv/drillCsv/reportCsv)",
+   "apps/web/src/lib/openbooks/reports-export.ts:63-185 (ReportPack type)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:813-1185 (the report bodies whose numbers must reconcile)"
+  ],
+  "dependsOn": [
+   "E6-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E6-T4",
+  "epic": "E6",
+  "title": "Universal number\u2192drill-down: make every report figure open its journal lines",
+  "files": [
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:553-641 (DrillSheet, MoneyButton)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:895-1185 (CashFlow/Aging/IncomeByCustomer/Payroll bodies)",
+   "convex/reportViews.ts:347-417 (buildAgingRows items)",
+   "convex/reportViews.ts:613-732 (cashflow groups + customer/vendor totals)",
+   "apps/web/src/lib/openbooks/reports-export.ts:63-185 (ReportPack type extension)"
+  ],
+  "dependsOn": [
+   "E6-T1",
+   "E6-T3"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E6-T5",
+  "epic": "E6",
+  "title": "Cash\u21c4accrual basis clarity: persistent basis badge + honest exclusion labeling",
+  "files": [
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:373-381 (BASIS_BY_REPORT), :816 (raw basis text), :839-861 (ReportHeader/BalancedChip pattern)",
+   "convex/reportViews.ts:511-522 (unsettledEntryIds), :798-919 (pack assembly to add cashBasisExcluded)",
+   "apps/web/src/lib/openbooks/reports-export.ts:63-185 (type), :250 (basis header)"
+  ],
+  "dependsOn": [
+   "E6-T2"
+  ],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E6-T6",
+  "epic": "E6",
+  "title": "Period presets that never go future + true compare-to-prior columns",
+  "files": [
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:365-371 (COMPARE_BY_REPORT), :471-485 (compare select), :829-837 (ComparePanel), :644-766 (StatementTable to add prior/delta columns)",
+   "convex/reportViews.ts:431-445 (compareRange), :524-540 (statementRows pass \u2014 second pass for prior)",
+   "apps/web/src/lib/openbooks/report-periods.ts:99-199 (presets/clamp \u2014 add tests)",
+   "apps/web/src/lib/openbooks/reports-export.ts:244-271 (statementCsv prior/delta columns)"
+  ],
+  "dependsOn": [
+   "E6-T3",
+   "E6-T5"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E6-T7",
+  "epic": "E6",
+  "title": "Portfolio / consolidated report scope ('All businesses') wired to E5 scope switcher",
+  "files": [
+   "convex/reportViews.ts:34-57 (getEntity), :447-467 (reportPack), :484-921 (buildReportPackForEntity \u2014 reuse per entity)",
+   "apps/web/src/lib/openbooks/active-entity.tsx (scope source shared with E5)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:1526-1619 (useActiveEntity + reportPack query args)",
+   "docs/finishing/accounting-engine-blueprint.md (Part-1 portfolio/intercompany, lines ~173-181, 421-425)"
+  ],
+  "dependsOn": [
+   "E6-T2",
+   "E6-T6"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E6-T8",
+  "epic": "E6",
+  "title": "Per-report loading skeletons, empty states, and error boundary",
+  "files": [
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:1755-1767 (loading/dispatch), :656-659 (StatementTable empty), :914-915 (cashflow empty), :1192-1194 (GL empty)",
+   "apps/web/src/components/openbooks/primitives.tsx:99-118 (EmptyState)",
+   "convex/reportViews.ts:457-459 (start>end throw)"
+  ],
+  "dependsOn": [
+   "E6-T1",
+   "E6-T2"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E6-T9",
+  "epic": "E6",
+  "title": "Honest 'unreviewed / excluded $X' + truncation banner on every report",
+  "files": [
+   "convex/reportViews.ts:492-501 (REPORT_LIMIT take), :890-918 (limits/truncated)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:1670-1707 (home), :1755-1767 (viewer) \u2014 banner mount points",
+   "apps/web/src/lib/openbooks/reports-export.ts:181-185 (limits type)",
+   "docs/finishing/accounting-engine-blueprint.md (RC1 banner mandate ~lines 201-218, Phase-1 item 4 ~464)"
+  ],
+  "dependsOn": [
+   "E6-T5",
+   "E6-T8"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E6-T10",
+  "epic": "E6",
+  "title": "Per-report insight banner + Reports regression test/screenshot evidence pack",
+  "files": [
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:1608-1707 (home pack reuse for insight)",
+   "apps/web/src/components/openbooks/workbench/InsightsBand.tsx (reuse pattern)",
+   "tests/e2e/reports.spec.ts, tests/e2e/reports-export-h2.spec.ts, tests/e2e/reports-payroll.spec.ts",
+   "convex/reportViews.test.ts (add cases if backend fields changed)"
+  ],
+  "dependsOn": [
+   "E6-T1",
+   "E6-T2",
+   "E6-T3",
+   "E6-T4",
+   "E6-T5",
+   "E6-T6",
+   "E6-T7",
+   "E6-T8",
+   "E6-T9"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E7-1",
+  "epic": "E7",
+  "title": "Surface a typed provenance label from the transactions query",
+  "files": [
+   "convex/coreViews.ts:613",
+   "convex/coreViews.ts:844",
+   "convex/schema.ts:441",
+   "convex/lib/provenance.ts (new)"
+  ],
+  "dependsOn": [],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E7-2",
+  "epic": "E7",
+  "title": "ProvenanceChip component in the workbench design vocabulary",
+  "files": [
+   "apps/web/src/components/openbooks/workbench/ProvenanceChip.tsx (new)",
+   "apps/web/src/components/openbooks/workbench/AiInsightBadge.tsx",
+   "apps/web/src/components/openbooks/workbench/AttentionState.tsx:46",
+   "apps/web/src/components/openbooks/workbench/index.ts"
+  ],
+  "dependsOn": [
+   "E7-1"
+  ],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E7-3",
+  "epic": "E7",
+  "title": "Compact merchant column: move raw description behind an expand toggle",
+  "files": [
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2177",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2188",
+   "apps/web/src/components/openbooks/workbench/OpenBooksDataTable.tsx:450",
+   "tests/e2e/core-screens.spec.ts:63"
+  ],
+  "dependsOn": [
+   "E7-2"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E7-4",
+  "epic": "E7",
+  "title": "Provenance + status column correctness and de-duplication",
+  "files": [
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2270",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:1473",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2134"
+  ],
+  "dependsOn": [
+   "E7-1",
+   "E7-3"
+  ],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E7-5",
+  "epic": "E7",
+  "title": "Mobile-real register: clean card list, priority columns, no horizontal scroll",
+  "files": [
+   "apps/web/src/components/openbooks/workbench/OpenBooksDataTable.tsx:35",
+   "apps/web/src/components/openbooks/workbench/OpenBooksDataTable.tsx:500",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2168",
+   "tests/e2e/core-screens.spec.ts:168"
+  ],
+  "dependsOn": [
+   "E7-3"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E7-6",
+  "epic": "E7",
+  "title": "Bulk recategorize with a chosen category + register keyboard model",
+  "files": [
+   "apps/web/src/components/openbooks/CoreScreens.tsx:1937",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2306",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:880",
+   "apps/web/src/components/openbooks/workbench/InlineCategoryCombobox.tsx"
+  ],
+  "dependsOn": [
+   "E7-3"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E7-7",
+  "epic": "E7",
+  "title": "Split / exclude / recategorize clarity as reverse+repost corrections",
+  "files": [
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2539",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2667",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2693"
+  ],
+  "dependsOn": [
+   "E7-3"
+  ],
+  "size": "S",
+  "risk": "med"
+ },
+ {
+  "id": "E7-8",
+  "epic": "E7",
+  "title": "One compact per-page insight banner above the register (E8 coordination)",
+  "files": [
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2381",
+   "apps/web/src/components/openbooks/workbench/InsightsBand.tsx",
+   "apps/web/src/components/openbooks/workbench/WorkbenchSurface.tsx:110",
+   "convex/coreViews.ts:827"
+  ],
+  "dependsOn": [
+   "E7-1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E7-9",
+  "epic": "E7",
+  "title": "Saved views / filters / group / sort polish + de-duplicate the filter rail",
+  "files": [
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2404",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2288",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:1518",
+   "apps/web/src/components/openbooks/workbench/SavedViews.tsx"
+  ],
+  "dependsOn": [
+   "E7-3",
+   "E7-5",
+   "E7-10"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E7-10",
+  "epic": "E7",
+  "title": "Remove hardcoded demo dates from the register defaults",
+  "files": [
+   "apps/web/src/components/openbooks/CoreScreens.tsx:1627",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:1638",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:1630",
+   "apps/web/src/lib/openbooks/today.ts (new, if needed)"
+  ],
+  "dependsOn": [],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E7-11",
+  "epic": "E7",
+  "title": "Register evidence pack + full gate",
+  "files": [
+   "tests/e2e/core-screens.spec.ts",
+   "tests/e2e/redesign-workbench-harness.spec.ts",
+   "tests/e2e/redesign-e5-consistency.spec.ts",
+   "convex/ledger.ts"
+  ],
+  "dependsOn": [
+   "E7-3",
+   "E7-4",
+   "E7-5",
+   "E7-6",
+   "E7-7",
+   "E7-8",
+   "E7-9",
+   "E7-10"
+  ],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E8-T1",
+  "epic": "E8",
+  "title": "Add a shared server-clock 'today' hook and remove the hardcoded TODAY_ISO anchor",
+  "files": [
+   "apps/web/src/lib/openbooks/today.ts (new)",
+   "apps/web/src/components/openbooks/InsightsScreen.tsx:32 (TODAY_ISO), :77, :406, :639, :903, :1102 (resolveScope), :284/:609/:873/:1075/:1305 (todayISO), :1322-1325 (isDormant)",
+   "apps/web/src/components/openbooks/ReportsScreen.tsx:122 (pattern reference, do not change)"
+  ],
+  "dependsOn": [],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E8-T2",
+  "epic": "E8",
+  "title": "De-hardcode the remaining insights/aging date anchors in ModuleScreens, CoreScreens, and coreViews",
+  "files": [
+   "apps/web/src/components/openbooks/ModuleScreens.tsx:345,348,1221,1268",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:606,1627,1630,1638,1830",
+   "convex/coreViews.ts:12-25 (months),:134,:456"
+  ],
+  "dependsOn": [
+   "E8-T1"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E8-T3",
+  "epic": "E8",
+  "title": "Build the reusable InsightBanner component + a page-insight registry",
+  "files": [
+   "apps/web/src/components/openbooks/workbench/InsightBanner.tsx (new)",
+   "apps/web/src/components/openbooks/workbench/page-insights.ts (new)",
+   "apps/web/src/components/openbooks/workbench/AttentionState.tsx (token vocabulary reuse)",
+   "apps/web/src/components/openbooks/workbench/index.ts (export)",
+   "convex/incomeViews.ts, convex/expensesViews.ts, convex/moduleViews.ts, convex/coreViews.ts (read-model field references only \u2014 no edits)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E8-T4",
+  "epic": "E8",
+  "title": "Wire the InsightBanner into Transactions, Income, Expenses, and the Dashboard",
+  "files": [
+   "apps/web/src/components/openbooks/CoreScreens.tsx:2359-2390 (Transactions surface), dashboard render block",
+   "apps/web/src/components/openbooks/IncomeScreen.tsx",
+   "apps/web/src/components/openbooks/ExpensesScreen.tsx"
+  ],
+  "dependsOn": [
+   "E8-T3",
+   "E8-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E8-T5",
+  "epic": "E8",
+  "title": "Wire the InsightBanner into Contacts, Payroll, and fill the Bills Insights gap",
+  "files": [
+   "apps/web/src/components/openbooks/InsightsScreen.tsx:373-390 (dispatcher), add BillsInsights",
+   "apps/web/src/components/openbooks/ContactsScreen.tsx:75",
+   "apps/web/src/components/openbooks/ModuleScreens.tsx (payroll/bills overview)",
+   "convex/moduleViews.ts (bills.kpis/aging field references \u2014 no edits)"
+  ],
+  "dependsOn": [
+   "E8-T3",
+   "E8-T1",
+   "E8-T2"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E8-T6",
+  "epic": "E8",
+  "title": "Replace fixture-driven insight numbers with real ledger-derived metrics and fence the dev fixture",
+  "files": [
+   "convex/insightsFixtures.ts:56-67 (gate)",
+   "convex/coreViews.ts, convex/incomeViews.ts, convex/expensesViews.ts, convex/moduleViews.ts (provenance audit, comments only)",
+   "apps/web/src/components/openbooks/workbench/page-insights.ts (confirm sources)"
+  ],
+  "dependsOn": [
+   "E8-T3"
+  ],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E8-T7",
+  "epic": "E8",
+  "title": "Redesign + responsive pass on the per-section Insights dashboards for consistency",
+  "files": [
+   "apps/web/src/components/openbooks/workbench/insights/InsightsKpiCard.tsx (InsightsKpiGrid columns)",
+   "apps/web/src/components/openbooks/workbench/insights/InsightsPanel.tsx:58 (split)",
+   "apps/web/src/components/openbooks/workbench/insights/InsightsScope.tsx",
+   "apps/web/src/components/openbooks/workbench/InsightsBand.tsx, MiniCashflowStrip.tsx, InsightsDashboard.tsx (legacy reconcile/retire)",
+   "apps/web/src/components/openbooks/InsightsScreen.tsx (all 6 sections)"
+  ],
+  "dependsOn": [
+   "E8-T5"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E8-T8",
+  "epic": "E8",
+  "title": "AI narrative layer on banners + observations that strictly narrates programmatic numbers",
+  "files": [
+   "apps/web/src/components/openbooks/workbench/InsightBanner.tsx (Explain affordance)",
+   "convex/aiInsights.ts:189-223 (fallback), :244-263 (prompt), :265-295 (parse)",
+   "apps/web/src/components/openbooks/workbench/insights/AiObservationCard.tsx (disclaimer parity)",
+   "apps/web/src/components/openbooks/workbench/AiNarrativePanel.tsx"
+  ],
+  "dependsOn": [
+   "E8-T3",
+   "E8-T4"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E8-T9",
+  "epic": "E8",
+  "title": "e2e + verification pack for banners, the clock fix, and Bills Insights",
+  "files": [
+   "tests/e2e/redesign-e8-insights-banners.spec.ts (new)",
+   "tests/e2e/redesign-e1-insights.spec.ts (regression)",
+   "tests/e2e/redesign-e0-subtabs.spec.ts (Bills\u2192Insights case)",
+   "convex/insightsFixtures.ts (test seed dependency)"
+  ],
+  "dependsOn": [
+   "E8-T4",
+   "E8-T5",
+   "E8-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E9-T1",
+  "epic": "E9",
+  "title": "Dashboard cash + cash-flow correctness: ledger-derived, transfer-aware, reconciliation line",
+  "files": [
+   "convex/coreViews.ts:102",
+   "convex/coreViews.ts:180",
+   "convex/coreViews.ts:201",
+   "convex/coreViews.ts:470",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:239",
+   "docs/finishing/accounting-engine-blueprint.md:293"
+  ],
+  "dependsOn": [],
+  "size": "L",
+  "risk": "high"
+ },
+ {
+  "id": "E9-T2",
+  "epic": "E9",
+  "title": "Kill hardcoded dashboard/insights time windows \u2014 derive every window from a server-clock asOf",
+  "files": [
+   "convex/coreViews.ts:12",
+   "convex/coreViews.ts:456",
+   "apps/web/src/components/openbooks/InsightsScreen.tsx:32",
+   "apps/web/src/components/openbooks/InsightsScreen.tsx:1324",
+   "convex/agentToolQueries.ts:35",
+   "docs/finishing/accounting-engine-blueprint.md:280"
+  ],
+  "dependsOn": [
+   "E9-T1"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E9-T3",
+  "epic": "E9",
+  "title": "CFO advisory aggregate: compute grounded runway/burn, trend, expense-creep, concentration, forecast, tax set-aside from the ledger",
+  "files": [
+   "convex/coreViews.ts:320",
+   "convex/incomeViews.ts:350",
+   "convex/reportViews.ts:613",
+   "convex/aiInsights.ts:303"
+  ],
+  "dependsOn": [
+   "E9-T1"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E9-T4",
+  "epic": "E9",
+  "title": "CFO advisory engine: provider-agnostic narration with deterministic fallback (never Bedrock-only)",
+  "files": [
+   "convex/aiInsights.ts:156",
+   "convex/aiChatRuntime.ts:124",
+   "convex/aiProvider.ts:44",
+   "convex/aiProvider.ts:83"
+  ],
+  "dependsOn": [
+   "E9-T3"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E9-T5",
+  "epic": "E9",
+  "title": "Advisor surface on the dashboard: 'How am I doing / what should I worry about' with drill-down + real-time refresh",
+  "files": [
+   "apps/web/src/components/openbooks/CoreScreens.tsx:239",
+   "apps/web/src/components/openbooks/workbench/AiNarrativePanel.tsx:42",
+   "apps/web/src/components/openbooks/dashboard/DashboardViz.tsx:1",
+   "convex/coreViews.ts:984"
+  ],
+  "dependsOn": [
+   "E9-T4"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E9-T6",
+  "epic": "E9",
+  "title": "Weekly digest email via Plunk: compose grounded summary, cron trigger, settings-gated, idempotent",
+  "files": [
+   "packages/email/src/plunk.ts:28",
+   "packages/email/src/index.ts:1",
+   "convex/crons.ts:1",
+   "convex/schema.ts:34",
+   "convex/aiCfoAggregate.ts:1"
+  ],
+  "dependsOn": [
+   "E9-T3"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E9-T7",
+  "epic": "E9",
+  "title": "Advisor Ask-AI tools: getRunway + getAdvisories so chat answers 'how am I doing / what should I worry about'",
+  "files": [
+   "convex/agentTools.ts:41",
+   "convex/agentTools.ts:304",
+   "convex/agentToolQueries.ts:1",
+   "convex/agent.ts:24",
+   "convex/aiChatRuntime.ts:26"
+  ],
+  "dependsOn": [
+   "E9-T4"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E9-T8",
+  "epic": "E9",
+  "title": "Revenue-by-stream view: stream taxonomy over income accounts + dashboard widget reconciling to P&L",
+  "files": [
+   "convex/schema.ts:1",
+   "convex/incomeViews.ts:315",
+   "convex/coreViews.ts:160",
+   "apps/web/src/components/openbooks/dashboard/DashboardViz.tsx:324",
+   "apps/web/src/components/openbooks/CoreScreens.tsx:239"
+  ],
+  "dependsOn": [
+   "E9-T2"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E9-T9",
+  "epic": "E9",
+  "title": "Anomaly + duplicate detection signal: ground the 'what should I worry about' warnings",
+  "files": [
+   "convex/aiCfoAggregate.ts:1",
+   "convex/coreViews.ts:718",
+   "convex/incomeViews.ts:380"
+  ],
+  "dependsOn": [
+   "E9-T3"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E10-T1",
+  "epic": "E10",
+  "title": "End-to-end verify the payroll lifecycle on a multi-currency roster (tests + screenshots)",
+  "files": [
+   "convex/payroll.test.ts",
+   "convex/payroll.ts (runDetail:129, approveRun:428, markRunPaid:643)",
+   "convex/payrollMath.ts (currencyTotals:82, runBaseTotalMinor:77)",
+   "tests/e2e/reports-payroll.spec.ts:87"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E10-T2",
+  "epic": "E10",
+  "title": "Fix the date-blind, token-narrow, currency-blind payroll bank matcher (RC10 double-count)",
+  "files": [
+   "convex/payroll.ts:501-519 (findMatchingBankTxn)",
+   "convex/payroll.ts:582-591 (txn consume)",
+   "convex/payroll.ts:597-630 (markLinePaid)",
+   "convex/payroll.ts:643-687 (markRunPaid)",
+   "convex/schema.ts (transactions: date/amountMinor/review fields)",
+   "docs/finishing/accounting-engine-blueprint.md:334-336 (RC10)"
+  ],
+  "dependsOn": [
+   "E10-T1"
+  ],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E10-T3",
+  "epic": "E10",
+  "title": "Multi-currency FX correctness at settlement (day-of-pay rate + gain/loss)",
+  "files": [
+   "convex/payroll.ts:521-594 (settleLine)",
+   "convex/payroll.ts:597-630 (markLinePaid)",
+   "convex/payroll.ts:643-687 (markRunPaid)",
+   "convex/payrollMath.ts:37 (baseEquivalentMinor), :64 (computeRunLine)",
+   "convex/schema.ts:683-705 (payrollRunLines)",
+   "docs/finishing/accounting-engine-blueprint.md:302-309 (RC8 multi-currency)"
+  ],
+  "dependsOn": [
+   "E10-T2"
+  ],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E10-T4",
+  "epic": "E10",
+  "title": "Surface payroll as the largest expense line in Expenses + reconcile to Reports",
+  "files": [
+   "convex/expensesViews.ts:240-260",
+   "convex/reportViews.ts:734-771 (payroll summary)",
+   "convex/payroll.ts:445-461 (approveRun posts to 5000/2200)",
+   "apps/web/src/components/openbooks/ModuleScreens.tsx (Expenses screen consumer)"
+  ],
+  "dependsOn": [
+   "E10-T1"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E10-T5",
+  "epic": "E10",
+  "title": "Pay schedules + safe auto-draft UI and per-currency statements",
+  "files": [
+   "apps/web/src/components/openbooks/ModuleScreens.tsx:1242-1423 (PayrollScreen), 1468 (PayrollEmployees), 1520 (PayrollRuns)",
+   "convex/payroll.ts:738-799 (paySchedule/setPaySchedule), :810-845 (autoDraftScheduledRuns)",
+   "convex/moduleViews.ts:659-681 (statementRows/statementCsv)",
+   "convex/crons.ts:15-18",
+   "tests/e2e/reports-payroll.spec.ts"
+  ],
+  "dependsOn": [
+   "E10-T1",
+   "E10-T3"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E10-T6",
+  "epic": "E10",
+  "title": "Payroll insight banner (run-rate / headcount cost / FX exposure) + remove hardcoded dates",
+  "files": [
+   "convex/moduleViews.ts:7 (today), :776-808 (payroll block)",
+   "apps/web/src/components/openbooks/ModuleScreens.tsx:43 (AiInsightBadge import), :1221, :1268, :1377-1423 (PayrollScreen body)",
+   "apps/web/src/components/openbooks/workbench/InsightsBand.tsx (existing pattern)",
+   "convex/moduleViews.test.ts"
+  ],
+  "dependsOn": [
+   "E10-T1",
+   "E10-T4"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E10-T7",
+  "epic": "E10",
+  "title": "Harden default-entity resolution + settlement bank selection (remove demo-slug coupling)",
+  "files": [
+   "convex/payroll.ts:484-494 (resolveSettlementBankAccount), :693-722 (statement)",
+   "convex/authz.ts (requireWorkspacePermission)",
+   "convex/payroll.test.ts"
+  ],
+  "dependsOn": [
+   "E10-T1"
+  ],
+  "size": "S",
+  "risk": "med"
+ },
+ {
+  "id": "E11-T1",
+  "epic": "E11",
+  "title": "Kill the demo-slug fallback so demo data can't leak into real reads",
+  "files": [
+   "convex/coreViews.ts",
+   "convex/incomeViews.ts",
+   "convex/expensesViews.ts",
+   "convex/moduleViews.ts",
+   "convex/reportViews.ts",
+   "convex/activeEntity.ts (new)",
+   "convex/entities.ts",
+   "docs/finishing/accounting-engine-blueprint.md (cite :346)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E11-T2",
+  "epic": "E11",
+  "title": "Mark demo entities/workspaces explicitly and add a demoWorkspaces registry",
+  "files": [
+   "convex/schema.ts (workspaces table ~line 60-66 area; entities.isDemo at :72)",
+   "convex/demoWorkspace.ts (new)",
+   "convex/activeEntity.ts (from E11-T1)"
+  ],
+  "dependsOn": [
+   "E11-T1"
+  ],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E11-T3",
+  "epic": "E11",
+  "title": "Per-workspace 'Reset to factory' (scoped, confirmed, audited) + re-runnable onboarding",
+  "files": [
+   "convex/workspaceReset.ts (new)",
+   "convex/realTestReset.ts (reuse deleteBatch/batching pattern; do NOT change its global behavior)",
+   "convex/onboarding.ts (ensureChecklist :84, markChecklistStep :351)",
+   "convex/authz.ts (requireWorkspacePermission, 'workspace.reset')",
+   "apps/web/src/components/openbooks/settings/DataSection.tsx (RealTestResetPanel :94-176)"
+  ],
+  "dependsOn": [
+   "E11-T1",
+   "E11-T2"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E11-T4",
+  "epic": "E11",
+  "title": "Provision an isolated public demo workspace + seed it (separate from any real workspace)",
+  "files": [
+   "convex/publicDemo.ts (new)",
+   "convex/seedDemo.ts (extract shared seed routine; resetAndSeed :202, resetDemoEntity :781, setupDemoOperationTables :822)",
+   "convex/demoWorkspace.ts (from E11-T2)",
+   "convex/schema.ts (workspaces.isDemo from E11-T2)"
+  ],
+  "dependsOn": [
+   "E11-T2"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E11-T5",
+  "epic": "E11",
+  "title": "Anonymous demo session + read-only public /demo route (no login)",
+  "files": [
+   "apps/web/src/app/demo/page.tsx (new)",
+   "apps/web/src/components/openbooks/AppShell.tsx (AuthenticatedAppShell :120-127, demo bypass)",
+   "apps/web/src/app/page.tsx (:184, :380, :519)",
+   "convex/publicDemoSession.ts (new)",
+   "convex/session.ts (viewer :5)",
+   "convex/authz.ts (resolve demo identity)"
+  ],
+  "dependsOn": [
+   "E11-T4"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E11-T6",
+  "epic": "E11",
+  "title": "Server-side read-only guard so the demo (and any demo identity) cannot write",
+  "files": [
+   "convex/demoWorkspace.ts (assertNotDemoWrite)",
+   "convex/authz.ts (requireWorkspacePermission / requireAnyWorkspacePermission :236)",
+   "convex/ledger.ts (posting path \u2014 postLedgerEntryCore :345, postEntry)",
+   "convex/pipeline.ts (routeTransaction)",
+   "convex/connections.ts",
+   "convex/rules.ts",
+   "convex/onboarding.ts",
+   "convex/entities.ts",
+   "convex/invoices.ts",
+   "convex/bills.ts",
+   "convex/payroll.ts"
+  ],
+  "dependsOn": [
+   "E11-T4",
+   "E11-T5"
+  ],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E11-T7",
+  "epic": "E11",
+  "title": "Harden the existing global realTestReset with an auditEvents record + workspace-scope safety copy",
+  "files": [
+   "convex/realTestReset.ts (startFullRebuild :115, finalizeZ360Only :222, buildPreview :84)",
+   "apps/web/src/components/openbooks/settings/DataSection.tsx (:94-176)",
+   "docs/finishing/whats-left.md or a short runbook note"
+  ],
+  "dependsOn": [
+   "E11-T3"
+  ],
+  "size": "S",
+  "risk": "med"
+ },
+ {
+  "id": "E11-T8",
+  "epic": "E11",
+  "title": "Scheduled cron to reset+re-seed the public demo so prospect edits never persist",
+  "files": [
+   "convex/crons.ts (:7 interval, :15 cron)",
+   "convex/publicDemo.ts (resetAndSeedPublicDemo from E11-T4)",
+   "convex/demoWorkspace.ts"
+  ],
+  "dependsOn": [
+   "E11-T4"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E11-T9",
+  "epic": "E11",
+  "title": "Full-account data export ('your books are a file you own')",
+  "files": [
+   "convex/exportAccount.ts (new)",
+   "convex/secretBox.ts (confirm what must be stripped)",
+   "apps/web/src/components/openbooks/settings/DataSection.tsx (:20, :38-70)",
+   "apps/web/src/lib/openbooks/reports-export.ts (:483, downloadReportFile :503)"
+  ],
+  "dependsOn": [
+   "E11-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E11-T10",
+  "epic": "E11",
+  "title": "e2e + invariants: reset\u2192re-onboard\u2192demo isolation\u2192export, plus docs",
+  "files": [
+   "apps/web e2e test dir (e.g. apps/web/tests or playwright config)",
+   "convex (invariant test)",
+   "docs/finishing/whats-left.md / a new data-lifecycle doc",
+   "apps/web/src/app/page.tsx (:544)"
+  ],
+  "dependsOn": [
+   "E11-T3",
+   "E11-T5",
+   "E11-T6",
+   "E11-T9"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E12-T1",
+  "epic": "E12",
+  "title": "Shared Settings layout primitives (page header, save-bar, section shell, empty state)",
+  "files": [
+   "apps/web/src/components/openbooks/settings/_shell.tsx (new)",
+   "apps/web/src/components/openbooks/SettingsScreen.tsx",
+   "apps/web/src/components/openbooks/settings/TaxSection.tsx",
+   "apps/web/src/components/openbooks/settings/NotificationsSection.tsx",
+   "apps/web/src/components/openbooks/settings/DataSection.tsx",
+   "apps/web/src/lib/openbooks/settings-sections.ts"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E12-T2",
+  "epic": "E12",
+  "title": "Edit-a-business: entities.updateProfile mutation + merge legal/tax fields into the Businesses card",
+  "files": [
+   "convex/entities.ts",
+   "apps/web/src/components/openbooks/settings/BusinessesSection.tsx",
+   "tests/e2e/settings.spec.ts"
+  ],
+  "dependsOn": [
+   "E12-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E12-T3",
+  "epic": "E12",
+  "title": "Categories as a chart-of-accounts-friendly manager (move group, account-number + normal-side affordances)",
+  "files": [
+   "apps/web/src/components/openbooks/settings/CategoriesSection.tsx",
+   "convex/categories.ts",
+   "convex/schema.ts (read ledgerAccounts only)",
+   "tests/e2e/settings.spec.ts"
+  ],
+  "dependsOn": [
+   "E12-T1"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E12-T4",
+  "epic": "E12",
+  "title": "Rules builder: ordered condition GROUPS + 'test all active rules' runner",
+  "files": [
+   "apps/web/src/components/openbooks/settings/RulesSection.tsx",
+   "convex/rules.ts",
+   "convex/schema.ts (rules table)",
+   "convex/rules.test.ts (new or extend)",
+   "tests/e2e/settings.spec.ts"
+  ],
+  "dependsOn": [
+   "E12-T1"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E12-T5",
+  "epic": "E12",
+  "title": "Notifications: editable delivery email, weekly-digest cadence, honest Plunk state + deep-link to Connections",
+  "files": [
+   "apps/web/src/components/openbooks/settings/NotificationsSection.tsx",
+   "convex/settings.ts",
+   "convex/schema.ts (userSettings/notification fields \u2014 additive only)",
+   "tests/e2e/settings.spec.ts"
+  ],
+  "dependsOn": [
+   "E12-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E12-T6",
+  "epic": "E12",
+  "title": "Team: role change, member removal, surfaced invite revoke \u2014 with last-owner guard",
+  "files": [
+   "convex/team.ts",
+   "apps/web/src/components/openbooks/settings/TeamSection.tsx",
+   "convex/schema.ts (read workspaceMembers/invites)",
+   "tests/e2e/settings.spec.ts"
+  ],
+  "dependsOn": [
+   "E12-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E12-T7",
+  "epic": "E12",
+  "title": "Audit log: real paginated, server-filtered query (drop the 200-row in-memory cap)",
+  "files": [
+   "convex/audit.ts (new) or convex/moduleViews.ts",
+   "apps/web/src/components/openbooks/settings/AuditSection.tsx",
+   "tests/e2e/settings.spec.ts"
+  ],
+  "dependsOn": [
+   "E12-T1"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E12-T8",
+  "epic": "E12",
+  "title": "App-shell scope switcher: 'All businesses' + per-entity, with active-entity context contract for E5",
+  "files": [
+   "apps/web/src/components/openbooks/AppShell.tsx",
+   "apps/web/src/lib/openbooks/active-entity.tsx",
+   "apps/web/src/components/openbooks/SettingsScreen.tsx",
+   "tests/e2e/settings.spec.ts"
+  ],
+  "dependsOn": [
+   "E12-T1"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E12-T9",
+  "epic": "E12",
+  "title": "App-shell responsiveness + nav polish (sidebar, header, mobile sheet, settings subnav)",
+  "files": [
+   "apps/web/src/components/openbooks/AppShell.tsx",
+   "apps/web/src/components/openbooks/SettingsScreen.tsx",
+   "tests/e2e/settings.spec.ts"
+  ],
+  "dependsOn": [
+   "E12-T1",
+   "E12-T8"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E12-T10",
+  "epic": "E12",
+  "title": "Settings e2e + a11y regression pack covering every section's real actions",
+  "files": [
+   "tests/e2e/settings.spec.ts",
+   "apps/web/src/components/openbooks/settings/* (testids only, no behavior change)"
+  ],
+  "dependsOn": [
+   "E12-T2",
+   "E12-T3",
+   "E12-T4",
+   "E12-T5",
+   "E12-T6",
+   "E12-T7",
+   "E12-T8"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E13-T1",
+  "epic": "E13",
+  "title": "Author the openbooks-self-host AI-agent skill (SKILL.md + provisioning steps)",
+  "files": [
+   ".claude/skills/openbooks-self-host/SKILL.md (new)",
+   ".claude/skills/openbooks-self-host/reference/env-map.md (new)",
+   ".agents/skills/frontend-design/SKILL.md (format reference, read-only)",
+   "scripts/dev-full.mjs (orchestrated, read-only)",
+   "scripts/preflight.mjs (orchestrated, read-only)",
+   "scripts/register-stripe-webhook.mjs (orchestrated, read-only)"
+  ],
+  "dependsOn": [
+   "E13-T2",
+   "E13-T6"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E13-T2",
+  "epic": "E13",
+  "title": "pnpm setup \u2014 one-shot bootstrap that writes .env.local, mints keys, and sets Convex env",
+  "files": [
+   "scripts/setup.mjs (new)",
+   "package.json (add setup script)",
+   ".env.example (read; source of var list)",
+   "convex/secretBox.ts (consumer of OPENBOOKS_SECRET_ENCRYPTION_KEY, read-only)",
+   "scripts/preflight.mjs (env-parser + env-name conventions, read-only)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E13-T3",
+  "epic": "E13",
+  "title": "Add a `setup` mode to dev:full and document one-command local boot honestly",
+  "files": [
+   "scripts/dev-full.mjs (extend main(), assertCloudConvex, dry-run output)",
+   "README.md (Local Setup section)",
+   "docs/finishing/how-openbooks-works.md (Running it locally \u2014 align wording)"
+  ],
+  "dependsOn": [
+   "E13-T2"
+  ],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E13-T4",
+  "epic": "E13",
+  "title": "Generalize preflight for any AI provider while keeping sandbox/test enforcement",
+  "files": [
+   "scripts/preflight.mjs (requiredEnv split, provider dispatch, Plaid/Stripe skip-when-absent)",
+   "convex/aiProviderRegistry.ts (provider list source of truth, read-only)",
+   ".env.example (provider env names, read-only)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E13-T5",
+  "epic": "E13",
+  "title": "Write the security-posture doc and a public /security page, verified against code",
+  "files": [
+   "docs/security/security-posture.md (new)",
+   "apps/web/src/app/security/page.tsx (new)",
+   "convex/secretBox.ts (cited)",
+   "convex/connections.ts (keyPreview/fingerprint return shape \u2014 cited & verified)",
+   "convex/authz.ts (cited)",
+   "apps/web/src/app/page.tsx (add link)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E13-T6",
+  "epic": "E13",
+  "title": "Prerequisites + env checklist (doc + machine-checkable) kept in sync with preflight",
+  "files": [
+   "docs/self-host/prerequisites.md (new)",
+   "docs/self-host/env-checklist.md (new)",
+   "scripts/check-env-docs.mjs (new)",
+   "package.json (optional check:env-docs script)",
+   ".env.example (source of var names, read-only)",
+   "docs/initiation/access-and-questions.md (generalize from, read-only)"
+  ],
+  "dependsOn": [
+   "E13-T4"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E13-T7",
+  "epic": "E13",
+  "title": "Public /setup instructions page surfacing the live redirect/webhook URLs",
+  "files": [
+   "apps/web/src/app/setup/page.tsx (new)",
+   "convex/connections.ts (webhookConfig, read-only \u2014 already surfaces the URLs)",
+   "apps/web/src/components/openbooks/settings/ConnectionsSection.tsx (copy-row pattern reference, read-only)",
+   "apps/web/src/app/page.tsx (add Self-host link)"
+  ],
+  "dependsOn": [
+   "E13-T5",
+   "E13-T6"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E13-T8",
+  "epic": "E13",
+  "title": "Generic-ize deployment docs, add a secret-scan gate, and a deploy-to-prod runbook",
+  "files": [
+   "docs/self-host/deploy.md (new)",
+   "docs/deployment/vercel.md (refactor/label as reference)",
+   "docs/deployment/convex-auth-plunk.md (refactor/label as reference)",
+   "scripts/scan-secrets.mjs (new)",
+   "package.json (scan:secrets script)",
+   "scripts/register-stripe-webhook.mjs (referenced in deploy runbook, read-only)"
+  ],
+  "dependsOn": [
+   "E13-T5"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E13-T9",
+  "epic": "E13",
+  "title": "End-to-end self-host dry-run validation + final cross-check",
+  "files": [
+   "scripts/setup.mjs (exercise)",
+   "scripts/preflight.mjs (exercise)",
+   "scripts/dev-full.mjs (exercise)",
+   "scripts/check-env-docs.mjs (exercise)",
+   "scripts/scan-secrets.mjs (exercise)",
+   "apps/web/src/app/setup/page.tsx (exercise)",
+   "apps/web/src/app/security/page.tsx (exercise)"
+  ],
+  "dependsOn": [
+   "E13-T1",
+   "E13-T2",
+   "E13-T3",
+   "E13-T4",
+   "E13-T5",
+   "E13-T6",
+   "E13-T7",
+   "E13-T8"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E14-T1",
+  "epic": "E14",
+  "title": "Accounting invariant test: per-currency trial balance & balanced-entry property",
+  "files": [
+   "convex/ledger.test.ts:10",
+   "convex/ledger.ts:345",
+   "convex/ledger.ts:387",
+   "convex/ledger.ts:563",
+   "convex/ledger.ts:650",
+   "convex/reportViews.ts:303",
+   "docs/finishing/accounting-engine-blueprint.md:302"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E14-T2",
+  "epic": "E14",
+  "title": "Stripe clearing/in-transit zero-out invariant + no-fixtures-on-real-books test",
+  "files": [
+   "convex/stripeSingleCounting.test.ts:1",
+   "convex/stripe.ts:1208",
+   "convex/stripe.ts:1371",
+   "convex/stripe.ts:1824",
+   "convex/stripe.ts:1851",
+   "docs/finishing/accounting-engine-blueprint.md:221",
+   "docs/finishing/accounting-engine-blueprint.md:256"
+  ],
+  "dependsOn": [
+   "E14-T1"
+  ],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E14-T3",
+  "epic": "E14",
+  "title": "Reversal-is-exact-inverse & post-truncation balance invariant tests",
+  "files": [
+   "convex/ledger.ts:160",
+   "convex/ledger.ts:391",
+   "convex/reportViews.ts:494",
+   "convex/reportViews.ts:303",
+   "docs/finishing/accounting-engine-blueprint.md:268"
+  ],
+  "dependsOn": [
+   "E14-T1"
+  ],
+  "size": "M",
+  "risk": "high"
+ },
+ {
+  "id": "E14-T4",
+  "epic": "E14",
+  "title": "Committed label-safe categorization gold dataset + eval runner with threshold gate",
+  "files": [
+   "convex/ai.ts:1088",
+   "convex/ai.ts:412",
+   "convex/ai.ts:442",
+   "convex/schema.ts:380",
+   "scripts/h3-holdout-categorization-eval.mjs:30",
+   "tests/e2e/ai-eval-h3.spec.ts:18"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E14-T5",
+  "epic": "E14",
+  "title": "Authz coverage audit matrix + automated unauthenticated/cross-workspace rejection tests",
+  "files": [
+   "convex/authz.ts:130",
+   "convex/authz.ts:140",
+   "convex/authz.test.ts:46",
+   "convex/entities.ts",
+   "convex/connections.ts",
+   "convex/coreViews.ts",
+   "convex/http.ts:96"
+  ],
+  "dependsOn": [],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E14-T6",
+  "epic": "E14",
+  "title": "Security audit pass: secret handling, encryption-at-rest, webhook verification, git-history & dependency scan",
+  "files": [
+   "convex/secretBox.ts:56",
+   "convex/connections.ts",
+   "convex/http.ts:144",
+   "convex/http.ts:164",
+   "convex/plaidWebhook.ts:73",
+   "convex/plaidWebhook.ts:126",
+   ".gitignore"
+  ],
+  "dependsOn": [
+   "E14-T5"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E14-T7",
+  "epic": "E14",
+  "title": "E2E for new go-live flows on disposable books: onboarding, BYO-key connections, reset, portfolio scope, reconciliation",
+  "files": [
+   "tests/e2e/onboarding.spec.ts:16",
+   "tests/e2e/helpers.ts:39",
+   "convex/realTestReset.ts:115",
+   "convex/realTestReset.ts:222",
+   "playwright.config.ts:56"
+  ],
+  "dependsOn": [
+   "E14-T4"
+  ],
+  "size": "L",
+  "risk": "med"
+ },
+ {
+  "id": "E14-T8",
+  "epic": "E14",
+  "title": "CI gate: extend pnpm verify with convex tsc, add e2e job, and document the gate",
+  "files": [
+   "package.json",
+   "convex/tsconfig.json",
+   "vitest.config.ts:6",
+   "playwright.config.ts:45",
+   "README.md"
+  ],
+  "dependsOn": [
+   "E14-T1",
+   "E14-T2",
+   "E14-T3",
+   "E14-T4",
+   "E14-T5",
+   "E14-T7"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E15-T1",
+  "epic": "E15",
+  "title": "Relicense to MIT everywhere: replace the AGPL-3.0 LICENSE file with MIT, flip README/vision/AGENTS, verify the landing's MIT claims",
+  "files": [
+   "LICENSE (relicense AGPL-3.0 -> MIT)",
+   "apps/web/src/app/page.tsx (lines 71-79 compareRows, ~193-203 hero stats, ~414-468 why-free section, ~530-545 footer — verify MIT claims are correct)",
+   "apps/web/src/components/openbooks/LandingPrototypeInteractions.tsx (faqs array lines 49-70 — verify MIT)",
+   "README.md (line 62: AGPL-3.0-only -> MIT)",
+   "AGENTS.md + docs/product/01-vision-and-scope.md (flip AGPL -> MIT)"
+  ],
+  "dependsOn": [],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E15-T2",
+  "epic": "E15",
+  "title": "Correct false/stale landing claims: Docker path, history window, demo CTAs, repo name",
+  "files": [
+   "apps/web/src/app/page.tsx (hero ~24, ~184, ~195, why-free ~429/459, footer ~519/540)",
+   "apps/web/src/components/openbooks/LandingPrototypeInteractions.tsx (faqs lines 49-70)",
+   "README.md (64-105 real setup)",
+   "docs/deployment/vercel.md"
+  ],
+  "dependsOn": [
+   "E15-T6"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E15-T3",
+  "epic": "E15",
+  "title": "Build the in-app conceptual Help Center for non-accountant owners",
+  "files": [
+   "apps/web/src/app/help/page.tsx (new)",
+   "apps/web/src/app/help/[topic]/page.tsx (new, optional)",
+   "apps/web/src/components/openbooks/ (new help components if needed; reuse primitives.tsx)",
+   "docs/finishing/how-openbooks-works.md (source)",
+   "docs/finishing/accounting-engine-blueprint.md Part 1 (source)",
+   "apps/web/src/app/page.tsx (add footer Help link)"
+  ],
+  "dependsOn": [
+   "E15-T1"
+  ],
+  "size": "L",
+  "risk": "low"
+ },
+ {
+  "id": "E15-T4",
+  "epic": "E15",
+  "title": "Rewrite README to lead with the portfolio differentiator, real quickstart, and an honest status table",
+  "files": [
+   "README.md",
+   "docs/finishing/accounting-engine-blueprint.md (Part 0 status, Part 7 differentiators)",
+   "docs/product/01-vision-and-scope.md (positioning, competitive table)",
+   ".env.example (key list)",
+   "apps/web/public/prototype-assets/shots/ (screenshots)"
+  ],
+  "dependsOn": [
+   "E15-T1"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E15-T5",
+  "epic": "E15",
+  "title": "Author the setup-instructions + security-posture page (prerequisites and the 3 manual steps)",
+  "files": [
+   "apps/web/src/app/setup/page.tsx (new) or docs/gtm/setup-instructions.md (new)",
+   "docs/security/secrets.md (source)",
+   "docs/deployment/vercel.md (source)",
+   ".env.example (key list)",
+   "apps/web/src/components/openbooks/AddBankSheet.tsx (manual-step reference)",
+   "apps/web/src/components/openbooks/StripeConnectSheet.tsx (manual-step reference)"
+  ],
+  "dependsOn": [
+   "E15-T4"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E15-T6",
+  "epic": "E15",
+  "title": "Specify and wire the public no-login demo entry point (coordinate E11)",
+  "files": [
+   "apps/web/src/app/demo/page.tsx (new, if front-end entry)",
+   "apps/web/src/app/sign-in/page.tsx (add a demo entry button, optional)",
+   "convex/seedDemo.ts (demo data source \u2014 reference)",
+   "convex/realTestReset.ts (reset/isolation \u2014 reference)",
+   "apps/web/src/app/page.tsx (CTAs, coordinated with E15-T2)"
+  ],
+  "dependsOn": [],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E15-T7",
+  "epic": "E15",
+  "title": "Draft the 'Why I'm building this' one-pager with marked Ansar-input slots",
+  "files": [
+   "docs/gtm/why-openbooks.md (new)",
+   "apps/web/src/app/why/page.tsx (new, optional in-app version)",
+   "docs/product/01-vision-and-scope.md (source: problem/positioning)",
+   "docs/finishing/accounting-engine-blueprint.md Part 7 (differentiators)"
+  ],
+  "dependsOn": [
+   "E15-T1"
+  ],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E15-T8",
+  "epic": "E15",
+  "title": "Write the 3-minute demo-video script with shot list and captions",
+  "files": [
+   "docs/gtm/demo-video-script.md (new)",
+   "docs/finishing/how-openbooks-works.md ('what to test, in order' \u2014 narration source)",
+   "docs/finishing/accounting-engine-blueprint.md Part 8 (arc)",
+   "convex/seedDemo.ts (what the demo will show)"
+  ],
+  "dependsOn": [
+   "E15-T6"
+  ],
+  "size": "M",
+  "risk": "low"
+ },
+ {
+  "id": "E15-T9",
+  "epic": "E15",
+  "title": "Produce outreach messaging templates (Show HN, social thread, owner DM, README blurb)",
+  "files": [
+   "docs/gtm/outreach-templates.md (new)",
+   "docs/finishing/accounting-engine-blueprint.md Part 8 (messaging spec)",
+   "docs/product/01-vision-and-scope.md (competitive positioning)",
+   "README.md (status table for consistency)"
+  ],
+  "dependsOn": [
+   "E15-T4",
+   "E15-T6"
+  ],
+  "size": "S",
+  "risk": "low"
+ },
+ {
+  "id": "E15-T10",
+  "epic": "E15",
+  "title": "Add governance files and a GitHub publication + secret-scan checklist; convert the backlog to labeled issues",
+  "files": [
+   "CONTRIBUTING.md (new)",
+   "SECURITY.md (new)",
+   "CODE_OF_CONDUCT.md (new)",
+   ".github/ISSUE_TEMPLATE/ (new)",
+   ".github/PULL_REQUEST_TEMPLATE.md (new)",
+   "docs/gtm/github-publication-checklist.md (new)",
+   "scripts/ (new issue-seeding script)",
+   "docs/security/secrets.md (source)",
+   "AGENTS.md (rules to encode)"
+  ],
+  "dependsOn": [
+   "E15-T1",
+   "E15-T4"
+  ],
+  "size": "M",
+  "risk": "med"
+ },
+ {
+  "id": "E15-T11",
+  "epic": "E15",
+  "title": "Full landing/GTM review pass: consistency, responsiveness, and honest-claims audit",
+  "files": [
+   "apps/web/src/app/page.tsx",
+   "apps/web/src/components/openbooks/LandingPrototypeInteractions.tsx",
+   "apps/web/src/app/help/page.tsx",
+   "apps/web/src/app/setup/page.tsx (or docs/gtm/setup-instructions.md)",
+   "README.md",
+   "docs/gtm/why-openbooks.md",
+   "docs/gtm/outreach-templates.md",
+   "docs/gtm/demo-video-script.md",
+   "docs/gtm/github-publication-checklist.md"
+  ],
+  "dependsOn": [
+   "E15-T1",
+   "E15-T2",
+   "E15-T3",
+   "E15-T4",
+   "E15-T5",
+   "E15-T6",
+   "E15-T7"
+  ],
+  "size": "M",
+  "risk": "low"
+ }
+]

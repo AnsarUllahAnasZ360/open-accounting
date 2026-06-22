@@ -176,8 +176,13 @@ describe("M8 Stripe projection", () => {
 
     expect(verification.transactions).toHaveLength(25);
 	    expect(verification.invoices).toHaveLength(3);
-	    expect(verification.payouts.some((payout) => payout.status === "reconciled")).toBe(true);
+	    // E7.1: a clean payout now starts `pending` (Dr In-Transit / Cr Clearing) and
+	    // only becomes `reconciled` once a Plaid deposit is matched. The drifted one
+	    // is still flagged `mismatch`.
+	    expect(verification.payouts.some((payout) => payout.status === "pending")).toBe(true);
 	    expect(verification.payouts.some((payout) => payout.status === "mismatch")).toBe(true);
+	    expect(verification.payouts.every((payout) => payout.status !== "reconciled")).toBe(true);
+	    expect(verification.payouts.every((payout) => payout.inTransitAccountId)).toBe(true);
 	    expect(verification.payoutLines).toHaveLength(fixture.payouts.reduce((sum, payout) => sum + payout.lines.length, 0));
 	    expect(verification.payoutLines.every((line) => line.grossMinor - line.feeMinor === line.netMinor)).toBe(true);
 	    expect(verification.inboxItems.some((item) => item.kind === "payout_mismatch")).toBe(true);
@@ -221,6 +226,50 @@ describe("M8 Stripe projection", () => {
       status: "paid",
       amountPaidMinor: invoice.totalMinor,
       source: "stripe",
+    });
+  });
+
+  it("routes negative Stripe invoice totals to review instead of crashing sync", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupWorkspace(t);
+    const session = authed(t, ids.userId);
+    const fixture = buildFixtureProjection();
+
+    const result = await session.mutation(applyProjectionRef, {
+      entityId: ids.entityId,
+      projection: {
+        ...fixture,
+        income: [],
+        invoices: [
+          {
+            ...fixture.invoices[0],
+            stripeInvoiceId: "in_negative_credit_001",
+            number: "NEG-CREDIT-001",
+            totalMinor: -2_500,
+            amountPaidMinor: 0,
+          },
+        ],
+        payouts: [],
+      },
+    });
+
+    expect(result.invoicesCreated).toBe(0);
+    expect(result.inboxItemsCreated).toBe(1);
+
+    const verification = await t.run(async (ctx) => {
+      const [invoices, inboxItems] = await Promise.all([
+        ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", ids.entityId)).collect(),
+        ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", ids.entityId)).collect(),
+      ]);
+      return { invoices, inboxItems };
+    });
+
+    expect(verification.invoices).toHaveLength(0);
+    expect(verification.inboxItems).toHaveLength(1);
+    expect(verification.inboxItems[0]).toMatchObject({
+      kind: "question",
+      status: "open",
+      payloadSummary: expect.stringContaining("negative total"),
     });
   });
 
@@ -306,12 +355,84 @@ describe("M8 Stripe projection", () => {
     });
 
     expect(verification.payouts).toHaveLength(1);
-    expect(verification.payouts[0]).toMatchObject({ payoutId: "po_webhook_001", status: "reconciled" });
+    expect(verification.payouts[0]).toMatchObject({ payoutId: "po_webhook_001", status: "pending" });
     expect(verification.payoutLines).toHaveLength(2);
     expect(verification.payoutLines.reduce((sum, line) => sum + line.netMinor, 0)).toBe(9_700);
     expect(verification.debitMinor).toBe(verification.creditMinor);
     expect(verification.auditActions).toContain("system.sync.stripe.ledger_entry.posted");
     expect(verification.systemActors).toHaveLength(1);
+  });
+
+  it("syncs a manual payout webhook as a payout total when Stripe cannot list payout balance transactions", async () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", ["sk", "test", "webhook"].join("_"));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/payouts/po_manual_001")) {
+        return new Response(
+          JSON.stringify({
+            id: "po_manual_001",
+            amount: 9_700,
+            currency: "usd",
+            arrival_date: 1_780_000_000,
+            method: "manual",
+            reconciliation_status: "not_applicable",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/balance_transactions")) {
+        return new Response(
+          JSON.stringify({
+            error: { message: "Balance transaction history can only be filtered on automatic transfers, not manual." },
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ error: { message: `Unexpected URL ${url}` } }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const t = convexTest(schema, modules);
+    const ids = await setupWorkspace(t);
+    const result = await t.action(syncFromWebhookEventRef, {
+      stripeEventId: "evt_manual_payout_001",
+      type: "payout.paid",
+      objectId: "po_manual_001",
+    });
+
+    expect(result.status).toBe("synced");
+    expect(result.result?.payoutsCreated).toBe(1);
+    expect(result.result?.payoutLinesCreated).toBe(0);
+    expect(result.result?.ledgerEntriesPosted).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const verification = await t.run(async (ctx) => {
+      const [payouts, payoutLines, journalLines] = await Promise.all([
+        ctx.db.query("stripePayouts").withIndex("by_entity", (q) => q.eq("entityId", ids.entityId)).collect(),
+        ctx.db.query("stripePayoutLines").withIndex("by_entity", (q) => q.eq("entityId", ids.entityId)).collect(),
+        ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", ids.entityId)).collect(),
+      ]);
+      return {
+        payouts,
+        payoutLines,
+        debitMinor: journalLines.reduce((sum, line) => sum + line.debitMinor, 0),
+        creditMinor: journalLines.reduce((sum, line) => sum + line.creditMinor, 0),
+      };
+    });
+
+    expect(verification.payouts).toHaveLength(1);
+    expect(verification.payouts[0]).toMatchObject({
+      payoutId: "po_manual_001",
+      amountMinor: 9_700,
+      grossMinor: 9_700,
+      feesMinor: 0,
+      status: "pending",
+    });
+    expect(verification.payoutLines).toHaveLength(0);
+    expect(verification.debitMinor).toBe(verification.creditMinor);
   });
 
   it("refuses live Stripe keys before webhook sync can call Stripe", async () => {
@@ -327,7 +448,7 @@ describe("M8 Stripe projection", () => {
     });
 
     expect(result.status).toBe("skipped");
-    expect(result.reason).toMatch(/test-mode keys/i);
+    expect(result.reason).toMatch(/OPENBOOKS_REAL_TEST_LIVE_CONNECTORS=1/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 	});

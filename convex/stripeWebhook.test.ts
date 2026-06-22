@@ -69,6 +69,7 @@ describe("Stripe webhook helpers", () => {
 	        type: "invoice.paid",
 	        livemode: false,
 	        api_version: "2026-02-25.clover",
+	        account: "acct_connected",
 	        data: { object: { id: "in_test_webhook", payment_intent: "pi_test_related" } },
 	      }),
 	    ).toEqual({
@@ -78,6 +79,16 @@ describe("Stripe webhook helpers", () => {
 	      relatedPaymentIntentId: "pi_test_related",
 	      livemode: false,
 	      apiVersion: "2026-02-25.clover",
+	      connectedAccountId: "acct_connected",
 	    });
+  });
+
+  it("leaves connectedAccountId undefined for non-Connect events", () => {
+    const normalized = normalizeStripeWebhookEvent({
+      id: "evt_no_account",
+      type: "balance.available",
+      livemode: false,
+    });
+    expect(normalized.connectedAccountId).toBeUndefined();
   });
 });

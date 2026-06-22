@@ -79,8 +79,10 @@ Read these before feature work:
 - One mutation must own ledger posting and enforce that debits equal credits.
 - AI autonomy thresholds are a single shared constant: suggest = never
   auto-post, balanced = 0.90, autopilot = 0.75.
-- Only Plaid sandbox and Stripe test-mode keys may be used in this goal; live
-  keys are banned from every env store.
+- Live connectors must work locally. Live Plaid (production/development) and
+  live Stripe keys are permitted for local and self-host use. The hard rule that
+  stays: no secret may be committed — keys, tokens, and PII stay out of git and
+  are stored encrypted at rest.
 - No API key, banking token, payroll detail, customer financial record, or copied
   env file may be committed.
 
@@ -106,9 +108,9 @@ eval, and performance/limits evidence. The contract remains
 
 Remaining internal work is primarily H2/H5: finish the acceptance/mobile
 evidence pack and final documentation cross-check. Remaining external proof
-requires Ansar-side inputs: a completed hosted Plaid sandbox Link session and a
-real Stripe test webhook delivered to the cloud route. Do not deploy to Vercel
-or touch hosting accounts unless Ansar explicitly reauthorizes it.
+requires Ansar-side inputs: a completed hosted Plaid Link session and a real
+Stripe webhook delivered to the cloud route. Do not deploy to Vercel or touch
+hosting accounts unless Ansar explicitly reauthorizes it.
 
 <!-- convex-ai-start -->
 

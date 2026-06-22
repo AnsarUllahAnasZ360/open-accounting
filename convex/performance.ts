@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { query, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import { resolveDefaultEntity } from "./entityScope";
 
 const DASHBOARD_LIMIT = 5000;
 const REPORT_LIMIT = 5000;
@@ -11,16 +12,7 @@ async function getEntity(ctx: QueryCtx, entityId?: Id<"entities">) {
   const { membership } = await requireAnyWorkspaceRole(ctx, "member");
   const entity = entityId
     ? await ctx.db.get(entityId)
-    : (await ctx.db
-        .query("entities")
-        .withIndex("by_workspace_and_slug", (q) =>
-          q.eq("workspaceId", membership.workspaceId).eq("slug", "acme-studio-llc"),
-        )
-        .unique()) ??
-      (await ctx.db
-        .query("entities")
-        .withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId))
-        .first());
+    : await resolveDefaultEntity(ctx, membership);
   if (!entity || entity.workspaceId !== membership.workspaceId) return null;
   await requireWorkspaceRole(ctx, entity.workspaceId, "member");
   return entity;

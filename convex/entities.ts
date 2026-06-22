@@ -3,7 +3,12 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import {
+  requireAnyWorkspacePermission,
+  requireAnyWorkspaceRole,
+  requireWorkspacePermission,
+} from "./authz";
+import { assertNotDemoWrite } from "./demoWorkspace";
 import { ensureDefaultBankAccountForEntity } from "./defaultBankAccount";
 import { chartTemplatesForType, seedChartForEntity } from "./ledger";
 
@@ -78,7 +83,7 @@ async function entityCounts(ctx: QueryCtx, entityId: Id<"entities">) {
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const { membership } = await requireAnyWorkspaceRole(ctx, "member");
+    const { membership } = await requireAnyWorkspaceRole(ctx, "hr");
     const entities = await ctx.db
       .query("entities")
       .withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId))
@@ -135,14 +140,18 @@ export const create = mutation({
     currency: v.string(),
   },
   handler: async (ctx, args) => {
-    const { userId, membership } = await requireAnyWorkspaceRole(ctx, "admin");
+    const { userId, membership } = await requireAnyWorkspacePermission(ctx, "business.manage");
+    await assertNotDemoWrite(ctx, membership.workspaceId); // E11-T6: demo is read-only.
     const name = args.name.trim();
     if (name.length < 2) {
       throw new ConvexError("Give the business a name.");
     }
+    // USD lock (Epic E5-T4 / decisions Q24/Q25). The general ledger is USD-only,
+    // so the portfolio roll-up is plain USD summation with no FX engine. Reject
+    // any non-USD currency rather than silently coercing it.
     const currency = args.currency.trim().toUpperCase();
-    if (!/^[A-Z]{3}$/.test(currency)) {
-      throw new ConvexError("Base currency must be a 3-letter code like USD.");
+    if (currency !== "USD") {
+      throw new ConvexError("OpenBooks books are USD-only. Base currency must be USD.");
     }
 
     const now = Date.now();
@@ -180,6 +189,130 @@ export const create = mutation({
 });
 
 /**
+ * Edit a business's profile (Epic E12-T2). Lets the owner fully edit a business
+ * — name, type, and legal/tax identity (legal name, entity type, EIN, home
+ * state) — from ONE place (the Businesses card) instead of round-tripping to the
+ * Tax section. All fields optional so a single dialog can patch any subset.
+ *
+ * Money rules: `currency` is IMMUTABLE after creation (the ledger is USD-only and
+ * a base currency change would reinterpret every stored minor-unit amount), so
+ * this mutation deliberately takes NO currency arg — the UI surfaces it read-only.
+ * Fiscal-year/basis stay owned by `updateTaxSettings` so the two never collide.
+ *
+ * No ledger/account rows are touched — only the entities doc is patched. Owner/
+ * admin only; re-checks workspace authz server-side and writes an audit event.
+ */
+export const updateProfile = mutation({
+  args: {
+    entityId: v.id("entities"),
+    name: v.optional(v.string()),
+    businessType: v.optional(businessTypeValidator),
+    legalName: v.optional(v.string()),
+    entityType: v.optional(v.string()),
+    taxId: v.optional(v.string()),
+    homeState: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new ConvexError("OpenBooks business not found.");
+    }
+    const { userId, membership } = await requireWorkspacePermission(
+      ctx,
+      entity.workspaceId,
+      "business.manage",
+    );
+    if (entity.workspaceId !== membership.workspaceId) {
+      throw new ConvexError("That business is not in your workspace.");
+    }
+    await assertNotDemoWrite(ctx, entity.workspaceId); // E11-T6: demo is read-only.
+
+    const now = Date.now();
+    const patch: Partial<Doc<"entities">> = { updatedAt: now };
+    if (args.name !== undefined) {
+      const name = args.name.trim();
+      if (name.length < 2) {
+        throw new ConvexError("Give the business a name.");
+      }
+      patch.name = name;
+    }
+    // businessType is already validated by businessTypeValidator.
+    if (args.businessType !== undefined) patch.businessType = args.businessType;
+    if (args.legalName !== undefined) patch.legalName = args.legalName.trim();
+    if (args.entityType !== undefined) patch.entityType = args.entityType.trim();
+    if (args.taxId !== undefined) patch.taxId = args.taxId.trim();
+    if (args.homeState !== undefined) patch.homeState = args.homeState.trim();
+
+    await ctx.db.patch(entity._id, patch);
+    await ctx.db.insert("auditEvents", {
+      workspaceId: entity.workspaceId,
+      actorUserId: userId,
+      action: "entity.updated",
+      entityType: "entity",
+      entityId: entity._id,
+      summary: `Updated business profile for ${patch.name ?? entity.name}`,
+      createdAt: now,
+    });
+    return { entityId: entity._id, name: patch.name ?? entity.name };
+  },
+});
+
+/**
+ * Set the workspace's deterministic default business (Epic E5-T1). Patches
+ * `workspace.defaultEntityId`, moves the `isDefault` flag onto the chosen entity
+ * (clearing it from any prior default in the workspace), and writes an audit
+ * event. Guarded by `business.manage`. This — not a name/slug match — is what
+ * `resolveDefaultEntity` returns first, and what the shell seeds first render on.
+ */
+export const setDefaultBusiness = mutation({
+  args: { entityId: v.id("entities") },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new ConvexError("OpenBooks business not found.");
+    }
+    const { userId, membership } = await requireWorkspacePermission(
+      ctx,
+      entity.workspaceId,
+      "business.manage",
+    );
+    if (entity.workspaceId !== membership.workspaceId) {
+      throw new ConvexError("That business is not in your workspace.");
+    }
+    if (isArchived(entity)) {
+      throw new ConvexError("You can't make an archived business the default.");
+    }
+
+    const now = Date.now();
+    // Clear isDefault from any prior default(s) in this workspace.
+    const siblings = await ctx.db
+      .query("entities")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId))
+      .take(200);
+    for (const sibling of siblings) {
+      if (sibling._id !== entity._id && sibling.isDefault === true) {
+        await ctx.db.patch(sibling._id, { isDefault: false, updatedAt: now });
+      }
+    }
+
+    await ctx.db.patch(entity._id, { isDefault: true, updatedAt: now });
+    await ctx.db.patch(entity.workspaceId, { defaultEntityId: entity._id, updatedAt: now });
+
+    await ctx.db.insert("auditEvents", {
+      workspaceId: entity.workspaceId,
+      actorUserId: userId,
+      action: "entity.default.set",
+      entityType: "entity",
+      entityId: entity._id,
+      summary: `Set ${entity.name} as the default business`,
+      createdAt: now,
+    });
+
+    return { entityId: entity._id, defaultEntityId: entity._id };
+  },
+});
+
+/**
  * Archive a business: it disappears from the switcher but its books are
  * preserved (no rows deleted). The last non-archived entity cannot be archived
  * so the workspace always has a living book.
@@ -191,7 +324,8 @@ export const archive = mutation({
     if (!entity) {
       throw new ConvexError("OpenBooks business not found.");
     }
-    const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    const { userId } = await requireWorkspacePermission(ctx, entity.workspaceId, "business.manage");
+    await assertNotDemoWrite(ctx, entity.workspaceId); // E11-T6: demo is read-only.
     if (isArchived(entity)) {
       return { entityId: entity._id, archived: true };
     }
@@ -228,7 +362,8 @@ export const unarchive = mutation({
     if (!entity) {
       throw new ConvexError("OpenBooks business not found.");
     }
-    const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    const { userId } = await requireWorkspacePermission(ctx, entity.workspaceId, "business.manage");
+    await assertNotDemoWrite(ctx, entity.workspaceId); // E11-T6: demo is read-only.
     const now = Date.now();
     await ctx.db.patch(entity._id, { archived: false, updatedAt: now });
     await ctx.db.insert("auditEvents", {
@@ -263,7 +398,7 @@ export const updateTaxSettings = mutation({
     if (!entity) {
       throw new ConvexError("OpenBooks business not found.");
     }
-    const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    const { userId } = await requireWorkspacePermission(ctx, entity.workspaceId, "business.manage");
 
     const patch: Partial<Doc<"entities">> = { updatedAt: Date.now() };
     if (args.fiscalYearStartMonth !== undefined) {

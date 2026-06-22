@@ -8,19 +8,25 @@
 export const FX_MICRO_SCALE = 1_000_000;
 
 /**
- * Default FX rate (local-per-base, in micro-units) for a currency pair. These
- * mirror the demo seed's conversion factors so seeded historical runs read
- * back consistently. A real connector would supply live rates; here the rate
- * is prefilled and editable per line.
+ * SEED-CONSISTENCY fallback rates (local-per-base, in micro-units).
+ *
+ * E10-T3: the authoritative day-of-pay rate is now FETCHED and persisted (see
+ * `payroll.fetchDayOfPayRates`) and a manual override takes precedence; the
+ * settle/draft paths read the persisted rate via `resolveAccrualFxRateMicros` /
+ * `resolveSettlementFxRateMicros`. This map is NOT the FX source — it exists only
+ * so the demo seed's historical runs (which were materialized at these factors)
+ * read back consistently when NO fetched rate exists yet. Real entities get live
+ * rates; this is the inert last-resort default, not the `PKR:278/INR:83` source
+ * the engine used to depend on.
  */
-const DEFAULT_LOCAL_PER_BASE: Record<string, number> = {
+const SEED_FALLBACK_LOCAL_PER_BASE: Record<string, number> = {
   PKR: 278,
   INR: 83,
 };
 
 export function defaultFxRateMicros(localCurrency: string, baseCurrency: string): number {
   if (localCurrency === baseCurrency) return FX_MICRO_SCALE;
-  const rate = DEFAULT_LOCAL_PER_BASE[localCurrency];
+  const rate = SEED_FALLBACK_LOCAL_PER_BASE[localCurrency];
   return rate ? rate * FX_MICRO_SCALE : FX_MICRO_SCALE;
 }
 

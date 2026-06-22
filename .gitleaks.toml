@@ -1,0 +1,74 @@
+# OpenBooks gitleaks config (E14-T6).
+#
+# Committed dev tooling for the pre-public security audit. Scans tracked git
+# HISTORY (every commit, every blob) for committed key/token/PII shapes so a
+# secret can never silently live in the repo. Run:
+#
+#   gitleaks git   --config .gitleaks.toml --redact -v        # full history
+#   gitleaks dir   --config .gitleaks.toml --redact -v        # working tree
+#
+# Extends the default gitleaks rule pack (Stripe/AWS/Google/JWT/generic key
+# shapes) and adds OpenBooks-specific provider rules (Plaid, Plunk) plus the
+# owner-identifier patterns the lighter-weight scripts/scan-secrets.mjs gate
+# enforces on the public surface. CI runs scan-secrets.mjs (no external binary);
+# gitleaks is the deeper, history-aware audit run for this security pass and on
+# demand.
+
+title = "OpenBooks gitleaks config"
+
+[extend]
+# Inherit gitleaks' built-in rules (stripe-access-token, aws-access-token,
+# gcp-api-key, jwt, private-key, generic-api-key, etc.).
+useDefault = true
+
+[[rules]]
+id = "openbooks-plaid-secret"
+description = "Plaid client_id/secret value next to a plaid label"
+regex = '''(?i)plaid[^\n]{0,40}(?:client[_-]?id|secret)[^\n]{0,10}[=:]\s*["']?[0-9a-f]{24,}'''
+keywords = ["plaid"]
+
+[[rules]]
+id = "openbooks-plunk-secret"
+description = "Plunk API key value next to a plunk label"
+regex = '''(?i)plunk[^\n]{0,40}(?:secret|api[_-]?key)[^\n]{0,10}[=:]\s*["']?sk_[0-9A-Za-z]{16,}'''
+keywords = ["plunk"]
+
+[[rules]]
+id = "openbooks-secret-encryption-key"
+description = "A long random value assigned to the at-rest encryption key env"
+regex = '''(?i)OPENBOOKS_(?:SECRET|TOKEN)_ENCRYPTION_KEY[^\n]{0,10}[=:]\s*["']?[0-9A-Za-z+/=_-]{24,}'''
+keywords = ["openbooks_secret_encryption_key", "openbooks_token_encryption_key"]
+
+[allowlist]
+description = "Placeholders, illustrations, and test/example fixtures — not real secrets."
+# Example/placeholder files where illustrative key shapes live on purpose, plus
+# the test files that MUST embed fake key shapes to exercise the secret scanner,
+# and the historical settings-export evidence artifact whose Convex document IDs
+# (workspace:record id pairs) trip the generic-api-key entropy rule. Each path is
+# triaged in docs/finishing/security-audit.md as a false positive (no real key).
+paths = [
+  '''\.env\.example$''',
+  '''(^|/)docs/.*\.md$''',
+  '''(^|/)tests/scan-secrets\.test\.ts$''',     # plants fake sk_live_ to test the scanner
+  '''(^|/)convex/.*\.test\.ts$''',              # deterministic fake fixture secrets in unit tests
+  '''(^|/)docs/initiation/evidence/.*\.json$''', # settings-export: Convex doc IDs, not secrets
+]
+# Illustrative / test-only values. Unit tests construct live-looking fixtures at
+# runtime so the repository never carries a contiguous fake production key.
+regexes = [
+  '''whsec_test_secret''',
+  '''sk_test_[0-9A-Za-z]{1,15}\b''',     # short illustrative test keys (real ones are 16+)
+  '''sk-anthropic-byo-secret-7777''',     # aiRuntimeRouting.test.ts fixture
+  '''ClaimPlaidItemSync\w*''',            # TS type identifier, not a Plaid id
+  '''your[_-]?(api[_-]?key|secret)''',
+  '''<[A-Za-z0-9_-]+>''',                 # <PLACEHOLDER> tokens
+  '''example\.com''',
+]
+# Stopwords reduce false positives on high-entropy non-secrets (UUIDs in fixtures,
+# git SHAs, base64 asset blobs).
+stopwords = [
+  "example",
+  "placeholder",
+  "fixture",
+  "sample",
+]

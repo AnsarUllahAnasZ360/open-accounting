@@ -35,6 +35,13 @@ yarn-error.log*
 **/playwright-results/
 **/playwright-report/
 
+# local agent/tooling state (Claude Code, Codex, MCP, scratch)
+.agents/
+.claude/
+.codex/
+.mcp.json
+tmp/
+
 # OS/editor
 .DS_Store
 .idea/

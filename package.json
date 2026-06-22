@@ -4,12 +4,22 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.26.2",
+  "pnpm": {
+    "overrides": {
+      "@types/react": "19.2.17",
+      "@types/react-dom": "19.2.3",
+      "react": "19.2.4",
+      "react-dom": "19.2.4"
+    }
+  },
   "scripts": {
     "dev": "pnpm --filter @openbooks/web dev",
+    "setup": "node scripts/setup.mjs",
     "dev:full": "node scripts/dev-full.mjs",
     "build": "pnpm --filter @openbooks/web build",
     "lint": "pnpm --filter @openbooks/web lint",
     "typecheck": "pnpm --filter @openbooks/web typecheck",
+    "typecheck:convex": "tsc -p convex/tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:unit": "vitest run --passWithNoTests",
     "test:e2e": "playwright test",
@@ -17,7 +27,12 @@
     "receipts:fixtures": "node scripts/generate-receipt-fixtures.mjs",
     "stripe:webhook:register": "node scripts/register-stripe-webhook.mjs",
     "preflight": "node scripts/preflight.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm build && pnpm test:unit",
+    "check:env-docs": "node scripts/check-env-docs.mjs",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "security:gitleaks": "gitleaks git --config .gitleaks.toml --redact -v",
+    "security:audit": "pnpm audit --prod",
+    "verify": "pnpm typecheck && pnpm typecheck:convex && pnpm lint && pnpm build && pnpm test:unit",
+    "ci": "pnpm verify && pnpm test:e2e",
     "convex:dev": "convex dev",
     "convex:deploy": "convex deploy"
   },
@@ -36,6 +51,10 @@
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.116",
+    "@ai-sdk/anthropic": "^3.0.84",
+    "@ai-sdk/gateway": "^3.0.130",
+    "@ai-sdk/openai": "^3.0.71",
+    "@ai-sdk/openai-compatible": "^2.0.50",
     "@auth/core": "^0.37.0",
     "@convex-dev/agent": "^0.6.3",
     "@convex-dev/auth": "^0.0.93",

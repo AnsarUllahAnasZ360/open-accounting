@@ -13,6 +13,7 @@ import {
   normalizePlaidEnvState,
   normalizeTransactionsSync,
   openBooksSandboxUser,
+  plaidPriorAccountNumber,
 } from "./plaid";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -37,6 +38,12 @@ const persistPlaidItem = makeFunctionReference<"mutation", PersistPlaidItemArgs,
 );
 const selectSandboxFixtureAccounts = makeFunctionReference<"mutation", SelectAccountsArgs, SelectAccountsResult>(
   "plaid:selectSandboxFixtureAccounts",
+);
+const upsertPlaidAccountsForItem = makeFunctionReference<"mutation", SelectAccountsArgs, SelectAccountsResult>(
+  "plaid:upsertPlaidAccountsForItem",
+);
+const assignPlaidAccountsToBusinesses = makeFunctionReference<"mutation", SelectAccountsArgs, SelectAccountsResult>(
+  "plaid:assignPlaidAccountsToBusinesses",
 );
 const exchangePublicTokenAndPreviewAccounts = makeFunctionReference<
   "action",
@@ -65,7 +72,7 @@ type PlaidConnectionState = {
   }>;
   items: Array<{
     plaidItemId: string;
-    status: "active" | "relink_required";
+    status: "active" | "relink_required" | "disconnected";
   }>;
   recentTransactions: Array<{
     merchant: string;
@@ -89,6 +96,7 @@ type StageFixtureArgs = {
       primary: string;
       detailed: string;
       confidence_level?: string | null;
+      version?: string | null;
     } | null;
   }>;
 };
@@ -140,9 +148,12 @@ type ExchangePublicTokenArgs = {
 };
 
 type ExchangePublicTokenResult = {
-  mode: "sandbox" | "fixture";
+  mode: "sandbox" | "development" | "production" | "fixture";
   accessTokenPersisted: boolean;
   persistenceBlocker?: string;
+  accountsCreated?: number;
+  accountsUpdated?: number;
+  institutionName?: string;
   accounts: Array<{
     plaidAccountId: string;
     plaidItemId?: string;
@@ -157,6 +168,8 @@ type ExchangePublicTokenResult = {
 
 type SelectAccountsArgs = {
   entityId: string;
+  plaidItemId?: string;
+  startDate?: string;
   accounts: Array<{
     plaidAccountId: string;
     plaidItemId?: string;
@@ -166,12 +179,14 @@ type SelectAccountsArgs = {
     balanceMinor: number;
     currency: string;
     include: boolean;
+    entityId?: Id<"entities">;
   }>;
 };
 
 type SelectAccountsResult = {
   createdCount: number;
-  accounts: Array<{ bankAccountId: string; ledgerAccountId: string; plaidAccountId: string }>;
+  updatedCount?: number;
+  accounts: Array<{ bankAccountId: string; ledgerAccountId: string; plaidAccountId: string; entityId: Id<"entities"> }>;
 };
 
 type SyncItemActionArgs = {
@@ -329,7 +344,7 @@ describe("Plaid sandbox helpers", () => {
         PLAID_ENV: "development",
       }),
     ).toMatchObject({
-      environment: "unsupported",
+      environment: "development",
       hasClientId: true,
       hasSecret: true,
       ready: false,
@@ -422,6 +437,7 @@ describe("Plaid sandbox helpers", () => {
         primary: "GENERAL_SERVICES",
         detailed: "GENERAL_SERVICES_OTHER_GENERAL_SERVICES",
         confidence_level: "HIGH",
+        version: "v2",
       },
     });
 
@@ -622,6 +638,7 @@ describe("Plaid Convex primitives", () => {
     vi.stubEnv("PLAID_CLIENT_ID", "client-id-test");
     vi.stubEnv("PLAID_SECRET", "sandbox-secret-test");
     vi.stubEnv("PLAID_ENV", "sandbox");
+    vi.stubEnv("OPENBOOKS_SECRET_ENCRYPTION_KEY", "unit-test-secret-encryption-key");
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const path = String(url);
       const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
@@ -667,6 +684,8 @@ describe("Plaid Convex primitives", () => {
     expect(result).toMatchObject({
       mode: "sandbox",
       accessTokenPersisted: true,
+      accountsCreated: 1,
+      accountsUpdated: 0,
       accounts: [
         {
           plaidAccountId: "sandbox-action-checking",
@@ -684,8 +703,21 @@ describe("Plaid Convex primitives", () => {
         .unique();
       expect(item).toMatchObject({
         entityId: ids.entityId,
-        accessToken: "sandbox-access-token-from-exchange",
         status: "active",
+      });
+      expect(item?.accessToken).toBeUndefined();
+      expect(item?.accessTokenCiphertext).toEqual(expect.any(String));
+      expect(item?.accessTokenCiphertext).not.toContain("sandbox-access-token-from-exchange");
+      const account = await ctx.db
+        .query("bankAccounts")
+        .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+        .filter((q) => q.eq(q.field("plaidAccountId"), "sandbox-action-checking"))
+        .first();
+      expect(account).toMatchObject({
+        entityId: ids.entityId,
+        plaidItemId: "item-sandbox-action",
+        includeInSync: true,
+        balanceMinor: 123456,
       });
     });
   });
@@ -852,7 +884,6 @@ describe("Plaid Convex primitives", () => {
     vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
     vi.stubEnv("AWS_REGION", "");
     vi.stubEnv("AI_MODEL", "");
-    vi.stubEnv("AI_EMBEDDINGS_MODEL", "");
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const path = String(url);
       const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
@@ -927,11 +958,16 @@ describe("Plaid Convex primitives", () => {
         .query("systemActors")
         .withIndex("by_workspace_and_kind", (q) => q.eq("workspaceId", ids.workspaceId).eq("kind", "sync"))
         .unique();
-      const run = await ctx.db
+      // E2-T3: the sync now kicks the self-rescheduling drainer, which writes a
+      // batch run PER pass (it stops once a pass makes no progress on a degraded
+      // provider). Assert the first run is the system-actor degraded run.
+      const runs = await ctx.db
         .query("aiBatchRuns")
         .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
-        .unique();
-      expect(run).toMatchObject({
+        .order("asc")
+        .collect();
+      expect(runs.length).toBeGreaterThanOrEqual(1);
+      expect(runs[0]).toMatchObject({
         requestedByUserId: systemActor?.userId,
         status: "degraded",
         attemptedCount: 1,
@@ -975,5 +1011,641 @@ describe("Plaid Convex primitives", () => {
     });
 
     expect(result.payloadSummary).toContain("Relink item item-123");
+  });
+});
+
+/** Read the opening-balance journal entry + its lines for a bank account, if any. */
+async function readOpeningEntry(t: TestConvex<typeof schema>, entityId: Id<"entities">, plaidAccountId: string) {
+  return await t.run(async (ctx) => {
+    const entries = await ctx.db
+      .query("journalEntries")
+      .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+      .collect();
+    const opening = entries.filter((e) => e.sourceId === `opening:${plaidAccountId}`);
+    if (opening.length === 0) return { entry: null, lines: [] as Array<{ accountId: Id<"ledgerAccounts">; debitMinor: number; creditMinor: number }>, count: 0 };
+    const lines = await ctx.db
+      .query("journalLines")
+      .withIndex("by_entry", (q) => q.eq("entryId", opening[0]._id))
+      .collect();
+    return {
+      entry: opening[0],
+      lines: lines.map((l) => ({ accountId: l.accountId, debitMinor: l.debitMinor, creditMinor: l.creditMinor })),
+      count: opening.length,
+    };
+  });
+}
+
+async function accountByNumber(t: TestConvex<typeof schema>, entityId: Id<"entities">, number: string) {
+  return await t.run(async (ctx) => {
+    return await ctx.db
+      .query("ledgerAccounts")
+      .withIndex("by_entity_and_number", (q) => q.eq("entityId", entityId).eq("number", number))
+      .unique();
+  });
+}
+
+describe("E1-T2 opening balance on bank connect", () => {
+  it("posts exactly one Dr Bank / Cr 3900 opening entry dated M-01 and is idempotent", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+
+    const args = {
+      entityId: ids.entityId as unknown as string,
+      plaidItemId: "plaid-item-open",
+      startDate: "2026-03-17",
+      accounts: [
+        {
+          plaidAccountId: "open-checking",
+          plaidItemId: "plaid-item-open",
+          name: "Opening Checking",
+          mask: "9001",
+          subtype: "checking",
+          balanceMinor: 500000,
+          currency: "USD",
+          include: true,
+        },
+      ],
+    };
+
+    await session.mutation(upsertPlaidAccountsForItem, args);
+
+    const opening = await readOpeningEntry(t, ids.entityId, "open-checking");
+    expect(opening.count).toBe(1);
+    expect(opening.entry?.date).toBe("2026-03-01"); // floored to first-of-month
+    expect(opening.entry?.source).toBe("manual");
+
+    const equity = await accountByNumber(t, ids.entityId, "3900");
+    expect(equity).not.toBeNull();
+    const bankLine = opening.lines.find((l) => l.debitMinor === 500000);
+    const equityLine = opening.lines.find((l) => l.accountId === equity!._id);
+    expect(bankLine?.debitMinor).toBe(500000);
+    expect(equityLine?.creditMinor).toBe(500000);
+
+    // Balance: debits == credits.
+    const totalDebit = opening.lines.reduce((s, l) => s + l.debitMinor, 0);
+    const totalCredit = opening.lines.reduce((s, l) => s + l.creditMinor, 0);
+    expect(totalDebit).toBe(totalCredit);
+
+    // Re-connect / re-sync posts no additional opening entry.
+    await session.mutation(upsertPlaidAccountsForItem, args);
+    const after = await readOpeningEntry(t, ids.entityId, "open-checking");
+    expect(after.count).toBe(1);
+  });
+
+  it("posts the reversed direction for a negative starting balance and still balances", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+
+    await session.mutation(upsertPlaidAccountsForItem, {
+      entityId: ids.entityId as unknown as string,
+      plaidItemId: "plaid-item-cc",
+      startDate: "2026-04-02",
+      accounts: [
+        {
+          plaidAccountId: "open-credit",
+          plaidItemId: "plaid-item-cc",
+          name: "Opening Credit Card",
+          mask: "9002",
+          subtype: "credit card",
+          balanceMinor: -8790,
+          currency: "USD",
+          include: true,
+        },
+      ],
+    });
+
+    const opening = await readOpeningEntry(t, ids.entityId, "open-credit");
+    expect(opening.count).toBe(1);
+    const equity = await accountByNumber(t, ids.entityId, "3900");
+    // Negative balance: Dr 3900 / Cr Bank.
+    const equityLine = opening.lines.find((l) => l.accountId === equity!._id);
+    expect(equityLine?.debitMinor).toBe(8790);
+    const totalDebit = opening.lines.reduce((s, l) => s + l.debitMinor, 0);
+    const totalCredit = opening.lines.reduce((s, l) => s + l.creditMinor, 0);
+    expect(totalDebit).toBe(totalCredit);
+    expect(totalDebit).toBe(8790);
+  });
+
+  it("posts nothing for a zero starting balance", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+
+    await session.mutation(upsertPlaidAccountsForItem, {
+      entityId: ids.entityId as unknown as string,
+      plaidItemId: "plaid-item-zero",
+      accounts: [
+        {
+          plaidAccountId: "open-zero",
+          plaidItemId: "plaid-item-zero",
+          name: "Opening Zero",
+          mask: "9003",
+          subtype: "checking",
+          balanceMinor: 0,
+          currency: "USD",
+          include: true,
+        },
+      ],
+    });
+
+    const opening = await readOpeningEntry(t, ids.entityId, "open-zero");
+    expect(opening.count).toBe(0);
+  });
+});
+
+/** Create a second entity in the same workspace + a foreign workspace/entity for authz tests. */
+async function setupSecondEntity(t: TestConvex<typeof schema>, workspaceId: Id<"workspaces">) {
+  return await t.run(async (ctx) => {
+    const now = Date.now();
+    return await ctx.db.insert("entities", {
+      workspaceId,
+      name: "Z360 LLC",
+      slug: "z360-llc",
+      businessType: "services",
+      currency: "USD",
+      isDemo: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+}
+
+async function setupForeignWorkspaceEntity(t: TestConvex<typeof schema>) {
+  return await t.run(async (ctx) => {
+    const now = Date.now();
+    const workspaceId = await ctx.db.insert("workspaces", {
+      name: "Other workspace",
+      slug: "other-workspace",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const entityId = await ctx.db.insert("entities", {
+      workspaceId,
+      name: "Foreign LLC",
+      slug: "foreign-llc",
+      businessType: "services",
+      currency: "USD",
+      isDemo: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { workspaceId, entityId };
+  });
+}
+
+describe("E3-T5 Plaid account -> business split", () => {
+  it("routes each previewed account to its assigned business under distinct entities", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+    const secondEntityId = await setupSecondEntity(t, ids.workspaceId);
+
+    const result = await session.mutation(assignPlaidAccountsToBusinesses, {
+      entityId: ids.entityId as unknown as string,
+      plaidItemId: "split-item",
+      accounts: [
+        {
+          plaidAccountId: "zikra-checking",
+          plaidItemId: "split-item",
+          name: "Zikra Checking",
+          mask: "1001",
+          subtype: "checking",
+          balanceMinor: 100000,
+          currency: "USD",
+          include: true,
+          entityId: ids.entityId,
+        },
+        {
+          plaidAccountId: "z360-checking",
+          plaidItemId: "split-item",
+          name: "Z360 Checking",
+          mask: "1002",
+          subtype: "checking",
+          balanceMinor: 200000,
+          currency: "USD",
+          include: true,
+          entityId: secondEntityId,
+        },
+      ],
+    });
+
+    expect(result.createdCount).toBe(2);
+    const byPlaidId = new Map(result.accounts.map((a) => [a.plaidAccountId, a.entityId]));
+    expect(byPlaidId.get("zikra-checking")).toBe(ids.entityId);
+    expect(byPlaidId.get("z360-checking")).toBe(secondEntityId);
+
+    // Two bankAccounts under two distinct entities, each with its own ledger acct.
+    const banks = await t.run(async (ctx) => {
+      const a = await ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", ids.entityId)).collect();
+      const b = await ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", secondEntityId)).collect();
+      return { a: a.filter((x) => x.plaidItemId === "split-item"), b: b.filter((x) => x.plaidItemId === "split-item") };
+    });
+    expect(banks.a).toHaveLength(1);
+    expect(banks.b).toHaveLength(1);
+    expect(banks.a[0].ledgerAccountId).not.toBe(banks.b[0].ledgerAccountId);
+  });
+
+  it("reproduces single-business behavior when no per-account entity is set (back-compat)", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+
+    const result = await session.mutation(upsertPlaidAccountsForItem, {
+      entityId: ids.entityId as unknown as string,
+      plaidItemId: "compat-item",
+      accounts: [
+        {
+          plaidAccountId: "compat-1",
+          plaidItemId: "compat-item",
+          name: "Compat Checking",
+          mask: "2001",
+          subtype: "checking",
+          balanceMinor: 50000,
+          currency: "USD",
+          include: true,
+        },
+        {
+          plaidAccountId: "compat-2",
+          plaidItemId: "compat-item",
+          name: "Compat Savings",
+          mask: "2002",
+          subtype: "savings",
+          balanceMinor: 75000,
+          currency: "USD",
+          include: true,
+        },
+      ],
+    });
+
+    expect(result.createdCount).toBe(2);
+    expect(result.accounts.every((a) => a.entityId === ids.entityId)).toBe(true);
+  });
+
+  it("does not silently drop excluded accounts", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+
+    const result = await session.mutation(assignPlaidAccountsToBusinesses, {
+      entityId: ids.entityId as unknown as string,
+      plaidItemId: "exclude-item",
+      accounts: [
+        {
+          plaidAccountId: "keep-1",
+          plaidItemId: "exclude-item",
+          name: "Keep Checking",
+          mask: "3001",
+          subtype: "checking",
+          balanceMinor: 1000,
+          currency: "USD",
+          include: true,
+          entityId: ids.entityId,
+        },
+        {
+          plaidAccountId: "drop-1",
+          plaidItemId: "exclude-item",
+          name: "Excluded Savings",
+          mask: "3002",
+          subtype: "savings",
+          balanceMinor: 2000,
+          currency: "USD",
+          include: false,
+          entityId: ids.entityId,
+        },
+      ],
+    });
+
+    expect(result.createdCount).toBe(1);
+    expect(result.accounts).toHaveLength(1);
+    expect(result.accounts[0].plaidAccountId).toBe("keep-1");
+  });
+
+  it("rejects assigning an account to an entity in a different workspace", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+    const foreign = await setupForeignWorkspaceEntity(t);
+
+    await expect(
+      session.mutation(assignPlaidAccountsToBusinesses, {
+        entityId: ids.entityId as unknown as string,
+        plaidItemId: "cross-item",
+        accounts: [
+          {
+            plaidAccountId: "cross-1",
+            plaidItemId: "cross-item",
+            name: "Cross Checking",
+            mask: "4001",
+            subtype: "checking",
+            balanceMinor: 1000,
+            currency: "USD",
+            include: true,
+            entityId: foreign.entityId,
+          },
+        ],
+      }),
+    ).rejects.toThrow(/same workspace|do not have access/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E2-T8: populate the live-Plaid first pass with a PFC-derived weak prior.
+// ---------------------------------------------------------------------------
+// Seeds the chart rows the PFC mapping targets (5500 expense, 4200 income) so a
+// mapped transaction resolves to a live account on the FIRST pass, and exercises
+// the autonomy gate: autopilot posts the prior (decidedBy plaid_prior),
+// balanced records the prior but routes to the Inbox, and an unmapped PFC leaves
+// the prior unset and reaches the LLM batch stage.
+async function setupPlaidPriorTest(
+  t: TestConvex<typeof schema>,
+  autonomy?: "suggest" | "balanced" | "autopilot",
+) {
+  const ids = await t.run(async (ctx) => {
+    const now = Date.now();
+    const userId = await ctx.db.insert("users", { email: "prior@example.com", name: "Prior" });
+    const workspaceId = await ctx.db.insert("workspaces", {
+      name: "Prior workspace",
+      slug: "prior-workspace",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("workspaceMembers", {
+      workspaceId,
+      userId,
+      role: "owner",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const entityId = await ctx.db.insert("entities", {
+      workspaceId,
+      name: "Prior Sandbox",
+      slug: "prior-sandbox",
+      businessType: "services",
+      currency: "USD",
+      isDemo: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const operatingAccountId = await ctx.db.insert("ledgerAccounts", {
+      entityId,
+      name: "Checking",
+      type: "asset",
+      subtype: "bank",
+      number: "1010",
+      currency: "USD",
+      isSystem: false,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    // The two PFC mapping targets used below.
+    await ctx.db.insert("ledgerAccounts", {
+      entityId,
+      name: "Professional Services",
+      type: "expense",
+      subtype: "professional_services",
+      number: "5500",
+      currency: "USD",
+      isSystem: false,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("ledgerAccounts", {
+      entityId,
+      name: "Other Income",
+      type: "income",
+      subtype: "other_income",
+      number: "4200",
+      currency: "USD",
+      isSystem: false,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const bankAccountId = await ctx.db.insert("bankAccounts", {
+      entityId,
+      ledgerAccountId: operatingAccountId,
+      name: "Plaid Checking",
+      mask: "1111",
+      kind: "checking",
+      balanceMinor: 0,
+      includeInSync: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (autonomy) {
+      await ctx.db.insert("aiConfigs", {
+        workspaceId,
+        provider: "bedrock",
+        autonomy,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    return { userId, workspaceId, entityId, bankAccountId };
+  });
+  return ids;
+}
+
+describe("E2-T8 Plaid PFC weak prior", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("maps a PFC primary to an account number only in the matching direction", () => {
+    // Outflow → expense, never income.
+    expect(plaidPriorAccountNumber("GENERAL_SERVICES", -4999)).toBe("5500");
+    expect(plaidPriorAccountNumber("FOOD_AND_DRINK", -1200)).toBe("5800");
+    expect(plaidPriorAccountNumber("INCOME", -4999)).toBeNull();
+    // Inflow → income, never expense.
+    expect(plaidPriorAccountNumber("INCOME", 250000)).toBe("4200");
+    expect(plaidPriorAccountNumber("GENERAL_SERVICES", 250000)).toBeNull();
+    // Unknown / ambiguous primaries stay unmapped.
+    expect(plaidPriorAccountNumber("TRANSFER_OUT", -4999)).toBeNull();
+    expect(plaidPriorAccountNumber(null, -4999)).toBeNull();
+    expect(plaidPriorAccountNumber(undefined, 100)).toBeNull();
+  });
+
+  it("posts a mapped prior on the first pass under autopilot with decidedBy plaid_prior", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidPriorTest(t, "autopilot");
+    const session = authed(t, ids.userId);
+
+    const result = await session.mutation(stageFixtureTransactions, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      transactions: [
+        {
+          transaction_id: "prior-autopilot-1",
+          account_id: "acct-prior",
+          date: "2026-06-12",
+          amount: 42.5, // small outflow, under the auto-post ramp floor
+          name: "Consultant retainer",
+          merchant_name: "Acme Consulting",
+          pending: false,
+          iso_currency_code: "USD",
+          personal_finance_category: {
+            primary: "GENERAL_SERVICES",
+            detailed: "GENERAL_SERVICES_CONSULTING",
+            confidence_level: "HIGH",
+          },
+        },
+      ],
+    });
+
+    expect(result.postedCount).toBe(1);
+    expect(result.needsReviewCount).toBe(0);
+
+    const transaction = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("transactions")
+        .withIndex("by_external_id", (q) => q.eq("externalId", "plaid:prior-autopilot-1"))
+        .unique();
+    });
+    expect(transaction?.decidedBy).toBe("plaid_prior");
+    expect(transaction?.entryId).toBeTruthy();
+    // Posted to the mapped expense account (5500 Professional Services).
+    const account = await t.run(async (ctx) =>
+      transaction?.categoryAccountId ? await ctx.db.get(transaction.categoryAccountId) : null,
+    );
+    expect(account?.number).toBe("5500");
+  });
+
+  it("records the prior but routes to the Inbox under balanced", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidPriorTest(t, "balanced");
+    const session = authed(t, ids.userId);
+
+    const result = await session.mutation(stageFixtureTransactions, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      transactions: [
+        {
+          transaction_id: "prior-balanced-1",
+          account_id: "acct-prior",
+          date: "2026-06-12",
+          amount: 42.5,
+          name: "Consultant retainer",
+          merchant_name: "Acme Consulting",
+          pending: false,
+          iso_currency_code: "USD",
+          personal_finance_category: {
+            primary: "GENERAL_SERVICES",
+            detailed: "GENERAL_SERVICES_CONSULTING",
+            confidence_level: "HIGH",
+          },
+        },
+      ],
+    });
+
+    expect(result.postedCount).toBe(0);
+    expect(result.needsReviewCount).toBe(1);
+
+    const transaction = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("transactions")
+        .withIndex("by_external_id", (q) => q.eq("externalId", "plaid:prior-balanced-1"))
+        .unique();
+    });
+    // Prior is recorded (decidedBy + category) but nothing posted.
+    expect(transaction?.decidedBy).toBe("plaid_prior");
+    expect(transaction?.entryId ?? null).toBeNull();
+    const account = await t.run(async (ctx) =>
+      transaction?.categoryAccountId ? await ctx.db.get(transaction.categoryAccountId) : null,
+    );
+    expect(account?.number).toBe("5500");
+    // An open Inbox item exists for the unposted prior.
+    const inboxOpen = await t.run(async (ctx) => {
+      const items = await ctx.db
+        .query("inboxItems")
+        .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+        .collect();
+      return items.some((item) => item.transactionId === transaction?._id && item.status === "open");
+    });
+    expect(inboxOpen).toBe(true);
+  });
+
+  it("leaves the prior unset for an unmappable PFC and routes to review", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPlaidPriorTest(t, "autopilot");
+    const session = authed(t, ids.userId);
+
+    const result = await session.mutation(stageFixtureTransactions, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      transactions: [
+        {
+          transaction_id: "prior-unmapped-1",
+          account_id: "acct-prior",
+          date: "2026-06-12",
+          amount: 99.0,
+          name: "Internal transfer",
+          merchant_name: "Transfer",
+          pending: false,
+          iso_currency_code: "USD",
+          personal_finance_category: {
+            primary: "TRANSFER_OUT",
+            detailed: "TRANSFER_OUT_ACCOUNT_TRANSFER",
+            confidence_level: "HIGH",
+          },
+        },
+      ],
+    });
+
+    // No mappable prior and no AI key → degraded route to the Inbox, prior unset.
+    expect(result.postedCount).toBe(0);
+    expect(result.needsReviewCount).toBe(1);
+
+    const transaction = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("transactions")
+        .withIndex("by_external_id", (q) => q.eq("externalId", "plaid:prior-unmapped-1"))
+        .unique();
+    });
+    expect(transaction?.decidedBy).toBe("needs_review");
+    expect(transaction?.entryId ?? null).toBeNull();
+  });
+
+  it("does not set a prior when the mapped account is absent on the entity", async () => {
+    const t = convexTest(schema, modules);
+    // Reuse the minimal setup that lacks 5500/4200 (only 1010 + 5200 + a rule).
+    const ids = await setupPlaidTest(t);
+    const session = authed(t, ids.userId);
+
+    const result = await session.mutation(stageFixtureTransactions, {
+      entityId: ids.entityId,
+      bankAccountId: ids.bankAccountId,
+      transactions: [
+        {
+          transaction_id: "prior-absent-1",
+          account_id: "acct-1",
+          date: "2026-06-12",
+          amount: 42.5,
+          name: "Consultant retainer", // no "subscription" → the rule won't fire
+          merchant_name: "Acme Consulting",
+          pending: false,
+          iso_currency_code: "USD",
+          personal_finance_category: {
+            primary: "GENERAL_SERVICES",
+            detailed: "GENERAL_SERVICES_CONSULTING",
+            confidence_level: "HIGH",
+          },
+        },
+      ],
+    });
+
+    // 5500 is absent → prior unset → falls through to the Inbox (no AI key).
+    expect(result.needsReviewCount).toBe(1);
+    const transaction = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("transactions")
+        .withIndex("by_external_id", (q) => q.eq("externalId", "plaid:prior-absent-1"))
+        .unique();
+    });
+    expect(transaction?.decidedBy).toBe("needs_review");
   });
 });

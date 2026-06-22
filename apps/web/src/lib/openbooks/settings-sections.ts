@@ -4,6 +4,7 @@
 // into a client-reference proxy at build time (`.map is not a function`).
 
 export const SETTINGS_SECTIONS = [
+  { id: "profile", label: "Profile" },
   { id: "businesses", label: "Businesses" },
   { id: "tax", label: "Tax & fiscal year" },
   { id: "connections", label: "Connections" },
@@ -17,3 +18,18 @@ export const SETTINGS_SECTIONS = [
 ] as const;
 
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
+
+// Quiet eyebrow groupings for the subnav. The flat SETTINGS_SECTIONS array
+// stays the source of truth (so /settings/[section] static params keep working);
+// these groups only drive the desktop subnav presentation, named by the owner's
+// mental model — what they manage, not how the system is wired.
+export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
+  label: string;
+  items: ReadonlyArray<SettingsSectionId>;
+}> = [
+  { label: "Workspace", items: ["profile", "businesses", "tax"] },
+  { label: "Automation", items: ["ai", "rules", "categories"] },
+  { label: "Connections", items: ["connections"] },
+  { label: "People", items: ["team", "notifications"] },
+  { label: "Data", items: ["data", "audit"] },
+];

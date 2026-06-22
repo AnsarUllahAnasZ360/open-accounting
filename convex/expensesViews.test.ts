@@ -59,6 +59,54 @@ describe("expensesViews category totals reconcile to the P&L expense section", (
   });
 });
 
+describe("E10-T4: payroll surfaces as a first-class expense group that reconciles to Reports", () => {
+  it("Expenses payroll base total === Reports Payroll Summary base total for the same period", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupWorkspace(t);
+    const session = authed(t, ids.userId);
+    const seed = await session.action(api.seedDemo.resetAndSeed, {});
+
+    const start = "2026-05-01";
+    const end = "2026-05-31";
+    const expenses = await session.query(api.expensesViews.overview, { entityId: seed.entityId, period: "last" });
+    const pack = await session.query(api.reportViews.reportPack, {
+      entityId: seed.entityId,
+      startDate: start,
+      endDate: end,
+      basis: "accrual",
+      compare: "none",
+      columnMode: "total",
+    });
+
+    // The synthetic Payroll group exists, is sourced from the ledger, and links
+    // the run(s) for the period.
+    expect(expenses.payroll).not.toBeNull();
+    const payrollGroup = expenses.payroll!;
+    expect(payrollGroup.source).toBe("payroll");
+    expect(payrollGroup.number).toBe("5000");
+    expect(payrollGroup.baseMinor).toBeGreaterThan(0);
+    expect(payrollGroup.runCount).toBeGreaterThanOrEqual(1);
+
+    // The reconciliation invariant: Expenses payroll (ledger-derived) equals the
+    // Reports Payroll Summary base total (approved-run derived) for the SAME range.
+    expect(payrollGroup.baseMinor).toBe(pack.payrollSummary.totalMinor);
+
+    // Payroll is among the LARGEST expenses (a services shop's biggest cost): it
+    // is present in the category list and tagged so it cannot double-count.
+    const payrollCategory = expenses.categories.find((c) => c.source === "payroll");
+    expect(payrollCategory, "payroll category present in Expenses breakdown").toBeDefined();
+    expect(payrollCategory!.totalMinor).toBe(payrollGroup.baseMinor);
+    // Largest-expense ordering: nothing strictly larger than the top category, and
+    // payroll ranks at or near the top of a services roster's spend.
+    const rank = expenses.categories.findIndex((c) => c.source === "payroll");
+    expect(rank).toBeGreaterThanOrEqual(0);
+    expect(rank).toBeLessThan(3);
+
+    // Exactly one payroll-tagged category — no duplicate vendor line for payroll.
+    expect(expenses.categories.filter((c) => c.source === "payroll")).toHaveLength(1);
+  });
+});
+
 describe("recurring detection", () => {
   /** Build an entity with a clean monthly vendor and a one-off, then detect. */
   async function setupRecurringFixture(t: TestConvex<typeof schema>) {
@@ -117,5 +165,92 @@ describe("createCategory + recategorize", () => {
     const txn = await t.run(async (ctx) => ctx.db.get(txnId!));
     expect(txn?.categoryAccountId).toBe(created.accountId);
     expect(txn?.review).toBe("confirmed");
+  });
+
+  it("recategorizing a POSTED expense reverses + reposts the ledger (immutable, balanced, P&L moves)", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupWorkspace(t);
+    const session = authed(t, ids.userId);
+    const seed = await session.action(api.seedDemo.resetAndSeed, {});
+
+    // A confirmed expense transaction that already has a posted journal entry.
+    const picked = await t.run(async (ctx) => {
+      const txns = await ctx.db
+        .query("transactions")
+        .withIndex("by_entity", (q) => q.eq("entityId", seed.entityId as Id<"entities">))
+        .collect();
+      for (const txn of txns) {
+        if (!txn.entryId || !txn.categoryAccountId || txn.amountMinor >= 0) continue;
+        const account = await ctx.db.get(txn.categoryAccountId);
+        if (account?.type === "expense") {
+          return { txnId: txn._id, oldEntryId: txn.entryId, oldCategoryId: txn.categoryAccountId };
+        }
+      }
+      return null;
+    });
+    expect(picked).not.toBeNull();
+
+    // A fresh target category to move the spend onto.
+    const target = await session.mutation(api.categories.createCategory, {
+      entityId: seed.entityId,
+      name: "Conferences & Events",
+      group: "Expenses",
+    });
+    expect(target.accountId).not.toBe(picked!.oldCategoryId);
+
+    const result = await session.mutation(api.categories.recategorizeTransaction, {
+      transactionId: picked!.txnId,
+      categoryAccountId: target.accountId,
+    });
+    expect(result.reposted).toBe(true);
+
+    const after = await t.run(async (ctx) => {
+      const txn = await ctx.db.get(picked!.txnId);
+      // The original entry is untouched (immutable) and has been reversed by a
+      // new entry whose reversesEntryId points back at it.
+      const oldLines = await ctx.db
+        .query("journalLines")
+        .withIndex("by_entry", (q) => q.eq("entryId", picked!.oldEntryId))
+        .collect();
+      const reversal = await ctx.db
+        .query("journalEntries")
+        .withIndex("by_entity", (q) => q.eq("entityId", seed.entityId as Id<"entities">))
+        .filter((q) => q.eq(q.field("reversesEntryId"), picked!.oldEntryId))
+        .first();
+      // The transaction repoints at a NEW entry whose lines hit the new category.
+      const newLines = txn?.entryId
+        ? await ctx.db.query("journalLines").withIndex("by_entry", (q) => q.eq("entryId", txn.entryId!)).collect()
+        : [];
+      return {
+        category: txn?.categoryAccountId,
+        newEntryId: txn?.entryId,
+        oldLineCount: oldLines.length,
+        hasReversal: Boolean(reversal),
+        newHitsTarget: newLines.some((line) => line.accountId === target.accountId),
+        newHitsOld: newLines.some((line) => line.accountId === picked!.oldCategoryId),
+        // Every entry still balances (debits == credits) across the books.
+        balanced: await (async () => {
+          const lines = await ctx.db
+            .query("journalLines")
+            .withIndex("by_entity", (q) => q.eq("entityId", seed.entityId as Id<"entities">))
+            .collect();
+          let d = 0;
+          let c = 0;
+          for (const line of lines) {
+            d += line.debitMinor;
+            c += line.creditMinor;
+          }
+          return d === c;
+        })(),
+      };
+    });
+
+    expect(after.category).toBe(target.accountId);
+    expect(after.newEntryId).not.toBe(picked!.oldEntryId); // repointed, not mutated
+    expect(after.oldLineCount).toBeGreaterThanOrEqual(2); // original entry preserved
+    expect(after.hasReversal).toBe(true); // reverse posted
+    expect(after.newHitsTarget).toBe(true); // repost hits the new category
+    expect(after.newHitsOld).toBe(false); // the old category line is gone from the live entry
+    expect(after.balanced).toBe(true); // whole ledger still balances
   });
 });

@@ -18,7 +18,6 @@ type AIProviderDefinition = {
     packageName: string;
     importName: string;
     languageModel: string;
-    embeddingModel?: string;
   };
 };
 
@@ -28,7 +27,6 @@ export type AIProviderStatusEntry = AIProviderDefinition & {
   ready: boolean;
   missingEnv: string[];
   model: string | null;
-  embeddingsModel: string | null;
   reason: string | null;
 };
 
@@ -38,14 +36,13 @@ export const AI_PROVIDER_REGISTRY: Record<AIProviderId, AIProviderDefinition> = 
     label: "Amazon Bedrock",
     runtime: "direct",
     v1Enabled: true,
-    capabilities: ["chat", "structured_output", "tool_calling", "embeddings"],
+    capabilities: ["chat", "structured_output", "tool_calling"],
     requiredEnv: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", "AI_MODEL"],
-    optionalEnv: ["AI_EMBEDDINGS_MODEL"],
+    optionalEnv: [],
     aiSdk: {
       packageName: "@ai-sdk/amazon-bedrock",
       importName: "bedrock",
       languageModel: "bedrock(AI_MODEL)",
-      embeddingModel: "bedrock.embedding(AI_EMBEDDINGS_MODEL)",
     },
   },
   anthropic: {
@@ -67,14 +64,13 @@ export const AI_PROVIDER_REGISTRY: Record<AIProviderId, AIProviderDefinition> = 
     label: "OpenAI",
     runtime: "gateway",
     v1Enabled: false,
-    capabilities: ["chat", "structured_output", "tool_calling", "embeddings"],
+    capabilities: ["chat", "structured_output", "tool_calling"],
     requiredEnv: ["OPENAI_API_KEY"],
-    optionalEnv: ["AI_MODEL", "AI_EMBEDDINGS_MODEL"],
+    optionalEnv: ["AI_MODEL"],
     aiSdk: {
       packageName: "@ai-sdk/openai",
       importName: "openai",
       languageModel: "openai(model)",
-      embeddingModel: "openai.embedding(AI_EMBEDDINGS_MODEL)",
     },
   },
   google: {
@@ -82,14 +78,13 @@ export const AI_PROVIDER_REGISTRY: Record<AIProviderId, AIProviderDefinition> = 
     label: "Google Generative AI",
     runtime: "gateway",
     v1Enabled: false,
-    capabilities: ["chat", "structured_output", "tool_calling", "embeddings"],
+    capabilities: ["chat", "structured_output", "tool_calling"],
     requiredEnv: ["GOOGLE_GENERATIVE_AI_API_KEY"],
-    optionalEnv: ["AI_MODEL", "AI_EMBEDDINGS_MODEL"],
+    optionalEnv: ["AI_MODEL"],
     aiSdk: {
       packageName: "@ai-sdk/google",
       importName: "google",
       languageModel: "google(model)",
-      embeddingModel: "google.embedding(AI_EMBEDDINGS_MODEL)",
     },
   },
   ollama: {
@@ -143,10 +138,11 @@ export function resolveAIProviderRegistry() {
     const missingEnv = definition.requiredEnv.filter((name) => !present(process.env[name]));
     const configured = configuredProvider === id;
     const ready = configured && missingEnv.length === 0;
-    const active = ready && id === "bedrock" && definition.v1Enabled;
+    // Drive "active" from real env readiness, not a bedrock-only hard gate
+    // (E3-T2). BYO credential presence is layered on top in ai.providerStatus,
+    // which is the single source of truth the UI/runtimes consult.
+    const active = ready && definition.v1Enabled;
     const model = configured ? modelForProvider(id) : null;
-    const embeddingsModel =
-      configured && definition.capabilities.includes("embeddings") ? envValue("AI_EMBEDDINGS_MODEL") : null;
     const reason =
       invalidProvider && configured
         ? `AI_PROVIDER=${invalidProvider} is not in the OpenBooks provider registry.`
@@ -162,7 +158,6 @@ export function resolveAIProviderRegistry() {
       ready,
       missingEnv,
       model,
-      embeddingsModel,
       reason,
     };
   });
@@ -174,7 +169,6 @@ export function resolveAIProviderRegistry() {
     configuredProvider,
     activeProvider: activeEntry?.id ?? null,
     model: activeEntry?.model ?? null,
-    embeddingsModel: activeEntry?.embeddingsModel ?? null,
     region: activeEntry?.id === "bedrock" ? envValue("AWS_REGION") : null,
     degradedReason:
       mode === "degraded"

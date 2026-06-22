@@ -12,8 +12,11 @@ import { ensureWorkspaceForUser } from "./auth";
 import { normalizeEmail, ownerEmail } from "./authz";
 
 export const bootstrapOwner = internalAction({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    workspaceName: v.optional(v.string()),
+    workspaceSlug: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
     const email = ownerEmail();
     const password = process.env.OWNER_PASSWORD;
 
@@ -33,6 +36,8 @@ export const bootstrapOwner = internalAction({
       await ctx.runMutation(internal.authAdmin.ensureOwnerWorkspace, {
         userId: user._id as Id<"users">,
         email,
+        workspaceName: args.workspaceName,
+        workspaceSlug: args.workspaceSlug,
       });
       return { status: "updated" };
     } catch (error) {
@@ -54,6 +59,8 @@ export const bootstrapOwner = internalAction({
       await ctx.runMutation(internal.authAdmin.ensureOwnerWorkspace, {
         userId: user._id as Id<"users">,
         email,
+        workspaceName: args.workspaceName,
+        workspaceSlug: args.workspaceSlug,
       });
       return { status: "created" };
     }
@@ -64,6 +71,8 @@ export const ensureOwnerWorkspace = internalMutation({
   args: {
     userId: v.id("users"),
     email: v.string(),
+    workspaceName: v.optional(v.string()),
+    workspaceSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const email = normalizeEmail(args.email);
@@ -75,6 +84,8 @@ export const ensureOwnerWorkspace = internalMutation({
       userId: args.userId,
       email,
       role: "owner",
+      workspaceName: args.workspaceName,
+      workspaceSlug: args.workspaceSlug,
     });
     return { workspaceId };
   },

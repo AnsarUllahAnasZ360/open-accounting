@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
-import { query, type QueryCtx } from "./_generated/server";
+import { internalQuery, query, type QueryCtx } from "./_generated/server";
 import { requireWorkspaceRole } from "./authz";
 
 type AccountBalance = {
@@ -32,18 +32,17 @@ function normalBalance(account: Doc<"ledgerAccounts">, balance: AccountBalance) 
   return balance.creditMinor - balance.debitMinor;
 }
 
-export const seedVerification = query({
-  args: {
-    entityId: v.id("entities"),
-  },
-  handler: async (ctx, args) => {
-    await requireEntity(ctx, args.entityId);
+// Shared trial-balance / verification computation (Epic E11-T4). Pure read; no
+// auth — the public `seedVerification` query authorizes first, while the
+// internal `seedVerificationInternal` (used by the system-actor public demo seed,
+// which has no session) calls this directly.
+async function computeSeedVerification(ctx: QueryCtx, entityId: Id<"entities">) {
     const [accounts, entries, lines, transactions, inboxItems] = await Promise.all([
-      ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", args.entityId)).collect(),
-      ctx.db.query("journalEntries").withIndex("by_entity", (q) => q.eq("entityId", args.entityId)).collect(),
-      ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", args.entityId)).collect(),
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", args.entityId)).collect(),
-      ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", args.entityId)).collect(),
+      ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).collect(),
+      ctx.db.query("journalEntries").withIndex("by_entity", (q) => q.eq("entityId", entityId)).collect(),
+      ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", entityId)).collect(),
+      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entityId)).collect(),
+      ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entityId)).collect(),
     ]);
 
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
@@ -119,5 +118,22 @@ export const seedVerification = query({
         balanceSheetDifferenceMinor: assetMinor - (liabilityMinor + equityMinor + currentEarningsMinor),
       },
     };
+}
+
+export const seedVerification = query({
+  args: {
+    entityId: v.id("entities"),
+  },
+  handler: async (ctx, args) => {
+    await requireEntity(ctx, args.entityId);
+    return await computeSeedVerification(ctx, args.entityId);
   },
 });
+
+// Internal, auth-free verification for the system-actor public demo seed
+// (Epic E11-T4). NOT public — only the internal seed path calls it.
+export const seedVerificationInternal = internalQuery({
+  args: { entityId: v.id("entities") },
+  handler: async (ctx, args) => computeSeedVerification(ctx, args.entityId),
+});
+

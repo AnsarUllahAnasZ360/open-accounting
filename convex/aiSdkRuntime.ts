@@ -1,107 +1,101 @@
 "use node";
 
-import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { generateText } from "ai";
 import { v } from "convex/values";
 
-import { api } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
-
-type ProviderStatus = {
-  mode: "active" | "degraded";
-  activeProvider: "bedrock" | null;
-  model: string | null;
-  region: string | null;
-  degradedReason: string | null;
-};
+import { getProviderEntry } from "./aiCatalog";
+import { buildModelForProvider } from "./aiProvider";
+import { resolveActiveAiModel } from "./aiResolve";
+import { safeErrorMessage } from "./secretRedaction";
 
 const CONNECTION_PROMPT = "Reply exactly: OpenBooks AI SDK connection OK";
 
-function envValue(name: string) {
-  return process.env[name]?.trim() || null;
+/**
+ * Redact any secret-shaped value from an error message: every env secret AND
+ * the resolved credential's apiKey/access-key material (E3-T3/T10), so a thrown
+ * provider error can never echo a key back to the client. Backed by the shared
+ * redaction helper so the same rule holds across every integration runtime.
+ */
+function errorMessage(error: unknown, extra: Array<string | null | undefined>) {
+  return safeErrorMessage(error, extra, "AI SDK connection failed.");
 }
 
-function redactEnvValues(message: string) {
-  const secretNames = [
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-    "AWS_BEARER_TOKEN_BEDROCK",
-  ];
-  return secretNames.reduce((current, name) => {
-    const value = envValue(name);
-    return value && value.length >= 4 ? current.split(value).join("[redacted]") : current;
-  }, message);
-}
-
-function errorMessage(error: unknown) {
-  const raw = error instanceof Error ? error.message : "AI SDK Bedrock connection failed.";
-  return redactEnvValues(raw).replace(/\s+/g, " ").slice(0, 300);
-}
-
+/**
+ * Provider-agnostic test-connection probe (E3-T3). Resolves the workspace's
+ * active provider + model + decrypted credential (BYO or env), builds the model
+ * through the unified factory, and runs one minimal generation. No path is
+ * hardwired to AWS Bedrock anymore. Secrets are never echoed in any message.
+ */
 export const testProviderConnection = action({
   args: {
     workspaceId: v.id("workspaces"),
   },
   handler: async (ctx, args) => {
-    const status: ProviderStatus = await ctx.runQuery(api.ai.providerStatus, args);
+    // Re-check workspace authorization on the server (E14-T5): this action takes
+    // a client-supplied workspaceId and resolves + exercises THAT workspace's
+    // saved AI credential, so a caller who is not an active member of the
+    // workspace must be rejected before any credential read or provider call.
+    // (The shared `resolveActiveAiModel` resolver is intentionally unguarded so
+    // the internal categorize/CFO/chat runtimes can use it without a user
+    // identity; the membership guard belongs on every client-facing entrypoint.)
+    await ctx.runQuery(internal.aiThreads.assertWorkspaceMember, {
+      workspaceId: args.workspaceId,
+    });
+    const resolved = await resolveActiveAiModel(ctx, {
+      workspaceId: args.workspaceId,
+      purpose: "chat",
+    });
+    const entry = getProviderEntry(resolved.provider);
+    const apiKeySecret = resolved.credential.apiKey ?? undefined;
+    const awsSecret = resolved.credential.secretAccessKey ?? undefined;
 
-    if (status.mode === "degraded") {
-      return {
-        ok: false,
-        mode: status.mode,
-        provider: status.activeProvider,
-        runtime: "degraded" as const,
-        message: status.degradedReason ?? "AI provider is not configured.",
-      };
-    }
-
-    if (!status.model || !status.region) {
+    if (!resolved.ready) {
+      // No usable credential resolved. `provider` is null because the resolved
+      // id is only a fallback default, not an actually-configured provider.
       return {
         ok: false,
         mode: "degraded" as const,
-        provider: status.activeProvider,
-        runtime: "ai_sdk" as const,
-        message: "Bedrock provider is active but model or region is missing.",
+        provider: null,
+        runtime: "degraded" as const,
+        message: `${entry.label} is not configured. Add a key (or the provider's env vars) before testing.`,
       };
     }
 
     try {
-      const bedrock = createAmazonBedrock({
-        region: status.region,
-        accessKeyId: envValue("AWS_ACCESS_KEY_ID") ?? undefined,
-        secretAccessKey: envValue("AWS_SECRET_ACCESS_KEY") ?? undefined,
-        sessionToken: envValue("AWS_SESSION_TOKEN") ?? undefined,
-        apiKey: envValue("AWS_BEARER_TOKEN_BEDROCK") ?? undefined,
+      const model = buildModelForProvider({
+        providerId: resolved.provider,
+        modelId: resolved.modelId,
+        credential: resolved.credential,
       });
       const startedAt = Date.now();
       const result = await generateText({
-        model: bedrock(status.model),
+        model,
         prompt: CONNECTION_PROMPT,
         maxOutputTokens: 16,
         temperature: 0,
         maxRetries: 0,
-        timeout: 15_000,
       });
 
       return {
         ok: true,
-        mode: status.mode,
-        provider: status.activeProvider,
+        mode: "active" as const,
+        provider: resolved.provider,
         runtime: "ai_sdk" as const,
-        model: status.model,
+        model: resolved.modelId,
         finishReason: result.finishReason,
         latencyMs: Date.now() - startedAt,
-        message: `AI SDK Bedrock connection succeeded for ${status.model} in ${status.region}.`,
+        message: `${entry.label} connection succeeded for ${resolved.modelId}.`,
       };
     } catch (error) {
       return {
         ok: false,
-        mode: status.mode,
-        provider: status.activeProvider,
+        mode: "degraded" as const,
+        provider: resolved.provider,
         runtime: "ai_sdk" as const,
-        model: status.model,
-        message: `AI SDK Bedrock connection failed: ${errorMessage(error)}`,
+        model: resolved.modelId,
+        message: `${entry.label} connection failed: ${errorMessage(error, [apiKeySecret, awsSecret])}`,
       };
     }
   },

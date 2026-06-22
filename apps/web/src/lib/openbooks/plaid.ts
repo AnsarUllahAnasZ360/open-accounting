@@ -1,5 +1,5 @@
 export type PlaidEnvState = {
-  environment: "sandbox" | "missing" | "unsupported";
+  environment: "sandbox" | "development" | "production" | "missing" | "unsupported";
   hasClientId: boolean;
   hasSecret: boolean;
   ready: boolean;
@@ -15,6 +15,9 @@ export type PlaidSelectableAccount = {
   balanceMinor: number;
   currency: string;
   include: boolean;
+  // E3-T5: the business this account is assigned to when one Plaid login spans
+  // multiple LLCs. Omitted for single-business links (back-compat).
+  entityId?: string;
 };
 
 export type PlaidConnectionState = {
@@ -39,7 +42,7 @@ export type PlaidConnectionState = {
   items: Array<{
     plaidItemId: string;
     institutionName?: string | null;
-    status: "active" | "relink_required";
+    status: "active" | "relink_required" | "disconnected";
     lastSyncCursor?: string | null;
     lastSyncedAt?: number | null;
     lastSyncTrigger?: "cron" | "webhook" | "manual" | null;
@@ -61,6 +64,16 @@ export type PlaidConnectionState = {
   }>;
 };
 
+export type PlaidAccountUpsertResult = {
+  createdCount: number;
+  updatedCount?: number;
+  accounts: Array<{
+    bankAccountId: string;
+    ledgerAccountId: string;
+    plaidAccountId: string;
+  }>;
+};
+
 export type PlaidFixtureTransaction = {
   transaction_id: string;
   account_id: string;
@@ -74,6 +87,7 @@ export type PlaidFixtureTransaction = {
     primary: string;
     detailed: string;
     confidence_level?: string | null;
+    version?: string | null;
   } | null;
 };
 
@@ -126,10 +140,10 @@ export const openBooksPlaidFixtureTransactions: PlaidFixtureTransaction[] = [
 ];
 
 export function plaidEnvLabel(env: PlaidEnvState | undefined) {
-  if (!env) return "Checking Plaid sandbox keys";
-  if (env.ready) return "Plaid sandbox keys are configured";
-  if (env.environment === "unsupported") return "Plaid is not in sandbox mode";
-  return "Plaid sandbox keys are missing";
+  if (!env) return "Checking Plaid keys";
+  if (env.ready) return `Plaid ${env.environment} keys are configured`;
+  if (env.environment === "unsupported") return "Plaid mode is unsupported";
+  return "Plaid keys are missing or blocked";
 }
 
 export function plaidModeTone(env: PlaidEnvState | undefined): "ready" | "blocked" | "fixture" {

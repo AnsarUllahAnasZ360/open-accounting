@@ -231,8 +231,8 @@ export const finalize = mutation({
       sourceId: invoice.number,
       auditAction: "invoice.finalized",
       lines: [
-        { accountId: arAccount._id, debitMinor: balanceMinor, creditMinor: 0, currency: entity.currency },
-        { accountId: incomeAccount._id, debitMinor: 0, creditMinor: balanceMinor, currency: entity.currency },
+        { accountId: arAccount._id, debitMinor: balanceMinor, creditMinor: 0, currency: entity.currency, contactId: invoice.contactId },
+        { accountId: incomeAccount._id, debitMinor: 0, creditMinor: balanceMinor, currency: entity.currency, contactId: invoice.contactId },
       ],
     });
 
@@ -282,8 +282,8 @@ export const recordStripeSend = mutation({
           sourceId: invoice.number,
           auditAction: "invoice.sent_via_stripe",
           lines: [
-            { accountId: arAccount._id, debitMinor: balanceMinor, creditMinor: 0, currency: entity.currency },
-            { accountId: incomeAccount._id, debitMinor: 0, creditMinor: balanceMinor, currency: entity.currency },
+            { accountId: arAccount._id, debitMinor: balanceMinor, creditMinor: 0, currency: entity.currency, contactId: invoice.contactId },
+            { accountId: incomeAccount._id, debitMinor: 0, creditMinor: balanceMinor, currency: entity.currency, contactId: invoice.contactId },
           ],
         });
         entryIds.push(posted.entryId);
@@ -300,6 +300,138 @@ export const recordStripeSend = mutation({
       updatedAt: now,
     });
     return { invoiceId: invoice._id, status, hostedInvoiceUrl: args.hostedInvoiceUrl ?? invoice.hostedInvoiceUrl ?? null };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// recordPayment (E2.2) — settle an open/overdue invoice when cash lands. Posts
+// ONE balanced entry through the ledger: debit Bank/Cash (money in), credit
+// Accounts Receivable (clears the open balance). Posted entries are immutable,
+// debits == credits, and the workspace/entity auth is re-checked on the server.
+// A full payment marks the invoice paid; a partial payment leaves it open with a
+// reduced balance. Optionally consumes a matched bank deposit so the same money
+// is never also counted as an uncategorized income transaction.
+// ---------------------------------------------------------------------------
+
+/** Resolve the bank ledger account to deposit into: the matched deposit's bank
+ * account, else operating checking, else the first bank account. */
+async function resolveBankLedgerAccount(
+  ctx: MutationCtx,
+  entityId: Id<"entities">,
+  txn?: Doc<"transactions"> | null,
+) {
+  const bankAccounts = await ctx.db
+    .query("bankAccounts")
+    .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+    .take(50);
+  if (txn?.bankAccountId) {
+    const matched = bankAccounts.find((account) => account._id === txn.bankAccountId);
+    if (matched) return matched;
+  }
+  const checking = bankAccounts.find((account) => account.kind === "checking") ?? bankAccounts[0];
+  if (!checking) {
+    throw new ConvexError("Connect a bank account before recording a payment.");
+  }
+  return checking;
+}
+
+export const recordPayment = mutation({
+  args: {
+    invoiceId: v.id("invoices"),
+    // Defaults to the full open balance; pass a smaller amount for a partial
+    // payment. Money is integer minor units, never a float.
+    amountMinor: v.optional(v.number()),
+    date: v.optional(v.string()),
+    // Optionally reconcile against an incoming bank deposit so the same money is
+    // not also surfaced as an uncategorized income transaction.
+    transactionId: v.optional(v.id("transactions")),
+  },
+  handler: async (ctx, args) => {
+    const { invoice, entity, userId } = await loadInvoiceForWrite(ctx, args.invoiceId);
+    if (invoice.status !== "open" && invoice.status !== "overdue") {
+      throw new ConvexError("Only issued (open or overdue) invoices can take a payment.");
+    }
+    const balanceMinor = invoice.totalMinor - invoice.amountPaidMinor;
+    if (balanceMinor <= 0) {
+      throw new ConvexError("This invoice has no open balance.");
+    }
+    const paymentMinor = args.amountMinor ?? balanceMinor;
+    assertNonNegativeMinorUnit(paymentMinor, "Payment amount");
+    if (paymentMinor <= 0) {
+      throw new ConvexError("Payment amount must be positive.");
+    }
+    if (paymentMinor > balanceMinor) {
+      throw new ConvexError("Payment cannot exceed the open balance.");
+    }
+    const date = isoDate(args.date ?? (TODAY >= invoice.issueDate ? TODAY : invoice.issueDate));
+
+    // Resolve the bank deposit to consume (explicit, money-in only).
+    let matchedTxn: Doc<"transactions"> | null = null;
+    if (args.transactionId) {
+      matchedTxn = await ctx.db.get(args.transactionId);
+      if (!matchedTxn || matchedTxn.entityId !== entity._id) {
+        throw new Error("Matched bank deposit must belong to this business.");
+      }
+      if (matchedTxn.review === "confirmed") {
+        throw new ConvexError("That bank deposit is already reconciled to something else.");
+      }
+      if (matchedTxn.amountMinor <= 0) {
+        throw new ConvexError("Pick an incoming (money-in) bank deposit to settle an invoice.");
+      }
+    }
+
+    const arAccount = await accountByNumber(ctx, entity._id, AR_NUMBER);
+    const bankAccount = await resolveBankLedgerAccount(ctx, entity._id, matchedTxn);
+
+    // Settlement entry: debit Bank/Cash (money in), credit A/R (clears balance).
+    const posted = await postLedgerEntryCore(ctx, {
+      entity,
+      userId,
+      date: matchedTxn?.date ?? date,
+      memo: `Payment received for invoice ${invoice.number}`,
+      source: "invoice",
+      sourceId: `${invoice.number}:payment`,
+      auditAction: "invoice.payment.recorded",
+      lines: [
+        { accountId: bankAccount.ledgerAccountId, debitMinor: paymentMinor, creditMinor: 0, currency: entity.currency, contactId: invoice.contactId },
+        { accountId: arAccount._id, debitMinor: 0, creditMinor: paymentMinor, currency: entity.currency, contactId: invoice.contactId },
+      ],
+    });
+
+    const now = Date.now();
+    const amountPaidMinor = invoice.amountPaidMinor + paymentMinor;
+    const fullyPaid = amountPaidMinor >= invoice.totalMinor;
+
+    // Consume the matched bank deposit so the same money is not also counted as
+    // an uncategorized income transaction (mirrors bill settlement).
+    if (matchedTxn && matchedTxn.review !== "confirmed") {
+      await ctx.db.patch(matchedTxn._id, {
+        review: "confirmed",
+        categoryAccountId: arAccount._id,
+        contactId: invoice.contactId,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.db.patch(invoice._id, {
+      status: fullyPaid ? "paid" : invoice.status,
+      amountPaidMinor,
+      entryIds: [...invoice.entryIds, posted.entryId],
+      timeline: fullyPaid
+        ? [...(invoice.timeline ?? []), { kind: "paid", label: "Paid", at: now }]
+        : invoice.timeline,
+      updatedAt: now,
+    });
+
+    return {
+      invoiceId: invoice._id,
+      entryId: posted.entryId,
+      paidMinor: paymentMinor,
+      amountPaidMinor,
+      balanceMinor: invoice.totalMinor - amountPaidMinor,
+      status: fullyPaid ? ("paid" as const) : invoice.status,
+      consumedTransactionId: matchedTxn?._id ?? null,
+    };
   },
 });
 
@@ -327,12 +459,14 @@ export const voidInvoice = mutation({
         .query("journalLines")
         .withIndex("by_entry", (q) => q.eq("entryId", entryId))
         .collect();
-      // Reversal exactly inverts each original line (debit<->credit).
+      // Reversal exactly inverts each original line (debit<->credit) and carries
+      // the same contact attribution so the contact-level rollup nets out too.
       const reversedLines = originalLines.map((line) => ({
         accountId: line.accountId,
         debitMinor: line.creditMinor,
         creditMinor: line.debitMinor,
         currency: line.currency,
+        contactId: line.contactId,
       }));
       const reversal = await postLedgerEntryCore(ctx, {
         entity,
@@ -442,6 +576,7 @@ export const detail = query({
       number: invoice.number,
       status: invoice.status,
       currency: invoice.currency,
+      contactId: invoice.contactId,
       customerName: contact?.name ?? "Customer",
       customerEmail: contact?.email ?? null,
       issueDate: invoice.issueDate,

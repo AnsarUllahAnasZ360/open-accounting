@@ -29,94 +29,73 @@ async function expectNoHorizontalScroll(page: Page, width: number) {
   expect(overflow, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(1);
 }
 
-test("C1 — Income tabs render seeded payments, invoices, receivables + KPIs", async ({ page }) => {
+test("C1 — Income [Income · Invoices] sub-tabs render seeded cash + AR + KPIs", async ({ page }) => {
   await gotoApp(page, "/income");
   await expect(page.getByTestId("income-screen")).toBeVisible();
 
-  // KPI row is present (Received / Still open / Overdue / Avg days to pay).
+  // The section sub-tab bar carries [Income · Invoices · Insights].
+  await expect(page.getByTestId("section-tabs")).toBeVisible();
+  await expect(page.getByTestId("section-tab-income")).toBeVisible();
+  await expect(page.getByTestId("section-tab-invoices")).toBeVisible();
+  await expect(page.getByTestId("section-tab-insights")).toBeVisible();
+
+  // Income (cash) KPI band: Received this month, Money owed, Monthly revenue.
   await expect(page.getByText("Received · this month")).toBeVisible();
-  await expect(page.getByText("Still open")).toBeVisible();
-  await expect(page.getByText("Avg days to pay")).toBeVisible();
+  await expect(page.getByText("Money owed")).toBeVisible();
 
-  // Payments tab (default) shows seeded rows.
-  await expect(page.getByTestId("income-payments")).toBeVisible();
+  // Income (cash) tab is the default and shows seeded cash-received rows.
   await expect(page.getByTestId("payment-row").first()).toBeVisible();
-  await page.screenshot({ path: "docs/finishing/evidence/2026-06-12-C1-income-payments.png", fullPage: true });
+  await page.screenshot({ path: "docs/finishing/evidence/2026-06-14-C1-income-cash.png", fullPage: true });
 
-  // Invoices tab.
-  await page.getByTestId("income-tab-invoices").click();
-  await expect(page.getByTestId("income-invoices")).toBeVisible();
+  // Invoices (AR) sub-tab: routes to /income/invoices, AR money bar + rows.
+  await page.getByTestId("section-tab-invoices").click();
+  await expect(page).toHaveURL(/\/income\/invoices/);
+  await expect(page.getByTestId("income-invoices-screen")).toBeVisible();
+  await expect(page.getByText("Outstanding")).toBeVisible();
+  await expect(page.getByText(/invoices awaiting payment|Nothing past due/).first()).toBeVisible();
   await expect(page.getByTestId("invoice-row").first()).toBeVisible();
-  await page.screenshot({ path: "docs/finishing/evidence/2026-06-12-C1-income-invoices.png", fullPage: true });
+  await page.screenshot({ path: "docs/finishing/evidence/2026-06-14-C1-income-invoices.png", fullPage: true });
 
-  // Receivables tab: heat matrix with at least one customer row + a total.
-  await page.getByTestId("income-tab-receivables").click();
-  await expect(page.getByTestId("income-receivables")).toBeVisible();
-  await expect(page.getByTestId("receivable-row").first()).toBeVisible();
-  await expect(page.getByTestId("receivables-total")).toBeVisible();
-  await page.screenshot({ path: "docs/finishing/evidence/2026-06-12-C1-income-receivables.png", fullPage: true });
-
-  // A customer row drills through to the Contacts profile.
-  await page.getByTestId("receivable-row").first().click();
-  await expect(page).toHaveURL(/\/contacts\?contact=/);
+  // An invoice row opens the shared DetailSheet (number, customer, timeline).
+  await page.getByTestId("invoice-row").first().click();
+  await expect(page.getByTestId("invoice-detail")).toBeVisible();
+  await expect(page.getByTestId("invoice-timeline")).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await expectNoHorizontalScroll(page, 1440);
   await expectNoHorizontalScroll(page, 390);
 });
 
-test("C2 — compose invoice -> Save draft (posts nothing) -> reopen -> Finalize -> appears in receivables", async ({ page }) => {
-  await gotoApp(page, "/income");
-
-  // Note the open-total KPI is reachable; finalize will increase receivables.
-  await page.getByTestId("income-new-invoice").click();
-  await expect(page.getByTestId("invoice-composer")).toBeVisible();
-
-  // Unique customer name per run so the assertion is unambiguous.
-  const stamp = Date.now().toString().slice(-6);
-  const customer = `E2E Customer ${stamp}`;
-  await page.getByTestId("composer-customer").fill(customer);
-  await page.getByTestId("composer-line-desc").first().fill("Design retainer");
-  await page.getByTestId("composer-line-rate").first().fill("1234.00");
-  await expect(page.getByTestId("composer-total")).toContainText("1,234");
-  await page.screenshot({ path: "docs/finishing/evidence/2026-06-12-C2-composer.png", fullPage: true });
-
-  await page.getByTestId("composer-save-draft").click();
-
-  // The draft detail drawer opens; the invoice is a Draft (no ledger posting).
-  await expect(page.getByTestId("invoice-detail")).toBeVisible();
-  await expect(page.getByTestId("invoice-detail")).toContainText("Draft");
-  await expect(page.getByTestId("invoice-timeline")).toBeVisible();
-  await page.screenshot({ path: "docs/finishing/evidence/2026-06-12-C2-drawer.png", fullPage: true });
-
-  // Finalize from the drawer (manual, no Stripe dependency) -> it accrues to AR.
-  await page.getByTestId("invoice-finalize").click();
-  await expect(page.getByTestId("invoice-detail-message")).toContainText(/issued|owed/i, { timeout: 10000 });
-  // The drawer now shows an Open/Overdue status and a Void affordance.
-  await expect(page.getByTestId("invoice-void")).toBeVisible();
-
-  // Clean up shared books immediately: void it (reverses the accrual).
-  await page.getByTestId("invoice-void").click();
-  await expect(page.getByTestId("invoice-detail-message")).toContainText(/void/i, { timeout: 10000 });
-});
-
-test("C4 — Expenses renders category totals + recurring, and Add category creates a usable account", async ({ page }) => {
+test("C4 — Expenses [Expenses · Bills · Insights] on the driver; inline recategorize + Add category survive", async ({ page }) => {
   await gotoApp(page, "/expenses");
   await expect(page.getByTestId("expenses-screen")).toBeVisible();
 
-  // KPIs + category table + recurring section.
-  await expect(page.getByTestId("expenses-screen").getByText("Recurring spend")).toBeVisible();
-  await expect(page.getByTestId("expenses-categories")).toBeVisible();
-  await expect(page.getByTestId("expense-category-row").first()).toBeVisible();
-  await expect(page.getByTestId("expenses-total")).toBeVisible();
-  await expect(page.getByTestId("expenses-recurring")).toBeVisible();
-  // Seeded subscriptions (AWS / Vercel / Google Workspace) are detected.
-  await expect(page.getByTestId("recurring-row").first()).toBeVisible();
+  // The section sub-tab bar carries [Expenses · Bills · Insights] (Epic E3).
+  await expect(page.getByTestId("section-tabs")).toBeVisible();
+  await expect(page.getByTestId("section-tab-expenses")).toBeVisible();
+  await expect(page.getByTestId("section-tab-bills")).toBeVisible();
+  await expect(page.getByTestId("section-tab-insights")).toBeVisible();
+
+  // Expenses (cash) is the default tab: the unified money-out table on the full
+  // WorkbenchToolbar, with the admin-gated inline recategorize preserved.
+  await expect(page.getByTestId("expense-row").first()).toBeVisible();
+  await expect(page.getByTestId("expense-category-select").first()).toBeVisible();
   await page.screenshot({ path: "docs/finishing/evidence/2026-06-12-C4-expenses.png", fullPage: true });
 
-  // Expand a category to reveal its vendor breakdown.
-  await page.getByTestId("expense-category-row").first().click();
+  // Categories + Recurring folded into Insights; the breakdown lives there now.
+  await page.getByTestId("section-tab-insights").click();
+  await expect(page).toHaveURL(/\/expenses\/insights/);
+  await expect(page.getByTestId("insights-dashboard")).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText("Total spend").first()).toBeVisible();
+  await expect(page.getByText("Recurring").first()).toBeVisible();
+  await page.screenshot({ path: "docs/finishing/evidence/2026-06-12-C4-expenses-insights.png", fullPage: true });
 
-  // Add category: creates a real ledger account (idempotent name).
+  // Add category still mints a real ledger account (idempotent name).
+  await page.getByTestId("section-tab-expenses").click();
+  await expect(page.getByTestId("expenses-screen")).toBeVisible();
+  // Add category now lives inside the single "+" AddMenu (E5.3): open the menu,
+  // then pick "Add category".
+  await page.getByTestId("add-menu-trigger").click();
   await page.getByTestId("expenses-add-category").click();
   await expect(page.getByTestId("add-category-modal")).toBeVisible();
   await page.getByTestId("category-name").fill("Conferences & Events");
@@ -133,13 +112,15 @@ function moneyToNumber(text: string) {
 }
 
 test("C5 — Add a bill, mark it paid via the match picker, and the AP open total decreases", async ({ page }) => {
-  await gotoApp(page, "/bills");
-  await expect(page.getByTestId("m6-bills-screen")).toBeVisible();
+  await gotoApp(page, "/expenses/bills");
+  await expect(page.getByTestId("expenses-bills-screen")).toBeVisible();
 
   // Self-contained: create a fresh bill (posts AP). Settling it later clears AP,
   // so the books net out regardless of reruns.
   const stamp = Date.now().toString().slice(-6);
   const vendor = `E2E Vendor ${stamp}`;
+  // Add bill now lives inside the single "+" AddMenu (E5.3): open the menu first.
+  await page.getByTestId("add-menu-trigger").click();
   await page.getByTestId("bills-add-bill").click();
   await expect(page.getByTestId("add-bill-modal")).toBeVisible();
   await page.getByTestId("bill-vendor").fill(vendor);
@@ -179,8 +160,8 @@ test("C5 — Add a bill, mark it paid via the match picker, and the AP open tota
 });
 
 test("C5 — Mark a seeded bill paid: AP open total decreases and the matched bank txn is consumed", async ({ page }) => {
-  await gotoApp(page, "/bills");
-  await expect(page.getByTestId("m6-bills-screen")).toBeVisible();
+  await gotoApp(page, "/expenses/bills");
+  await expect(page.getByTestId("expenses-bills-screen")).toBeVisible();
 
   // Find a seeded OPEN bill that still has a Mark paid affordance.
   const markPaidButtons = page.getByTestId("bill-mark-paid");

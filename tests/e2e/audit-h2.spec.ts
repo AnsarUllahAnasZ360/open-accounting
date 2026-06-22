@@ -83,6 +83,9 @@ test("H2 — a real posting action appears in Settings audit log", async ({ page
     await gotoApp(page, "/transactions");
     await selectEntity(page, businessName);
     await expect(visibleByTestId(page, "transactions-screen")).toBeVisible({ timeout: 30000 });
+    // Manual add lives behind the single "+" AddMenu (E5.3): open it first.
+    await page.getByTestId("add-menu-trigger").click();
+    await page.getByTestId("add-menu-add-transaction").click();
     await visibleByTestId(page, "manual-merchant").fill(merchant);
     await visibleByTestId(page, "manual-amount").fill("-42.00");
     await expectClickable(visibleByTestId(page, "manual-add"));

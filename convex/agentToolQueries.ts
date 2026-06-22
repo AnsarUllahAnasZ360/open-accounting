@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalQuery, type QueryCtx } from "./_generated/server";
+import { computeCfoSignals } from "./aiCfoAggregate";
 
 /**
  * Internal, entity-scoped read queries backing the Ask AI agent's read tools.
@@ -32,8 +33,14 @@ const REPORT_NAME = v.union(
 );
 const REPORT_BASIS = v.union(v.literal("accrual"), v.literal("cash"));
 
-const DEFAULT_START_DATE = "2026-01-01";
-const DEFAULT_END_DATE = "2026-12-31";
+// The CANONICAL report window is computed from the server clock in the action
+// layer (agentTools.ts `defaultReportWindow`, E9-T2 / RC6) and passed down
+// explicitly — a Convex query can't read `Date.now()`. These constants are only
+// a last-resort safety net if a caller ever omits the dates: an open-ended
+// all-time range, NEVER a frozen calendar-year literal that would silently
+// freeze "this period" to a stale year.
+const FALLBACK_START_DATE = "1970-01-01";
+const FALLBACK_END_DATE = "9999-12-31";
 const MAX_TOOL_ROWS = 50;
 
 /**
@@ -151,8 +158,8 @@ export const getReportForEntity = internalQuery({
     // through the `internal` API graph (per Convex guidelines).
     const pack: ReportPackForTool = await ctx.runQuery(internal.reportViews.reportPackForEntity, {
       entityId: args.entityId,
-      startDate: args.startDate ?? DEFAULT_START_DATE,
-      endDate: args.endDate ?? DEFAULT_END_DATE,
+      startDate: args.startDate ?? FALLBACK_START_DATE,
+      endDate: args.endDate ?? FALLBACK_END_DATE,
       basis: args.basis ?? "accrual",
       compare: "none",
       columnMode: "monthly",
@@ -280,6 +287,28 @@ export const searchContactsForEntity = internalQuery({
           };
         }),
     };
+  },
+});
+
+/**
+ * Advisor (AI CFO) signals for the Ask-AI tools (E9-T7). Entity-scoped, never
+ * trusting a model-supplied id (the entityId is resolved from thread ownership in
+ * agentTools.resolveEntityId). Returns the SAME grounded CfoSignals the dashboard
+ * advisor surface (E9-T5) and digest (E9-T6) bind to, so the chat answer cites
+ * the exact ledger numbers and nothing is fabricated. The window's `today` is
+ * computed in the action layer (server clock) and passed down — a Convex query
+ * can't read the clock (E9-T2).
+ */
+export const getCfoSignalsForEntity = internalQuery({
+  args: { entityId: v.id("entities"), today: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const entity = await getEntityById(ctx, args.entityId);
+    const today =
+      args.today && /^\d{4}-\d{2}-\d{2}$/.test(args.today)
+        ? args.today
+        : new Date(Date.now()).toISOString().slice(0, 10);
+    const signals = await computeCfoSignals(ctx, entity, entity.workspaceId, today);
+    return { tool: "getAdvisories" as const, ...signals };
   },
 });
 

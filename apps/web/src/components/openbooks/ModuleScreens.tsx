@@ -4,14 +4,18 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
   Archive,
+  ArrowUpRight,
   Building2,
+  CalendarClock,
+  Check,
   CheckCircle2,
-  ChevronLeft,
+  Clock,
   Download,
   FileUp,
   History,
-  Merge,
+  Paperclip,
   Pencil,
+  Play,
   Plus,
   Printer,
   ReceiptText,
@@ -19,22 +23,55 @@ import {
   SlidersHorizontal,
   Sparkles,
   ToggleLeft,
+  Users,
   UserPlus,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 
-import { Amount, AgingMiniBar, CategoryChip, EmptyState, StatCard, formatMinorMoney } from "@/components/openbooks/primitives";
+import { Amount, AgingMiniBar, BarChart, CategoryChip, EmptyState, formatMinorMoney } from "@/components/openbooks/primitives";
+import { ContactsScreen } from "@/components/openbooks/ContactsScreen";
 import {
   type BillRow,
-  type ContactRow,
+  type EmployeeRow,
   type InvoiceRow,
   type ModuleOverview,
   statusLabel,
 } from "@/components/openbooks/module-helpers";
+import {
+  AiInsightBadge,
+  AttentionState,
+  DateRangeControl,
+  dateRangeValueToISO,
+  DetailSheet,
+  EvidenceUpload,
+  ExportMenu,
+  FilterBar,
+  type FacetValue,
+  type DateRangeValue,
+  OpenBooksDataTable,
+  type ColumnDef,
+  PageActionBar,
+  WorkbenchPage,
+  InsightBanner,
+  InsightBannerExplain,
+  buildPageInsight,
+} from "@/components/openbooks/workbench";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +84,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import {
   Table,
   TableBody,
   TableCell,
@@ -57,11 +103,13 @@ import {
 import { PlaidConnectionPanel } from "@/components/openbooks/PlaidConnectionPanel";
 import { StripeConnectionPanel } from "@/components/openbooks/StripeConnectionPanel";
 import { useActiveEntity } from "@/lib/openbooks/active-entity";
+import { todayIso } from "@/lib/openbooks/today";
 import { aiAutonomyOptions, frontendAiStatus, type AiAutonomyMode } from "@/lib/openbooks/ai";
+import { cn } from "@/lib/utils";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../convex/_generated/api";
 
-function useModuleOverview() {
+export function useModuleOverview() {
   const { activeEntity } = useActiveEntity();
   return useQuery(
     api.moduleViews.overview,
@@ -85,10 +133,6 @@ function NoEntityState() {
       description="Seed demo data or create a business before opening the module screens."
     />
   );
-}
-
-function moneyTone(amountMinor: number) {
-  return amountMinor > 0 ? "income" : "expense";
 }
 
 function statusChip(status: string) {
@@ -139,199 +183,6 @@ function ModuleIntro({
   );
 }
 
-export function ContactsScreen() {
-  const data = useModuleOverview();
-  const searchParams = useSearchParams();
-  const focusContactId = searchParams.get("contact");
-  const [role, setRole] = useState<"all" | "customer" | "vendor">("all");
-  const [search, setSearch] = useState("");
-  // Seed selection from the ⌘K deep-link (/contacts?contact=<id>); later clicks
-  // override it.
-  const [selectedId, setSelectedId] = useState<string | null>(focusContactId);
-
-  if (data === undefined) return <LoadingBlock label="contacts" />;
-  if (!data.entity) return <NoEntityState />;
-
-  const currency = data.entity.currency;
-  const filtered = data.contacts.rows.filter((contact) => {
-    const roleMatch = role === "all" || contact.roles.includes(role);
-    const text = `${contact.name} ${contact.email ?? ""} ${contact.aliases.join(" ")}`.toLowerCase();
-    return roleMatch && text.includes(search.trim().toLowerCase());
-  });
-  const selected =
-    data.contacts.selectedProfile && (!selectedId || data.contacts.selectedProfile.id === selectedId)
-      ? data.contacts.selectedProfile
-      : data.contacts.rows.find((contact) => contact.id === selectedId) ?? data.contacts.selectedProfile;
-
-  return (
-    <div className="space-y-5" data-testid="m6-contacts-screen">
-      <ModuleIntro
-        title="Contacts directory"
-        description="Customers, vendors, and recurring payees live in one directory. The profile view ties each contact to open receivables, open payables, and the default-category rule affordance."
-        action={
-          <Button variant="outline" size="sm">
-            <UserPlus className="size-4" />
-            Add contact
-          </Button>
-        }
-      />
-
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card className="shadow-xs">
-          <CardHeader className="space-y-3">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <CardTitle className="text-base">Directory</CardTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                {(["all", "customer", "vendor"] as const).map((item) => (
-                  <Button
-                    key={item}
-                    size="sm"
-                    variant={role === item ? "default" : "outline"}
-                    onClick={() => setRole(item)}
-                    className="capitalize"
-                  >
-                    {item === "all" ? "All" : `${item}s`}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Search contacts or aliases"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead className="text-right">Open balance</TableHead>
-                  <TableHead className="text-right">This year</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((contact) => (
-                  <TableRow
-                    key={contact.id}
-                    data-testid="contact-row"
-                    className="cursor-pointer"
-                    onClick={() => setSelectedId(contact.id)}
-                  >
-                    <TableCell>
-                      <div className="font-medium">{contact.name}</div>
-                      <div className="text-xs text-muted-foreground">{contact.aliases.slice(0, 2).join(" · ")}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {contact.roles.map((item) => <CategoryChip key={item} label={item} />)}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Amount amountMinor={contact.openReceivableMinor - contact.openPayableMinor} currency={currency} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Amount amountMinor={contact.totalThisYearMinor} currency={currency} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <ContactProfile contact={selected} currency={data.entity.currency} />
-      </section>
-    </div>
-  );
-}
-
-function ContactProfile({
-  contact,
-  currency,
-}: {
-  contact: ModuleOverview["contacts"]["selectedProfile"] | ContactRow | null;
-  currency: string;
-}) {
-  if (!contact) {
-    return (
-      <Card className="shadow-xs">
-        <CardContent className="p-4">
-          <EmptyState title="No contact selected" description="Choose a customer or vendor to review their profile." />
-        </CardContent>
-      </Card>
-    );
-  }
-  const history = "history" in contact ? contact.history : [];
-  const mergeFlow = "mergeFlow" in contact ? contact.mergeFlow : null;
-
-  return (
-    <Card className="shadow-xs" data-testid="contact-profile">
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">{contact.name}</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">{contact.email ?? "No email on file"}</p>
-          </div>
-          <div className="flex flex-wrap justify-end gap-1">
-            {contact.roles.map((role) => <CategoryChip key={role} active label={role} />)}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-          <StatCard label="Open A/R" value={<Amount amountMinor={contact.openReceivableMinor} currency={currency} />} />
-          <StatCard label="Open A/P" value={<Amount amountMinor={contact.openPayableMinor} currency={currency} />} />
-          <StatCard label="This year" value={<Amount amountMinor={contact.totalThisYearMinor} currency={currency} />} />
-        </div>
-
-        <div className="rounded-lg border p-3">
-          <div className="flex items-start gap-2">
-            <Sparkles className="mt-0.5 size-4 text-primary" />
-            <div>
-              <div className="text-sm font-medium">Default category as rule</div>
-              <p className="mt-1 text-sm text-muted-foreground">{contact.defaultCategoryRule.label}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-lg border p-3">
-          <div className="flex items-start gap-2">
-            <Merge className="mt-0.5 size-4 text-muted-foreground" />
-            <div>
-              <div className="text-sm font-medium">Merge duplicates</div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {mergeFlow ? `${mergeFlow.suggestion}. ${mergeFlow.reason}` : "Duplicate detection needs candidate rows from the backend."}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-2 text-sm font-medium">Recent history</div>
-          <div className="divide-y rounded-lg border">
-            {history.slice(0, 5).map((item) => (
-              <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-sm">
-                <div>
-                  <div className="font-medium">{item.label}</div>
-                  <div className="text-xs text-muted-foreground">{item.date} · {statusLabel(item.status)}</div>
-                </div>
-                <Amount amountMinor={item.amountMinor} currency={currency} tone={moneyTone(item.amountMinor)} />
-              </div>
-            ))}
-            {history.length === 0 ? <div className="p-3 text-sm text-muted-foreground">No history yet.</div> : null}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 export function InvoicesScreen() {
   const data = useModuleOverview();
   const [status, setStatus] = useState("all");
@@ -376,13 +227,6 @@ export function InvoicesScreen() {
           </Dialog>
         }
       />
-
-      <section className="grid gap-4 md:grid-cols-4">
-        <StatCard label="Open total" value={<Amount amountMinor={data.invoices.kpis.openMinor} currency={data.entity.currency} />} />
-        <StatCard label="Overdue" value={<Amount amountMinor={data.invoices.kpis.overdueMinor} currency={data.entity.currency} />} />
-        <StatCard label="Paid last 30d" value={<Amount amountMinor={data.invoices.kpis.paidLast30Minor} currency={data.entity.currency} />} />
-        <StatCard label="Avg days to pay" value={<span className="money-figures">{data.invoices.kpis.averageDaysToPay}</span>} detail="Demo estimate" />
-      </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <Card className="shadow-xs">
@@ -472,361 +316,577 @@ function AgingMatrix({ bucket, currency }: { bucket: ModuleOverview["invoices"][
 
 export function BillsScreen() {
   const data = useModuleOverview();
-  const generateReceiptUploadUrl = useMutation(api.receipts.generateUploadUrl);
-  const recordReceiptUpload = useMutation(api.receipts.recordUpload);
-  const manualMatchReceipt = useMutation(api.receipts.manualMatch);
-  const createExpenseFromReceipt = useMutation(api.receipts.createExpenseFromReceipt);
-  const extractReceiptWithBedrock = useAction(api.receipts.extractWithBedrock);
-  const [selectedBill, setSelectedBill] = useState<BillRow | null>(null);
-  // C5 — mark-paid settlement: the bill whose match picker is open.
+  const router = useRouter();
+  const search = "";
+  const [range, setRange] = useState<DateRangeValue>({ preset: "last-3-months" });
+  const [facets, setFacets] = useState<FacetValue>({});
+  const [evidenceMissingOnly, setEvidenceMissingOnly] = useState(false);
+  const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
+  // The bill whose Mark-paid match picker is open (C5 settlement flow).
   const [payBill, setPayBill] = useState<BillRow | null>(null);
-  const [documentKind, setDocumentKind] = useState<"receipt" | "bill">("receipt");
-  const [vendor, setVendor] = useState("");
-  const [receiptDate, setReceiptDate] = useState("");
-  const [receiptAmount, setReceiptAmount] = useState("");
-  const [uploadMessage, setUploadMessage] = useState("");
-  const [uploading, setUploading] = useState(false);
 
   if (data === undefined) return <LoadingBlock label="bills" />;
   if (!data.entity) return <NoEntityState />;
   const entity = data.entity;
+  const currency = entity.currency;
 
-  async function uploadReceiptFiles(files: FileList | null) {
-    const file = files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setUploadMessage("");
-    try {
-      const uploadUrl = await generateReceiptUploadUrl({ entityId: entity.id as Id<"entities"> });
-      const uploadResult = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!uploadResult.ok) {
-        throw new Error("Receipt upload failed before it reached Convex storage.");
-      }
-      const { storageId } = await uploadResult.json() as { storageId: string };
-      const hasManualOverrides = Boolean(vendor.trim() || receiptDate.trim() || receiptAmount.trim());
-      const result = await recordReceiptUpload({
-        entityId: entity.id as Id<"entities">,
-        kind: documentKind,
-        storageId: storageId as Id<"_storage">,
-        fileName: file.name,
-        mimeType: file.type || "application/octet-stream",
-        vendor: vendor.trim() || undefined,
-        date: receiptDate.trim() || undefined,
-        totalMinor: moneyInputToMinor(receiptAmount),
-        currency: entity.currency,
-      });
-      const bedrockResult = hasManualOverrides
-        ? null
-        : await extractReceiptWithBedrock({ documentId: result.documentId });
-      const extractionLabel = bedrockResult?.mode === "pdf_text" ? "PDF text" : "Bedrock";
-      setUploadMessage(
-        bedrockResult?.mode === "bedrock" || bedrockResult?.mode === "pdf_text"
-          ? bedrockResult.status === "matched"
-            ? `Uploaded ${file.name}: ${extractionLabel} extracted ${bedrockResult.vendor} and auto-matched it.`
-            : `Uploaded ${file.name}: ${extractionLabel} extracted ${bedrockResult.vendor}; queued for match.`
-          : result.status === "matched"
-          ? `Uploaded ${file.name}: auto-matched to a bank transaction.`
-          : bedrockResult
-            ? `Uploaded ${file.name}: queued for manual match. ${"reason" in bedrockResult ? bedrockResult.reason : bedrockResult.notes}`
-            : `Uploaded ${file.name}: queued for manual match.`,
-      );
-      setVendor("");
-      setReceiptDate("");
-      setReceiptAmount("");
-    } catch (error) {
-      setUploadMessage(error instanceof Error ? error.message : "Receipt upload failed.");
-    } finally {
-      setUploading(false);
-    }
-  }
+  // Flatten the server's due-window groups back into one ordered list; the
+  // workbench presents a single Accounts-Payable table, not four Cards.
+  const allBills = data.bills.groups.flatMap((group) => group.rows);
 
-  async function matchSuggestedCandidate(document: {
-    id: string;
-    candidateTransaction?: { id: string; merchant: string } | null;
-  }) {
-    const candidate = document.candidateTransaction;
-    if (!candidate) return;
-    setUploadMessage("");
-    try {
-      await manualMatchReceipt({
-        documentId: document.id as Id<"documents">,
-        transactionId: candidate.id as Id<"transactions">,
-      });
-      setUploadMessage(`Manual match saved to ${candidate.merchant}.`);
-    } catch (error) {
-      setUploadMessage(error instanceof Error ? error.message : "Manual match failed.");
-    }
-  }
+  // Default sort: overdue -> due-soon -> later -> paid, then by due date.
+  const statusRank = (bill: BillRow) => {
+    if (bill.status === "paid") return 3;
+    if (bill.isOverdue) return 0;
+    if (bill.isDueSoon) return 1;
+    return 2;
+  };
+  const sortedBills = [...allBills].sort(
+    (a, b) => statusRank(a) - statusRank(b) || a.dueDate.localeCompare(b.dueDate) || b.createdAt - a.createdAt,
+  );
 
-  async function createExpenseForReceipt(document: {
-    id: string;
-    vendor: string;
-  }) {
-    setUploadMessage("");
-    try {
-      const result = await createExpenseFromReceipt({
-        documentId: document.id as Id<"documents">,
-      });
-      setUploadMessage(
-        result.status === "duplicate"
-          ? `Expense already exists for ${document.vendor}.`
-          : `Expense created for ${document.vendor}.`,
-      );
-    } catch (error) {
-      setUploadMessage(error instanceof Error ? error.message : "Could not create expense from receipt.");
+  const term = search.trim().toLowerCase();
+  const vendorFacet = facets.vendor;
+  // Anchor all bill-date windows on the real server/browser clock (E8-T2 / RC6),
+  // not a frozen demo date. `dateRangeValueToISO` already resolves preset windows
+  // (including last-3-months) so `to` is the live "today" — no special-case override.
+  const rangeBounds = dateRangeValueToISO(range, todayIso());
+  const filteredBills = sortedBills.filter((bill) => {
+    if (bill.dueDate < rangeBounds.from || bill.dueDate > rangeBounds.to) return false;
+    if (facets.status === "open" && bill.status !== "open") return false;
+    if (facets.status === "overdue" && !bill.isOverdue) return false;
+    if (facets.status === "due-soon" && !bill.isDueSoon) return false;
+    if (facets.status === "paid" && bill.status !== "paid") return false;
+    if (facets.source && bill.source !== facets.source) return false;
+    if (vendorFacet && bill.vendorName !== vendorFacet) return false;
+    if (evidenceMissingOnly && bill.hasEvidence) return false;
+    if (term && !bill.vendorName.toLowerCase().includes(term) && !(bill.category ?? "").toLowerCase().includes(term)) {
+      return false;
     }
-  }
+    return true;
+  });
+
+  const selectedBill = allBills.find((bill) => bill.id === selectedBillId) ?? null;
+
+  const vendorOptions = [...new Set(allBills.map((bill) => bill.vendorName))]
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => ({ value: name, label: name }));
 
   return (
-    <div className="space-y-5" data-testid="m6-bills-screen">
-      <ModuleIntro
-        title="Bills and money you owe"
-        description="What you owe and when it's due — grouped by due window. Mark a bill paid to match it to a bank transaction (the payable clears and the transaction is consumed). Upload a PDF or receipt to extract a prefilled bill."
-        action={
-          <div className="flex gap-2">
-            <Button asChild variant="outline" size="sm">
-              <label htmlFor="m11-receipt-file">
-                <FileUp className="size-4" />
-                Upload file
-              </label>
-            </Button>
-            <AddBillModal entityId={entity.id as Id<"entities">} />
-          </div>
-        }
-      />
+    <div className="flex w-full flex-col gap-5" data-testid="m6-bills-screen">
+      <div className="flex items-center justify-end">
+        <PageActionBar primary={undefined}>
+          <ExportMenu
+            formats={["csv"]}
+            filename="bills"
+            onExport={() => exportBillsCsv(filteredBills, currency)}
+          />
+          <UploadBillModal entityId={entity.id as Id<"entities">} />
+          <AddBillModal entityId={entity.id as Id<"entities">} />
+        </PageActionBar>
+      </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Open total" value={<span data-testid="bills-open-total"><Amount amountMinor={data.bills.kpis.openMinor} currency={data.entity.currency} /></span>} />
-        <StatCard label="Due this week" value={<Amount amountMinor={data.bills.kpis.dueThisWeekMinor} currency={data.entity.currency} />} />
-        <StatCard label="Overdue" value={<Amount amountMinor={data.bills.kpis.overdueMinor} currency={data.entity.currency} />} />
-      </section>
-
-      <Card className="shadow-xs" data-testid="m11-receipt-upload-panel">
-        <CardHeader>
-          <CardTitle className="text-base">Receipt and bill upload</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="rounded-lg border border-dashed bg-muted/20 p-4">
-              <div className="flex items-start gap-3">
-                <FileUp className="mt-0.5 size-5 text-primary" />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium">Upload evidence</div>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{data.bills.uploadPdf.reason}</p>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="text-sm">
-                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Type</span>
-                  <select
-                    className="h-9 w-full rounded-lg border bg-background px-3 text-sm"
-                    value={documentKind}
-                    onChange={(event) => setDocumentKind(event.target.value as "receipt" | "bill")}
-                  >
-                    <option value="receipt">Receipt</option>
-                    <option value="bill">Bill PDF</option>
-                  </select>
-                </label>
-                <label className="text-sm">
-                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Vendor override</span>
-                  <Input value={vendor} placeholder="Optional" onChange={(event) => setVendor(event.target.value)} />
-                </label>
-                <label className="text-sm">
-                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Date override</span>
-                  <Input type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} />
-                </label>
-                <label className="text-sm">
-                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Amount override</span>
-                  <Input inputMode="decimal" value={receiptAmount} placeholder="42.00" onChange={(event) => setReceiptAmount(event.target.value)} />
-                </label>
-              </div>
-              <input
-                id="m11-receipt-file"
-                data-testid="m11-receipt-file"
-                className="sr-only"
-                type="file"
-                accept="image/png,image/jpeg,application/pdf"
-                disabled={uploading}
-                onChange={(event) => void uploadReceiptFiles(event.currentTarget.files)}
-              />
-              <Button asChild className="mt-4 w-full" disabled={uploading}>
-                <label htmlFor="m11-receipt-file">
-                  <FileUp className="size-4" />
-                  {uploading ? "Uploading..." : "Choose file"}
-                </label>
-              </Button>
-              {uploadMessage ? (
-                <div className="mt-3 rounded-lg border bg-primary/5 p-3 text-sm text-primary" data-testid="m11-receipt-upload-message">
-                  {uploadMessage}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="rounded-lg border">
-              <div className="border-b px-3 py-2 text-sm font-medium">Uploaded evidence</div>
-              <div className="divide-y">
-                {data.bills.uploadPdf.documents.slice(0, 6).map((document) => (
-                  <div key={document.id} className="grid gap-3 px-3 py-3 text-sm md:grid-cols-[1fr_auto] md:items-start" data-testid="m11-receipt-row">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{document.vendor}</span>
-                        <Badge variant="outline" className="capitalize">{document.status}</Badge>
-                        <CategoryChip label={`${Math.round(document.extractionConfidence * 100)}%`} />
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {document.kind} · {document.date} · {document.fileName ?? "seeded document"}
-                      </div>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{document.extractionNotes}</p>
-                      {document.matchedTransaction ? (
-                        <div className="mt-2 text-xs text-primary">
-                          Matched to {document.matchedTransaction.merchant} on {document.matchedTransaction.date}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-col items-start gap-2 md:items-end">
-                      <Amount amountMinor={document.totalMinor} currency={document.currency} />
-                      {document.fileUrl ? (
-                        <Button asChild size="sm" variant="outline">
-                          <a href={document.fileUrl} target="_blank" rel="noreferrer">Preview</a>
-                        </Button>
-                      ) : null}
-                      {document.status !== "matched" ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={!document.candidateTransaction}
-                            onClick={() => void matchSuggestedCandidate(document)}
-                          >
-                            Confirm suggested match
-                          </Button>
-                          {document.kind === "receipt" ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              data-testid="receipt-create-expense"
-                              onClick={() => void createExpenseForReceipt(document)}
-                            >
-                              Create expense
-                            </Button>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-                {data.bills.uploadPdf.documents.length === 0 ? (
-                  <div className="p-3 text-sm text-muted-foreground">No uploaded receipts yet.</div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-4">
-          {data.bills.groups.map((group) => (
-            <Card key={group.key} className="shadow-xs">
-              <CardHeader>
-                <CardTitle className="text-base">{group.label}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="divide-y rounded-lg border">
-                  {group.rows.map((bill) => (
-                    <div
-                      key={bill.id}
-                      className="grid gap-2 px-3 py-3 text-sm md:grid-cols-[1fr_auto_auto_auto] md:items-center"
-                      data-testid="bill-row"
-                    >
-                      <button type="button" className="text-left" onClick={() => setSelectedBill(bill)}>
-                        <span className="block font-medium">{bill.vendorName}</span>
-                        <span className="text-xs text-muted-foreground">Due {bill.dueDate} · {statusLabel(bill.postingAffordance)}</span>
-                      </button>
-                      {statusChip(bill.status)}
-                      <Amount amountMinor={bill.totalMinor} currency={bill.currency} />
-                      {bill.status === "open" ? (
-                        <Button size="sm" variant="outline" data-testid="bill-mark-paid" onClick={() => setPayBill(bill)}>
-                          <CheckCircle2 className="size-3.5" /> Mark paid
-                        </Button>
-                      ) : bill.status === "paid" ? (
-                        <span className="inline-flex h-7 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 text-[11.5px] font-medium text-primary">
-                          <CheckCircle2 className="size-3" /> Paid
-                        </span>
-                      ) : <span />}
-                    </div>
+      <div className="flex flex-col gap-4">
+        <FilterBar
+          facets={[
+            {
+              key: "status",
+              label: "Status",
+              options: [
+                { value: "open", label: "Open" },
+                { value: "overdue", label: "Overdue" },
+                { value: "due-soon", label: "Due soon" },
+                { value: "paid", label: "Paid" },
+              ],
+            },
+            {
+              key: "source",
+              label: "Source",
+              options: [
+                { value: "manual", label: "Manual" },
+                { value: "pdf", label: "PDF" },
+              ],
+            },
+          ]}
+          value={facets}
+          onChange={setFacets}
+          onClearAll={() => {
+            setFacets({});
+            setEvidenceMissingOnly(false);
+            setRange({ preset: "last-3-months" });
+          }}
+        >
+          <DateRangeControl value={range} onChange={setRange} />
+          {vendorOptions.length > 0 ? (
+            <Select
+              value={vendorFacet ?? "__all__"}
+              onValueChange={(value) => setFacets({ ...facets, vendor: value === "__all__" ? undefined : value })}
+            >
+              <SelectTrigger size="sm" className="w-[160px]">
+                <SelectValue placeholder="All vendors" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="__all__">All vendors</SelectItem>
+                  {vendorOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
                   ))}
-                  {group.rows.length === 0 ? <div className="p-3 text-sm text-muted-foreground">No bills in this group.</div> : null}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          ) : null}
+          <Button
+            variant={evidenceMissingOnly ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setEvidenceMissingOnly((value) => !value)}
+            aria-pressed={evidenceMissingOnly}
+          >
+            <Paperclip data-icon="inline-start" />
+            Evidence: missing
+          </Button>
+        </FilterBar>
 
-        <Card className="shadow-xs">
-          <CardHeader>
-            <CardTitle className="text-base">Selected bill</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg border p-3">
-              <div className="flex items-start gap-2">
-                <ReceiptText className="mt-0.5 size-4 text-muted-foreground" />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium">{selectedBill ? selectedBill.vendorName : "No bill selected"}</div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {selectedBill
-                      ? `Due ${selectedBill.dueDate} · ${statusLabel(selectedBill.status)}`
-                      : "Choose a bill to review it, or hit Mark paid on an open bill to settle it against a bank transaction."}
-                  </p>
-                </div>
-              </div>
-            </div>
-            {selectedBill && selectedBill.status === "open" ? (
-              <Button className="w-full" data-testid="bill-detail-mark-paid" onClick={() => setPayBill(selectedBill)}>
-                <CheckCircle2 className="size-4" /> Mark paid &amp; match
-              </Button>
-            ) : null}
-            <p className="text-xs text-muted-foreground">
-              Bills post as money you owe the moment you add them, and clear when the payment shows up in your bank feed — true accrual books without the homework.
-            </p>
-            <p className="text-xs text-muted-foreground">Partial payments are out of scope in this version — settle the full balance.</p>
-          </CardContent>
-        </Card>
-      </section>
+        <BillsTable
+          rows={filteredBills}
+          currency={currency}
+          onSelectRow={setSelectedBillId}
+          onMarkPaid={setPayBill}
+        />
+      </div>
+
+      <BillDetailSheet
+        bill={selectedBill}
+        open={selectedBillId != null}
+        currency={currency}
+        onOpenChange={(open) => setSelectedBillId(open ? selectedBillId : null)}
+        onMarkPaid={setPayBill}
+        onViewTransaction={(txnId) => router.push(`/transactions?focus=${txnId}`)}
+      />
 
       {payBill ? (
         <BillMatchPicker
           billId={payBill.id as Id<"bills">}
           vendorName={payBill.vendorName}
           onClose={() => setPayBill(null)}
+          onSettled={() => setSelectedBillId(null)}
         />
       ) : null}
     </div>
   );
 }
 
-function BillMatchPicker({ billId, vendorName, onClose }: { billId: Id<"bills">; vendorName: string; onClose: () => void }) {
+export function dueLabel(bill: BillRow) {
+  if (bill.status === "paid") return "Paid";
+  const days = bill.daysUntilDue;
+  if (days < 0) return `${Math.abs(days)}d overdue`;
+  if (days === 0) return "Due today";
+  return `in ${days}d`;
+}
+
+function BillsTable({
+  rows,
+  currency,
+  onSelectRow,
+  onMarkPaid,
+}: {
+  rows: BillRow[];
+  currency: string;
+  onSelectRow: (id: string) => void;
+  onMarkPaid: (bill: BillRow) => void;
+}) {
+  const columns: ColumnDef<BillRow>[] = [
+    {
+      key: "vendor",
+      header: "Vendor",
+      mobilePrimary: true,
+      sortable: true,
+      sortValue: (row) => row.vendorName,
+      cell: (row) => (
+        <span data-testid="bill-vendor-cell" className="font-medium">
+          {row.vendorName}
+        </span>
+      ),
+    },
+    {
+      key: "due",
+      header: "Due",
+      mono: true,
+      priority: 1,
+      sortable: true,
+      sortValue: (row) => row.dueDate,
+      cell: (row) => (
+        <span
+          data-testid="bill-due-cell"
+          className={cn(
+            "text-xs",
+            row.isOverdue ? "text-negative" : row.isDueSoon ? "text-warning" : "text-muted-foreground",
+          )}
+        >
+          {dueLabel(row)}
+        </span>
+      ),
+    },
+    {
+      key: "category",
+      header: "Category",
+      priority: 2,
+      cell: (row) => <span className="text-xs text-muted-foreground">{row.category ?? "Uncategorized"}</span>,
+    },
+    {
+      key: "evidence",
+      header: "Evidence",
+      priority: 1,
+      cell: (row) =>
+        row.hasEvidence ? (
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Paperclip className="size-3.5" aria-hidden="true" />
+            Attached
+          </span>
+        ) : row.status === "open" ? (
+          <AttentionState state="missing-evidence" size="sm" />
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: "payment",
+      header: "Payment",
+      priority: 2,
+      cell: (row) => {
+        if (row.paymentMatch === "matched") {
+          return <span className="text-xs text-muted-foreground">Matched</span>;
+        }
+        if (row.paymentMatch === "scheduled") {
+          return (
+            <span data-testid="bill-schedule-expected-cell" className="inline-flex items-center gap-1.5 text-xs text-info">
+              <Clock className="size-3.5" aria-hidden="true" />
+              Expected
+            </span>
+          );
+        }
+        return <span className="text-xs text-muted-foreground">—</span>;
+      },
+    },
+    {
+      key: "source",
+      header: "Source",
+      priority: 2,
+      cell: (row) => (
+        <Badge variant="outline" className="capitalize">
+          {row.source === "pdf" ? "PDF" : "Manual"}
+        </Badge>
+      ),
+    },
+    {
+      key: "confidence",
+      header: "AI",
+      align: "right",
+      priority: 1,
+      cell: (row) =>
+        row.extractionConfidence != null ? (
+          <span className="inline-flex justify-end" onClick={(event) => event.stopPropagation()}>
+            <AiInsightBadge
+              variant="ring"
+              confidence={row.extractionConfidence}
+              reasoning={row.extractionNotes ?? "Fields read from the attached document."}
+              decidedBy="Document extraction"
+            />
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: "amount",
+      header: "Amount",
+      align: "right",
+      mono: true,
+      mobileTrailing: true,
+      sortable: true,
+      sortValue: (row) => row.totalMinor,
+      cell: (row) => (
+        <span data-testid="bill-amount-cell">
+          <Amount amountMinor={row.totalMinor} currency={row.currency || currency} />
+        </span>
+      ),
+    },
+    {
+      key: "action",
+      header: "",
+      align: "right",
+      cell: (row) =>
+        row.status === "open" ? (
+          <span onClick={(event) => event.stopPropagation()}>
+            <Button size="sm" variant="outline" data-testid="bill-mark-paid" onClick={() => onMarkPaid(row)}>
+              <CheckCircle2 data-icon="inline-start" />
+              Mark paid
+            </Button>
+          </span>
+        ) : row.status === "paid" ? (
+          <Badge variant="secondary" className="bg-ai-surface text-ai">
+            <CheckCircle2 data-icon="inline-start" aria-hidden="true" />
+            Paid
+          </Badge>
+        ) : (
+          <span />
+        ),
+    },
+  ];
+
+  return (
+    <OpenBooksDataTable<BillRow>
+      columns={columns}
+      rows={rows}
+      getRowId={(row) => row.id}
+      onRowClick={(row) => onSelectRow(row.id)}
+      attention={(row) => (row.attention ? <AttentionState state={row.attention} size="sm" iconOnly /> : null)}
+      rowAttributes={(row) => ({ "data-testid": "bill-row", "data-bill-id": row.id })}
+      empty={
+        <EmptyState
+          icon={ReceiptText}
+          title="No bills in this view"
+          description="Add a bill or upload a PDF and AI reads off the vendor, amount, and due date."
+        />
+      }
+    />
+  );
+}
+
+export function BillDetailSheet({
+  bill,
+  open,
+  currency,
+  onOpenChange,
+  onMarkPaid,
+  onViewTransaction,
+}: {
+  bill: BillRow | null;
+  open: boolean;
+  currency: string;
+  onOpenChange: (open: boolean) => void;
+  onMarkPaid: (bill: BillRow) => void;
+  onViewTransaction: (txnId: string) => void;
+}) {
+  if (!bill) return null;
+
+  const attentionNode = bill.attention ? <AttentionState state={bill.attention} /> : null;
+
+  return (
+    <DetailSheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title={bill.vendorName}
+      subtitle={
+        <span className="money-figures">
+          {formatMinorMoney(bill.totalMinor, { currency: bill.currency || currency })} · {statusLabel(bill.status)}
+        </span>
+      }
+      attention={attentionNode}
+      footer={
+        bill.status === "open" ? (
+          <Button size="sm" data-testid="bill-detail-mark-paid" onClick={() => onMarkPaid(bill)}>
+            <CheckCircle2 data-icon="inline-start" />
+            Mark paid &amp; match
+          </Button>
+        ) : null
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {/* Evidence preview — attach if missing. */}
+        <section className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Evidence</h3>
+          <EvidenceUpload
+            target={{ kind: "bill", id: bill.id }}
+            document={
+              bill.document
+                ? {
+                    id: bill.document.id,
+                    vendor: bill.document.vendor,
+                    date: bill.document.date,
+                    totalMinor: bill.document.totalMinor,
+                    currency: bill.currency || currency,
+                    fileName: bill.document.fileName,
+                    status: bill.document.status,
+                    extractionConfidence: bill.extractionConfidence ?? undefined,
+                    extractionNotes: bill.extractionNotes ?? undefined,
+                    matched: bill.document.status === "matched",
+                  }
+                : null
+            }
+          />
+        </section>
+
+        {/* Extracted fields with per-field AI confidence. */}
+        {bill.extractionConfidence != null ? (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Extracted fields</h3>
+            <AiInsightBadge
+              variant="inline"
+              confidence={bill.extractionConfidence}
+              reasoning={bill.extractionNotes ?? "Vendor, date, and total read from the attached document."}
+              decidedBy={bill.extractionSource ?? "Document extraction"}
+            />
+            <dl className="flex flex-col gap-1.5 text-sm">
+              <DetailRow label="Vendor" value={bill.vendorName} confident={(bill.extractionConfidence ?? 0) >= 0.9} />
+              <DetailRow
+                label="Total"
+                value={formatMinorMoney(bill.totalMinor, { currency: bill.currency || currency })}
+                mono
+                confident={(bill.extractionConfidence ?? 0) >= 0.9}
+              />
+              <DetailRow label="Due date" value={bill.dueDate} mono confident={(bill.extractionConfidence ?? 0) >= 0.9} />
+            </dl>
+          </section>
+        ) : null}
+
+        {/* Payment schedule + matched bank txn. */}
+        <section className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Payment</h3>
+          <dl className="flex flex-col gap-1.5 text-sm">
+            <DetailRow label="Status" value={statusLabel(bill.status)} />
+            <DetailRow label="Match" value={bill.paymentMatch === "matched" ? "Matched to bank payment" : bill.paymentMatch === "scheduled" ? "Expected payment scheduled" : "Awaiting settlement"} />
+            <DetailRow label="Due" value={dueLabel(bill)} mono />
+          </dl>
+          {bill.status === "paid" && bill.matchedTransactionId ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="self-start"
+              onClick={() => onViewTransaction(bill.matchedTransactionId!)}
+            >
+              <ArrowUpRight data-icon="inline-start" />
+              View the matched bank transaction
+            </Button>
+          ) : null}
+        </section>
+
+        {/* Ledger impact (read-only — AI proposes, the ledger posts). */}
+        {bill.ledgerLines.length > 0 ? (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ledger impact</h3>
+            <div className="rounded-[14px] ring-1 ring-foreground/10">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Account</TableHead>
+                    <TableHead className="text-right">Debit</TableHead>
+                    <TableHead className="text-right">Credit</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bill.ledgerLines.map((line, index) => (
+                    <TableRow key={`${line.accountNumber}-${index}`}>
+                      <TableCell className="text-sm">{line.account}</TableCell>
+                      <TableCell className="text-right money-figures text-sm">
+                        {line.debitMinor > 0 ? formatMinorMoney(line.debitMinor, { currency: line.currency }) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right money-figures text-sm">
+                        {line.creditMinor > 0 ? formatMinorMoney(line.creditMinor, { currency: line.currency }) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Posted journal lines are immutable. Corrections reverse and repost — the client never writes the ledger.
+            </p>
+          </section>
+        ) : null}
+      </div>
+    </DetailSheet>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  mono = false,
+  confident,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  confident?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd
+        className={cn(
+          mono && "money-figures",
+          // Per-field AI confidence: a quiet green underline when confident, a
+          // warning underline when the model is unsure. Never red.
+          confident === true && "underline decoration-ai decoration-2 underline-offset-4",
+          confident === false && "underline decoration-warning decoration-2 underline-offset-4",
+        )}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+export function exportBillsCsv(rows: BillRow[], currency: string) {
+  const header = ["Vendor", "Due date", "Status", "Category", "Source", "Evidence", "Amount", "Currency"];
+  const lines = rows.map((row) => [
+    row.vendorName,
+    row.dueDate,
+    row.status,
+    row.category ?? "Uncategorized",
+    row.source,
+    row.hasEvidence ? "attached" : "missing",
+    (row.totalMinor / 100).toFixed(2),
+    row.currency || currency,
+  ]);
+  const csv = [header, ...lines]
+    .map((cells) => cells.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  if (typeof document === "undefined") return;
+  downloadCsv("bills.csv", csv);
+}
+
+export function BillMatchPicker({
+  billId,
+  vendorName,
+  onClose,
+  onSettled,
+}: {
+  billId: Id<"bills">;
+  vendorName: string;
+  onClose: () => void;
+  onSettled?: () => void;
+}) {
   const picker = useQuery(api.bills.matchCandidates, { billId });
   const markPaid = useMutation(api.bills.markPaid);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // The bank transaction the owner picked; settling routes through an
+  // AlertDialog confirm before any ledger post happens.
+  const [confirmTxnId, setConfirmTxnId] = useState<string | null>(null);
 
   async function settle(transactionId?: string) {
     setBusy(true);
     setError("");
     try {
-      await markPaid({ billId, transactionId: transactionId ? (transactionId as Id<"transactions">) : undefined, scheduleExpected: transactionId ? undefined : true });
+      await markPaid({
+        billId,
+        transactionId: transactionId ? (transactionId as Id<"transactions">) : undefined,
+        scheduleExpected: transactionId ? undefined : true,
+      });
+      onSettled?.();
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not settle the bill.");
     } finally {
       setBusy(false);
+      setConfirmTxnId(null);
     }
   }
+
+  const confirmCandidate = confirmTxnId ? picker?.candidates.find((c) => c.id === confirmTxnId) ?? null : null;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -839,42 +899,218 @@ function BillMatchPicker({ billId, vendorName, onClose }: { billId: Id<"bills">;
               : `Paying ${vendorName} — loading candidates…`}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           {picker?.candidates.map((candidate) => (
             <button
               key={candidate.id}
               type="button"
               data-testid="bill-match-candidate"
               disabled={busy}
-              onClick={() => settle(candidate.id)}
-              className={`flex w-full items-center gap-3 rounded-[11px] border p-3 text-left transition hover:border-primary/40 ${candidate.suggested ? "border-primary/30 bg-primary/5" : ""}`}
+              onClick={() => setConfirmTxnId(candidate.id)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-[11px] p-3 text-left ring-1 ring-foreground/10 transition hover:ring-primary/40",
+                candidate.suggested && "bg-ai-surface ring-ai/30",
+              )}
             >
-              <span className="inline-flex size-6 items-center justify-center rounded-md bg-foreground text-[9px] font-bold text-background">{candidate.merchant.slice(0, 2).toUpperCase()}</span>
+              <span className="inline-flex size-6 items-center justify-center rounded-md bg-foreground text-[9px] font-bold text-background">
+                {candidate.merchant.slice(0, 2).toUpperCase()}
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium">{candidate.merchant}</span>
                 <span className="money-figures block text-[11.5px] text-muted-foreground">{candidate.date}</span>
               </span>
               <Amount amountMinor={candidate.amountMinor} currency={candidate.currency} tone="expense" />
-              {candidate.suggested ? <Badge variant="outline" className="border-primary/30 bg-primary/10 text-[10px] text-primary">best match</Badge> : null}
+              {candidate.suggested ? (
+                <Badge variant="secondary" className="bg-ai-surface text-ai">
+                  <Sparkles data-icon="inline-start" aria-hidden="true" />
+                  best match
+                </Badge>
+              ) : null}
             </button>
           ))}
           {picker && picker.candidates.length === 0 ? (
-            <p className="rounded-[11px] border border-dashed p-3 text-sm text-muted-foreground">No matching bank transaction yet. Schedule an expected match and it settles when the payment arrives.</p>
+            <p className="rounded-[11px] p-3 text-sm text-muted-foreground ring-1 ring-dashed ring-foreground/15">
+              No matching bank transaction yet. Schedule an expected match and it settles when the payment arrives.
+            </p>
           ) : null}
-          {error ? <p className="text-sm text-destructive" data-testid="bill-match-error">{error}</p> : null}
+          {error ? (
+            <p className="text-sm text-negative" data-testid="bill-match-error">
+              {error}
+            </p>
+          ) : null}
         </div>
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="ghost" size="sm" data-testid="bill-schedule-expected" disabled={busy} onClick={() => settle()}>No match yet — expect one</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid="bill-schedule-expected"
+            disabled={busy}
+            onClick={() => void settle()}
+          >
+            No match yet — expect one
+          </Button>
         </DialogFooter>
+      </DialogContent>
+
+      {/* Confirm settling against a chosen bank transaction (posts AP -> bank). */}
+      <AlertDialog open={confirmTxnId != null} onOpenChange={(open) => !open && setConfirmTxnId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark this bill paid?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmCandidate
+                ? `Settling against ${confirmCandidate.merchant} clears the payable and consumes that bank transaction. This posts to the ledger and can only be undone by a reversal.`
+                : "This settles the bill against the chosen bank transaction."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={busy} onClick={() => confirmTxnId && void settle(confirmTxnId)}>
+              Mark paid
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+    </Dialog>
+  );
+}
+
+/**
+ * Upload-bill chooser: the two-path entry point. A PDF goes through AI
+ * extract-and-confirm; the manual path defers to AddBillModal. Replaces the old
+ * manual-only upload panel while keeping the receipt/PDF extraction backend.
+ */
+export function UploadBillModal({
+  entityId,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
+}: {
+  entityId: Id<"entities">;
+  /** Controlled-open (folds the trigger into the section AddMenu — E5.3). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+}) {
+  const generateReceiptUploadUrl = useMutation(api.receipts.generateUploadUrl);
+  const recordReceiptUpload = useMutation(api.receipts.recordUpload);
+  const extractReceiptWithBedrock = useAction(api.receipts.extractWithBedrock);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
+  const [uploading, setUploading] = useState(false);
+
+  async function uploadBillPdf(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const uploadUrl = await generateReceiptUploadUrl({ entityId });
+      const uploadResult = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!uploadResult.ok) {
+        throw new Error("Upload failed before it reached storage.");
+      }
+      const { storageId } = (await uploadResult.json()) as { storageId: string };
+      const result = await recordReceiptUpload({
+        entityId,
+        kind: "bill",
+        storageId: storageId as Id<"_storage">,
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+      });
+      const extraction = await extractReceiptWithBedrock({ documentId: result.documentId });
+      const vendor = "vendor" in extraction ? extraction.vendor : "the bill";
+      toast.success(`Read ${vendor} from ${file.name}. Review and confirm the bill.`);
+      setOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not read that file.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      {hideTrigger ? null : (
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm">
+            <FileUp data-icon="inline-start" />
+            Upload bill
+          </Button>
+        </DialogTrigger>
+      )}
+      <DialogContent data-testid="upload-bill-modal">
+        <DialogHeader>
+          <DialogTitle>Add a bill</DialogTitle>
+          <DialogDescription>
+            Upload a bill PDF and AI reads off the vendor, amount, and due date for you to confirm — or type it in by hand.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label
+            className={cn(
+              "flex cursor-pointer flex-col items-center gap-2 rounded-[14px] p-5 text-center ring-1 ring-foreground/10 transition hover:ring-ai/40",
+              uploading && "pointer-events-none opacity-60",
+            )}
+          >
+            <span className="inline-flex size-10 items-center justify-center rounded-full bg-ai-surface text-ai">
+              <Sparkles className="size-5" aria-hidden="true" />
+            </span>
+            <span className="text-sm font-medium">Upload a PDF</span>
+            <span className="text-xs text-muted-foreground">AI extracts the fields; you confirm before it posts.</span>
+            <input
+              type="file"
+              accept="application/pdf,image/png,image/jpeg"
+              className="sr-only"
+              disabled={uploading}
+              onChange={(event) => void uploadBillPdf(event.currentTarget.files)}
+            />
+            {uploading ? <span className="text-xs text-ai">Reading…</span> : null}
+          </label>
+          <div className="flex flex-col items-center gap-2 rounded-[14px] p-5 text-center ring-1 ring-foreground/10">
+            <span className="inline-flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <Pencil className="size-5" aria-hidden="true" />
+            </span>
+            <span className="text-sm font-medium">Enter it by hand</span>
+            <span className="text-xs text-muted-foreground">Type the vendor, amount, and due date.</span>
+            <AddBillModal entityId={entityId} triggerLabel="Enter manually" triggerVariant="outline" onCreated={() => setOpen(false)} />
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function AddBillModal({ entityId }: { entityId: Id<"entities"> }) {
+export function AddBillModal({
+  entityId,
+  triggerLabel = "Add bill",
+  triggerVariant = "default",
+  onCreated,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
+}: {
+  entityId: Id<"entities">;
+  triggerLabel?: string;
+  triggerVariant?: "default" | "outline";
+  onCreated?: (vendorName: string) => void;
+  /** Controlled-open (folds the trigger into the section AddMenu — E5.3). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+}) {
   const createBill = useMutation(api.bills.createBill);
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const [vendorName, setVendorName] = useState("");
   const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -883,14 +1119,29 @@ function AddBillModal({ entityId }: { entityId: Id<"entities"> }) {
 
   async function handleCreate() {
     const totalMinor = moneyInputToMinor(amount);
-    if (!vendorName.trim()) { setError("Who do you owe?"); return; }
-    if (!totalMinor || totalMinor <= 0) { setError("Enter a positive amount."); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { setError("Pick a due date."); return; }
-    setBusy(true); setError("");
+    if (!vendorName.trim()) {
+      setError("Who do you owe?");
+      return;
+    }
+    if (!totalMinor || totalMinor <= 0) {
+      setError("Enter a positive amount.");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+      setError("Pick a due date.");
+      return;
+    }
+    setBusy(true);
+    setError("");
     try {
-      await createBill({ entityId, vendorName: vendorName.trim(), totalMinor, dueDate });
+      const trimmedVendorName = vendorName.trim();
+      await createBill({ entityId, vendorName: trimmedVendorName, totalMinor, dueDate });
       setOpen(false);
-      setVendorName(""); setAmount(""); setDueDate("");
+      setVendorName("");
+      setAmount("");
+      setDueDate("");
+      toast.success(`Added ${trimmedVendorName} — it posts to Accounts Payable until you mark it paid.`);
+      onCreated?.(trimmedVendorName);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add the bill.");
     } finally {
@@ -900,44 +1151,108 @@ function AddBillModal({ entityId }: { entityId: Id<"entities"> }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" data-testid="bills-add-bill"><Plus className="size-4" /> Add bill</Button>
-      </DialogTrigger>
+      {hideTrigger ? null : (
+        <DialogTrigger asChild>
+          <Button size="sm" variant={triggerVariant} data-testid="bills-add-bill">
+            <Plus data-icon="inline-start" />
+            {triggerLabel}
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent data-testid="add-bill-modal">
         <DialogHeader>
           <DialogTitle>New bill</DialogTitle>
-          <DialogDescription>Type it in below. To extract a bill from a PDF, use Upload file — image uploads work today; PDF text extraction lands in a later epic.</DialogDescription>
+          <DialogDescription>
+            Type it in below. To extract a bill from a PDF, use Upload bill instead.
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           <div className="grid gap-2">
-            <Label>Vendor</Label>
-            <Input data-testid="bill-vendor" value={vendorName} onChange={(e) => setVendorName(e.target.value)} placeholder="Who do you owe?" />
+            <Label htmlFor="bill-vendor">Vendor</Label>
+            <Input
+              id="bill-vendor"
+              data-testid="bill-vendor"
+              value={vendorName}
+              onChange={(event) => setVendorName(event.target.value)}
+              placeholder="Who do you owe?"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label>Amount</Label>
-              <Input data-testid="bill-amount" value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} placeholder="$0.00" className="money-figures" />
+              <Label htmlFor="bill-amount">Amount</Label>
+              <Input
+                id="bill-amount"
+                data-testid="bill-amount"
+                value={amount}
+                inputMode="decimal"
+                onChange={(event) => setAmount(event.target.value)}
+                placeholder="$0.00"
+                className="money-figures"
+              />
             </div>
             <div className="grid gap-2">
-              <Label>Due date</Label>
-              <Input data-testid="bill-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+              <Label htmlFor="bill-due">Due date</Label>
+              <Input
+                id="bill-due"
+                data-testid="bill-due"
+                type="date"
+                value={dueDate}
+                onChange={(event) => setDueDate(event.target.value)}
+              />
             </div>
           </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? <p className="text-sm text-negative">{error}</p> : null}
         </div>
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button size="sm" data-testid="bill-create" disabled={busy} onClick={handleCreate}>{busy ? "Adding…" : "Add bill"}</Button>
+          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" data-testid="bill-create" disabled={busy} onClick={handleCreate}>
+            {busy ? "Adding…" : "Add bill"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-export function PayrollScreen() {
+// ---------------------------------------------------------------------------
+// Payroll period scope (header) — scopes the Runs list AND the Statements tab.
+// ---------------------------------------------------------------------------
+
+/** The current "YYYY-MM" from the real server/browser clock so the draft button
+ *  always targets the present month on live, present-dated books (E8-T2 / RC6) —
+ *  not a frozen demo date. */
+function currentPayrollPeriod(): string {
+  return todayIso().slice(0, 7);
+}
+
+function payrollPeriodLabel(period: string): string {
+  const [year, month] = period.split("-");
+  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const name = names[Number(month) - 1] ?? month;
+  return `${name} ${year}`;
+}
+
+/** Quarter (1-4) for a "YYYY-MM" period. */
+function periodQuarter(period: string): string {
+  const [year, month] = period.split("-");
+  return `${year}-Q${Math.floor((Number(month) - 1) / 3) + 1}`;
+}
+
+function payrollPeriodStart(period: string) {
+  return `${period}-01`;
+}
+
+type PayrollScope = "all" | string; // "all" or a "YYYY-Qn" quarter key
+
+export function PayrollScreen({ subsection = "runs" }: { subsection?: string }) {
   const data = useModuleOverview();
-  const [tab, setTab] = useState<"employees" | "runs" | "statement">("runs");
   const [openRunId, setOpenRunId] = useState<Id<"payrollRuns"> | null>(null);
+  const [scope, setScope] = useState<PayrollScope>("all");
+  const [range, setRange] = useState<DateRangeValue>({ preset: "last-3-months" });
+  const [search, setSearch] = useState("");
+  const [facets, setFacets] = useState<FacetValue>({});
   const startRun = useMutation(api.payroll.startRun);
   const [starting, setStarting] = useState(false);
   const [message, setMessage] = useState("");
@@ -947,13 +1262,116 @@ export function PayrollScreen() {
 
   const baseCurrency = data.entity.currency;
   const entityId = data.entity.id as Id<"entities">;
-  const hasJuneRun = data.payroll.runs.some((run) => run.period === "2026-06");
+  const runs = data.payroll.runs;
 
-  async function runJune() {
+  // E10-T6 / E8-T5: the single Payroll page-insight — monthly run-rate (from
+  // approved-run base totals) / active headcount / FX-exposure note / unmatched —
+  // built from the SAME moduleViews.overview.payroll read-model this screen
+  // already loaded. The server now computes `payroll.insight`; we pass it through
+  // so the banner reflects ledger+run data, not roster face values.
+  const payrollInsight = buildPageInsight("payroll", {
+    entity: { currency: baseCurrency },
+    payroll: {
+      currencyTotals: data.payroll.currencyTotals.map((row) => ({
+        currency: row.currency,
+        totalMinor: row.baseMinor,
+      })),
+      unmatchedCount: data.payroll.unmatchedCount,
+      runs: runs.map((run) => ({ headcount: run.headcount, period: run.period })),
+      insight: data.payroll.insight,
+    },
+  });
+
+  const draftPeriod = currentPayrollPeriod();
+  const hasDraftPeriodRun = runs.some((run) => run.period === draftPeriod);
+  const activePayrollView: "people" | "runs" | "statements" =
+    subsection === "people" ? "people" : subsection === "statements" ? "statements" : "runs";
+
+  // Quarters present in the data, newest first, for the scope selector.
+  const quarters = [...new Set(runs.map((run) => periodQuarter(run.period)))].sort((a, b) =>
+    b.localeCompare(a),
+  );
+  const payrollRange = dateRangeValueToISO(range, todayIso());
+  const payrollTerm = search.trim().toLowerCase();
+  const scopedRuns = runs.filter((run) => {
+    if (scope !== "all" && periodQuarter(run.period) !== scope) return false;
+    if (facets.status && run.status !== facets.status) return false;
+    if (facets.source && run.source !== facets.source) return false;
+    if (facets.currency && !run.currencyTotals.some((total) => total.currency === facets.currency)) return false;
+    const periodStart = payrollPeriodStart(run.period);
+    if (periodStart < payrollRange.from || periodStart > payrollRange.to) return false;
+    if (!payrollTerm) return true;
+    const searchable = [
+      payrollPeriodLabel(run.period),
+      run.period,
+      run.status,
+      run.source,
+      ...run.currencyTotals.map((total) => total.currency),
+    ].join(" ").toLowerCase();
+    return searchable.includes(payrollTerm);
+  });
+  const filteredEmployees = data.payroll.employees.filter((employee) => {
+    if (facets.currency && employee.currency !== facets.currency) return false;
+    if (!payrollTerm) return true;
+    return [
+      employee.name,
+      employee.country,
+      employee.currency,
+      employee.fxDisplay,
+      employee.active ? "active" : "inactive",
+    ].join(" ").toLowerCase().includes(payrollTerm);
+  });
+  const filteredStatementRows = data.payroll.statementRows.filter((row) => {
+    if (facets.currency && row.currency !== facets.currency) return false;
+    if (!payrollTerm) return true;
+    return [
+      row.employeeName,
+      row.country,
+      row.currency,
+      row.fxDisplay,
+    ].join(" ").toLowerCase().includes(payrollTerm);
+  });
+  const payrollFacets = [
+    {
+      key: "status",
+      label: "Status",
+      options: [
+        { value: "__all__", label: "All" },
+        ...[...new Set(runs.map((run) => run.status))].sort().map((status) => ({
+          value: status,
+          label: statusLabel(status),
+        })),
+      ],
+    },
+    {
+      key: "source",
+      label: "Source",
+      options: [
+        { value: "__all__", label: "All" },
+        ...[...new Set(runs.map((run) => run.source))].sort().map((source) => ({
+          value: source,
+          label: source === "auto-draft" ? "Auto draft" : statusLabel(source),
+        })),
+      ],
+    },
+    {
+      key: "currency",
+      label: "Currency",
+      options: [
+        { value: "__all__", label: "All" },
+        ...[...new Set(data.payroll.employees.map((employee) => employee.currency))].sort().map((currency) => ({
+          value: currency,
+          label: currency,
+        })),
+      ],
+    },
+  ];
+
+  async function runDraft() {
     setStarting(true);
     setMessage("");
     try {
-      const result = await startRun({ entityId, period: "2026-06" });
+      const result = await startRun({ entityId, period: draftPeriod });
       setOpenRunId(result.runId);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not start the run.");
@@ -962,185 +1380,394 @@ export function PayrollScreen() {
     }
   }
 
-  if (openRunId) {
-    return <PayrollRunDetail runId={openRunId} onBack={() => setOpenRunId(null)} />;
-  }
+  const scopeControl = (
+    <Select value={scope} onValueChange={(value) => setScope(value)}>
+      <SelectTrigger size="sm" className="w-[160px]">
+        <CalendarClock data-icon="inline-start" />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          <SelectItem value="all">All periods</SelectItem>
+          {quarters.map((quarter) => (
+            <SelectItem key={quarter} value={quarter}>
+              {quarter.replace("-Q", " · Q")}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
 
   return (
-    <div className="space-y-5" data-testid="m6-payroll-screen">
-      <ModuleIntro
-        title="Payroll"
-        description="A register, not a processor — you pay people your way, the books stay right. Open a run to review the editable grid, approve it, then mark people paid."
-        action={
-          <div className="flex flex-wrap gap-2">
-            {(["employees", "runs", "statement"] as const).map((item) => (
-              <Button key={item} size="sm" variant={tab === item ? "default" : "outline"} onClick={() => setTab(item)} className="capitalize">
-                {item}
-              </Button>
-            ))}
-          </div>
-        }
-      />
-
-      <section className="grid gap-4 md:grid-cols-4">
-        {data.payroll.currencyTotals.map((row) => (
-          <StatCard
-            key={row.currency}
-            label={`${row.currency} payroll`}
-            value={<Amount amountMinor={row.localMinor} currency={row.currency} />}
-            detail={`${baseCurrency} base`}
-          />
-        ))}
-        <StatCard
-          label="Headcount"
-          value={<span className="money-figures">{data.payroll.employees.filter((employee) => employee.active).length}</span>}
-          detail="Active employees"
-        />
-      </section>
-
-      {message ? <p className="text-sm text-destructive">{message}</p> : null}
-
-      {tab === "employees" ? <PayrollEmployees data={data} /> : null}
-      {tab === "runs" ? (
-        <PayrollRuns
-          data={data}
-          onOpenRun={setOpenRunId}
-          onRunJune={runJune}
-          canRunJune={!hasJuneRun}
-          starting={starting}
+    <div data-testid="m6-payroll-screen">
+    <WorkbenchPage
+      eyebrow={data.entity.name}
+      title="Payroll"
+      description="A register, not a processor — you pay people your way, the books stay right. Open a run to review the grid, approve it, then mark people paid."
+      hideHeader
+      actions={
+        <PageActionBar
+          primary={
+            !hasDraftPeriodRun
+              ? { label: `Run payroll · ${payrollPeriodLabel(draftPeriod).split(" ")[0]}`, icon: Play, onClick: () => void runDraft(), disabled: starting }
+              : undefined
+          }
+        >
+        </PageActionBar>
+      }
+    >
+      {payrollInsight ? (
+        <InsightBanner
+          page="payroll"
+          insight={payrollInsight}
+          explainSlot={<InsightBannerExplain section="payroll" entityId={entityId} />}
         />
       ) : null}
-      {tab === "statement" ? <PayrollStatement data={data} /> : null}
+      {message ? <p className="text-sm text-negative" data-testid="payroll-error">{message}</p> : null}
+
+      <FilterBar
+        facets={payrollFacets}
+        value={facets}
+        onChange={setFacets}
+        onClearAll={() => {
+          setSearch("");
+          setFacets({});
+          setRange({ preset: "last-3-months" });
+          setScope("all");
+        }}
+      >
+        <DateRangeControl value={range} onChange={setRange} compact />
+        {scopeControl}
+      </FilterBar>
+
+      {activePayrollView === "people" ? <PayrollEmployees data={data} rows={filteredEmployees} /> : null}
+      {activePayrollView === "runs" ? (
+        <PayrollRuns
+          data={data}
+          runs={scopedRuns}
+          onOpenRun={setOpenRunId}
+        />
+      ) : null}
+      {activePayrollView === "statements" ? (
+        <PayrollStatement data={data} runs={scopedRuns} rows={filteredStatementRows} />
+      ) : null}
+
+      <PayrollRunDetailSheet
+        runId={openRunId}
+        baseCurrency={baseCurrency}
+        onOpenChange={(open) => {
+          if (!open) setOpenRunId(null);
+        }}
+      />
+    </WorkbenchPage>
     </div>
   );
 }
 
-function PayrollEmployees({ data }: { data: ModuleOverview }) {
+/** Semantic payroll status chip: Draft neutral, Approved info-blue, Paid green. */
+function PayrollStatusChip({ status }: { status: string }) {
+  if (status === "paid") {
+    return (
+      <Badge variant="secondary" className="bg-primary/10 text-primary">
+        <Check data-icon="inline-start" aria-hidden="true" />
+        Paid
+      </Badge>
+    );
+  }
+  if (status === "approved") {
+    return (
+      <Badge variant="secondary" className="bg-info-surface text-info">
+        Approved
+      </Badge>
+    );
+  }
+  return <Badge variant="outline">Draft</Badge>;
+}
+
+/** Provenance chip: an auto-drafted run reads as "Auto-draft · needs review". */
+function PayrollSourceChip({ source, status }: { source: string; status: string }) {
+  if (source === "auto-draft" && status === "draft") {
+    return (
+      <Badge variant="secondary" className="bg-ai-surface text-ai">
+        <Sparkles data-icon="inline-start" aria-hidden="true" />
+        Auto-draft · needs review
+      </Badge>
+    );
+  }
+  return <Badge variant="outline" className="text-muted-foreground">Manual</Badge>;
+}
+
+/**
+ * Pay-schedule control (E10-T5). Reads + writes via the existing Convex
+ * functions (paySchedule / setPaySchedule). Auto-draft NEVER posts — approval
+ * stays a manual human step — and only MONTHLY auto-draft is wired for v1
+ * (decisions.md Q54); a `semimonthly` cadence is labelled "manual second run".
+ */
+function PayScheduleControl({ entityId }: { entityId: Id<"entities"> }) {
+  const schedule = useQuery(api.payroll.paySchedule, { entityId });
+  const setPaySchedule = useMutation(api.payroll.setPaySchedule);
+  const [saving, setSaving] = useState(false);
+
+  if (schedule === undefined) {
+    return <Card className="shadow-xs"><CardContent className="py-4 text-sm text-muted-foreground">Loading schedule…</CardContent></Card>;
+  }
+  if (schedule === null) return null;
+
+  const cadence = schedule.cadence;
+  const enabled = schedule.enabled;
+
+  async function update(next: { enabled?: boolean; cadence?: "monthly" | "semimonthly" }) {
+    setSaving(true);
+    try {
+      await setPaySchedule({
+        entityId,
+        enabled: next.enabled ?? enabled,
+        cadence: next.cadence ?? cadence,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <Card className="shadow-xs">
-      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <CardTitle className="text-base">Employees</CardTitle>
-        <Button size="sm" variant="outline">
-          <UserPlus className="size-4" />
-          Add employee
-        </Button>
+    <Card className="shadow-xs" data-testid="payroll-schedule-control">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Auto-draft schedule</CardTitle>
+        <CardDescription>
+          When on, OpenBooks drafts each period&apos;s run from your active roster. It never approves or pays — you
+          still approve every run by hand.
+        </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Country</TableHead>
-              <TableHead>FX</TableHead>
-              <TableHead className="text-right">Local salary</TableHead>
-              <TableHead className="text-right">Base</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.payroll.employees.map((employee) => (
-              <TableRow key={employee.id}>
-                <TableCell>
-                  <div className="font-medium">{employee.name}</div>
-                  <div className="text-xs text-muted-foreground">{employee.active ? "Active" : "Inactive"}</div>
-                </TableCell>
-                <TableCell>{employee.country}</TableCell>
-                <TableCell className="text-muted-foreground">{employee.fxDisplay}</TableCell>
-                <TableCell className="text-right">
-                  <Amount amountMinor={employee.monthlySalaryMinor} currency={employee.currency} />
-                </TableCell>
-                <TableCell className="text-right">
-                  <Amount amountMinor={employee.baseAmountMinor} currency={data.entity?.currency} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Label htmlFor="payroll-auto-draft" className="text-sm font-medium">
+              Auto-draft
+            </Label>
+            <p className="text-xs text-muted-foreground" data-testid="payroll-schedule-state">
+              {enabled ? "On — drafts only, approval stays manual" : "Off — draft runs manually"}
+            </p>
+          </div>
+          <Switch
+            id="payroll-auto-draft"
+            data-testid="payroll-auto-draft-toggle"
+            checked={enabled}
+            disabled={saving}
+            onCheckedChange={(checked) => void update({ enabled: checked })}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Label className="text-sm font-medium">Cadence</Label>
+            <p className="text-xs text-muted-foreground">
+              {cadence === "semimonthly"
+                ? "Semimonthly — first run is auto-drafted; the second is a manual run for v1."
+                : "Monthly — one draft run per month."}
+            </p>
+          </div>
+          <Select
+            value={cadence}
+            disabled={saving}
+            onValueChange={(value) => void update({ cadence: value as "monthly" | "semimonthly" })}
+          >
+            <SelectTrigger size="sm" className="w-[170px]" data-testid="payroll-cadence-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="semimonthly">Semimonthly (manual 2nd)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </CardContent>
     </Card>
+  );
+}
+
+function PayrollEmployees({ data, rows }: { data: ModuleOverview; rows: EmployeeRow[] }) {
+  const baseCurrency = data.entity?.currency;
+  const entityId = data.entity?.id as Id<"entities"> | undefined;
+  const columns: ColumnDef<EmployeeRow>[] = [
+    {
+      key: "name",
+      header: "Name",
+      mobilePrimary: true,
+      cell: (row) => (
+        <div className="min-w-0">
+          <div className="truncate font-medium">{row.name}</div>
+          <div className="text-xs text-muted-foreground">{row.active ? "Active" : "Inactive"}</div>
+        </div>
+      ),
+    },
+    { key: "country", header: "Country", priority: 1, cell: (row) => row.country },
+    { key: "fx", header: "FX", priority: 2, cell: (row) => <span className="text-muted-foreground">{row.fxDisplay}</span> },
+    {
+      key: "local",
+      header: "Local salary",
+      align: "right",
+      mono: true,
+      sortValue: (row) => row.monthlySalaryMinor,
+      cell: (row) => <Amount amountMinor={row.monthlySalaryMinor} currency={row.currency} />,
+    },
+    {
+      key: "base",
+      header: `${baseCurrency} base`,
+      align: "right",
+      mono: true,
+      mobileTrailing: true,
+      sortValue: (row) => row.baseAmountMinor,
+      cell: (row) => <Amount amountMinor={row.baseAmountMinor} currency={baseCurrency} />,
+    },
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      {entityId ? <PayScheduleControl entityId={entityId} /> : null}
+      <div className="flex items-center justify-end">
+        <Button size="sm" variant="outline" disabled>
+          <UserPlus data-icon="inline-start" />
+          Add employee
+        </Button>
+      </div>
+      <OpenBooksDataTable
+        columns={columns}
+        rows={rows}
+        getRowId={(row) => row.id}
+        empty={<EmptyState icon={Users} title="No employees yet" description="Add your team to draft payroll runs from their salaries." />}
+      />
+    </div>
   );
 }
 
 function PayrollRuns({
   data,
+  runs,
   onOpenRun,
-  onRunJune,
-  canRunJune,
-  starting,
 }: {
   data: ModuleOverview;
+  runs: ModuleOverview["payroll"]["runs"];
   onOpenRun: (id: Id<"payrollRuns">) => void;
-  onRunJune: () => void;
-  canRunJune: boolean;
-  starting: boolean;
 }) {
+  const baseCurrency = data.entity?.currency;
+  type RunRow = ModuleOverview["payroll"]["runs"][number];
+  const columns: ColumnDef<RunRow>[] = [
+    {
+      key: "period",
+      header: "Period",
+      mono: true,
+      mobilePrimary: true,
+      sortValue: (row) => row.period,
+      cell: (row) => <span className="font-medium">{payrollPeriodLabel(row.period)}</span>,
+    },
+    {
+      key: "source",
+      header: "Source",
+      priority: 1,
+      cell: (row) => <PayrollSourceChip source={row.source} status={row.status} />,
+    },
+    { key: "people", header: "People", mono: true, align: "right", priority: 1, sortValue: (row) => row.headcount, cell: (row) => row.headcount },
+    {
+      key: "currencies",
+      header: "By currency",
+      priority: 2,
+      cell: (row) => (
+        <span className="flex flex-wrap gap-1">
+          {row.currencyTotals.map((total) => (
+            <span key={total.currency} className="money-figures text-xs text-muted-foreground">
+              <Amount amountMinor={total.localMinor} currency={total.currency} compact />
+            </span>
+          ))}
+        </span>
+      ),
+    },
+    { key: "status", header: "Status", cell: (row) => <PayrollStatusChip status={row.status} /> },
+    {
+      key: "base",
+      header: `${baseCurrency} total`,
+      align: "right",
+      mono: true,
+      mobileTrailing: true,
+      sortValue: (row) => row.totalBaseMinor,
+      cell: (row) => <Amount amountMinor={row.totalBaseMinor} currency={baseCurrency} />,
+    },
+  ];
   return (
-    <Card className="shadow-xs">
-      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <CardTitle className="text-base">Runs</CardTitle>
-        {canRunJune ? (
-          <Button size="sm" onClick={onRunJune} disabled={starting} data-testid="payroll-run-june">
-            {starting ? "Starting…" : "Run payroll · June"}
-          </Button>
-        ) : null}
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Period</TableHead>
-              <TableHead>People</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Base total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.payroll.runs.map((run) => (
-              <TableRow
-                key={run.id}
-                data-testid="payroll-run-row"
-                className="cursor-pointer"
-                onClick={() => onOpenRun(run.id as Id<"payrollRuns">)}
-              >
-                <TableCell className="money-figures font-medium">{run.period}</TableCell>
-                <TableCell className="money-figures">{run.headcount}</TableCell>
-                <TableCell>{statusChip(run.status)}</TableCell>
-                <TableCell className="text-right">
-                  <Amount amountMinor={run.totalBaseMinor} currency={data.entity?.currency} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-3">
+      <OpenBooksDataTable
+        columns={columns}
+        rows={runs}
+        getRowId={(row) => row.id}
+        onRowClick={(row) => onOpenRun(row.id as Id<"payrollRuns">)}
+        rowAttributes={() => ({ "data-testid": "payroll-run-row" })}
+        empty={<EmptyState icon={CalendarClock} title="No runs in this period" description="Run payroll to draft this period's statement, or pick a different period." />}
+      />
+    </div>
   );
 }
 
-function PayrollRunDetail({ runId, onBack }: { runId: Id<"payrollRuns">; onBack: () => void }) {
-  const detail = useQuery(api.payroll.runDetail, { runId });
+type RunDetail = NonNullable<FunctionReturnType<typeof api.payroll.runDetail>>;
+type RunLineView = RunDetail["lines"][number];
+
+/** Review -> Approve -> Mark paid stepper. lucide Check on completed steps. */
+function PayrollStepper({ status }: { status: string }) {
+  const steps = [
+    { key: "review", label: "Review" },
+    { key: "approve", label: "Approve" },
+    { key: "paid", label: "Mark paid" },
+  ];
+  const activeIndex = status === "draft" ? 0 : status === "approved" ? 1 : 2;
+  return (
+    <ol className="flex items-center gap-2 text-xs">
+      {steps.map((step, index) => {
+        const done = index < activeIndex || status === "paid";
+        const current = index === activeIndex && status !== "paid";
+        return (
+          <li key={step.key} className="flex items-center gap-2">
+            <span
+              className={cn(
+                "inline-flex size-5 items-center justify-center rounded-full text-[10px] font-medium",
+                done && "bg-primary/10 text-primary",
+                current && "bg-info-surface text-info",
+                !done && !current && "bg-muted text-muted-foreground",
+              )}
+            >
+              {done ? <Check className="size-3" aria-hidden="true" /> : index + 1}
+            </span>
+            <span className={cn(current ? "font-medium text-foreground" : "text-muted-foreground")}>{step.label}</span>
+            {index < steps.length - 1 ? <span className="text-muted-foreground/40">›</span> : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/**
+ * Run detail — CLOSED by default. Opens as a right Sheet (lg+) / bottom Drawer
+ * (mobile) WITHOUT destroying the runs list or KPI strip. Holds the stepper, the
+ * editable grid (card-per-row, never a horizontal-scroll table), and the
+ * approve/mark-paid lifecycle. Approve is wrapped in an AlertDialog and posts the
+ * single ledger entry through the EXISTING approveRun — never client-side.
+ */
+function PayrollRunDetailSheet({
+  runId,
+  baseCurrency,
+  onOpenChange,
+}: {
+  runId: Id<"payrollRuns"> | null;
+  baseCurrency: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const detail = useQuery(api.payroll.runDetail, runId ? { runId } : "skip");
   const backfill = useMutation(api.payroll.backfillRunLines);
   const updateLine = useMutation(api.payroll.updateRunLine);
   const approveRun = useMutation(api.payroll.approveRun);
   const markRunPaid = useMutation(api.payroll.markRunPaid);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [view, setView] = useState<"grid" | "statement">("grid");
+  const [confirmApprove, setConfirmApprove] = useState(false);
 
-  if (detail === undefined) return <LoadingBlock label="payroll run" />;
-  if (detail === null) {
-    return (
-      <div className="space-y-4">
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          <ChevronLeft className="size-4" /> Runs
-        </Button>
-        <EmptyState title="Run not found" />
-      </div>
-    );
-  }
-
-  const baseCurrency = detail.entity.currency;
-  const isDraft = detail.run.status === "draft";
-  const isApproved = detail.run.status === "approved";
+  const open = runId !== null;
 
   async function withBusy(action: () => Promise<unknown>) {
     setBusy(true);
@@ -1154,114 +1781,166 @@ function PayrollRunDetail({ runId, onBack }: { runId: Id<"payrollRuns">; onBack:
     }
   }
 
-  return (
-    <div className="space-y-4" data-testid="payroll-run-detail">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={onBack} data-testid="payroll-back">
-          <ChevronLeft className="size-4" /> Runs
-        </Button>
-        <h2 className="text-lg font-semibold">{detail.run.periodLabel} run</h2>
-        {statusChip(detail.run.status)}
-        {detail.periodLocked ? <CategoryChip label="Period locked" /> : null}
-        <div className="ml-auto flex items-center gap-2">
-          <Button variant={view === "grid" ? "default" : "outline"} size="sm" onClick={() => setView("grid")}>
-            Grid
-          </Button>
-          <Button variant={view === "statement" ? "default" : "outline"} size="sm" onClick={() => setView("statement")}>
-            Statement
-          </Button>
-          {isDraft && !detail.periodLocked ? (
-            <Button size="sm" onClick={() => withBusy(() => approveRun({ runId }))} disabled={busy} data-testid="payroll-approve">
-              Approve run
-            </Button>
-          ) : null}
-          {isApproved ? (
-            <Button size="sm" onClick={() => withBusy(() => markRunPaid({ runId }))} disabled={busy} data-testid="payroll-mark-paid">
-              Mark all paid
-            </Button>
-          ) : null}
-          {!detail.materialized && detail.run.status === "paid" ? (
-            <Button size="sm" variant="outline" onClick={() => withBusy(() => backfill({ runId }))} disabled={busy}>
-              Load lines
-            </Button>
-          ) : null}
+  if (!open) {
+    return <DetailSheet open={false} onOpenChange={onOpenChange} title="Payroll run" />;
+  }
+  if (detail === undefined) {
+    return (
+      <DetailSheet open onOpenChange={onOpenChange} title="Payroll run">
+        <LoadingBlock label="run" />
+      </DetailSheet>
+    );
+  }
+  if (detail === null) {
+    return (
+      <DetailSheet open onOpenChange={onOpenChange} title="Payroll run">
+        <EmptyState title="Run not found" />
+      </DetailSheet>
+    );
+  }
+
+  const isDraft = detail.run.status === "draft";
+  const isApproved = detail.run.status === "approved";
+  const isAutoDraft = detail.run.source === "auto-draft";
+
+  const gridBody = (
+    <div data-testid="payroll-run-detail" className="flex flex-col gap-3">
+      {/* Editable grid as a card-per-row stack — readable on every width. */}
+      <div className="flex flex-col gap-2">
+        {detail.lines.map((line) => (
+          <PayrollRunLineCard
+            key={line.id}
+            line={line}
+            baseCurrency={baseCurrency}
+            editable={detail.editable}
+            onSave={(adjustmentMinor, fxRate) =>
+              withBusy(() => updateLine({ lineId: line.id as Id<"payrollRunLines">, adjustmentMinor, fxRate }))
+            }
+          />
+        ))}
+      </div>
+      <div className="flex flex-col gap-2 rounded-[14px] bg-muted/50 px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground" data-testid="payroll-currency-totals">
+          {detail.currencyTotals.map((row) => (
+            <span key={row.currency}>
+              <Amount amountMinor={row.localMinor} currency={row.currency} />
+            </span>
+          ))}
+        </div>
+        <div className="flex items-center justify-between border-t pt-2">
+          <span className="text-muted-foreground">Total in {baseCurrency}</span>
+          <span className="text-base font-semibold" data-testid="payroll-base-total">
+            <Amount amountMinor={detail.baseTotalMinor} currency={baseCurrency} />
+          </span>
         </div>
       </div>
-
-      {isApproved ? (
-        <div className="flex items-center gap-2 rounded-[11px] bg-primary/5 px-4 py-2.5 text-sm text-primary" data-testid="payroll-approved-banner">
-          <CheckCircle2 className="size-4" />
-          Approved — recorded {detail.currencyTotals.map((row) => `${row.currency} ${row.localMinor / 100}`).join(" + ")} as {detail.run.periodLabel} payroll
-          expense. Lines settle as the bank payments arrive.
-        </div>
-      ) : null}
-      {detail.run.status === "paid" ? (
-        <div className="flex items-center gap-2 rounded-[11px] bg-primary/5 px-4 py-2.5 text-sm text-primary">
-          <CheckCircle2 className="size-4" />
-          Settled. FX differences between approval and settlement post automatically as a small gain/loss line.
-        </div>
-      ) : null}
-      {error ? <p className="text-sm text-destructive" data-testid="payroll-error">{error}</p> : null}
-
-      {view === "statement" ? (
-        <PayrollRunStatement detail={detail} />
-      ) : (
-        <Card className="shadow-xs">
-          <CardContent className="px-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead className="text-right">Base salary</TableHead>
-                    <TableHead className="text-right">Adjustment</TableHead>
-                    <TableHead className="text-right">Final</TableHead>
-                    <TableHead className="text-right">FX rate</TableHead>
-                    <TableHead className="text-right">{baseCurrency} equiv</TableHead>
-                    <TableHead className="text-center">Paid</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {detail.lines.map((line) => (
-                    <PayrollRunLineRow
-                      key={line.id}
-                      line={line}
-                      baseCurrency={baseCurrency}
-                      editable={detail.editable}
-                      onSave={(adjustmentMinor, fxRate) =>
-                        withBusy(() => updateLine({ lineId: line.id as Id<"payrollRunLines">, adjustmentMinor, fxRate }))
-                      }
-                    />
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <div className="flex flex-col gap-2 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <span className="money-figures text-muted-foreground" data-testid="payroll-currency-totals">
-                {detail.currencyTotals.map((row) => (
-                  <span key={row.currency} className="mr-3">
-                    <Amount amountMinor={row.localMinor} currency={row.currency} />
-                  </span>
-                ))}
-              </span>
-              <span>
-                Total in {baseCurrency}:{" "}
-                <span className="money-figures text-base font-semibold" data-testid="payroll-base-total">
-                  <Amount amountMinor={detail.baseTotalMinor} currency={baseCurrency} />
-                </span>
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
+  );
+
+  const footer = (
+    <>
+      {isDraft && !detail.periodLocked ? (
+        <Button size="sm" onClick={() => setConfirmApprove(true)} disabled={busy} data-testid="payroll-approve">
+          Approve run
+        </Button>
+      ) : null}
+      {isApproved ? (
+        <Button size="sm" onClick={() => withBusy(() => markRunPaid({ runId }))} disabled={busy} data-testid="payroll-mark-paid">
+          Mark all paid
+        </Button>
+      ) : null}
+      {!detail.materialized && detail.run.status === "paid" ? (
+        <Button size="sm" variant="outline" onClick={() => withBusy(() => backfill({ runId }))} disabled={busy}>
+          Load lines
+        </Button>
+      ) : null}
+    </>
+  );
+
+  return (
+    <>
+      <DetailSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title={
+          <span className="flex items-center gap-2">
+            {detail.run.periodLabel}
+            <PayrollStatusChip status={detail.run.status} />
+          </span>
+        }
+        subtitle={
+          isAutoDraft && isDraft
+            ? "Auto-drafted from active salaries — review, then approve to post."
+            : "Review the grid, approve to post one ledger entry, then mark people paid."
+        }
+        attention={
+          <>
+            <PayrollStepper status={detail.run.status} />
+            {detail.periodLocked ? <CategoryChip label="Period locked" /> : null}
+            {isApproved ? (
+              <div className="flex w-full items-start gap-2 rounded-[11px] bg-primary/5 px-3 py-2 text-sm text-primary" data-testid="payroll-approved-banner">
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Approved — recorded{" "}
+                  {detail.currencyTotals.map((row, index) => (
+                    <span key={row.currency}>
+                      {index > 0 ? " + " : ""}
+                      <Amount amountMinor={row.localMinor} currency={row.currency} />
+                    </span>
+                  ))}{" "}
+                  as {detail.run.periodLabel} payroll expense. Lines settle as the bank payments arrive.
+                </span>
+              </div>
+            ) : null}
+            {detail.run.status === "paid" ? (
+              <div className="flex w-full items-start gap-2 rounded-[11px] bg-primary/5 px-3 py-2 text-sm text-primary">
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>Settled. FX differences between approval and settlement post automatically as a small gain/loss line.</span>
+              </div>
+            ) : null}
+            {error ? <p className="w-full text-sm text-negative" data-testid="payroll-error">{error}</p> : null}
+          </>
+        }
+        tabs={[
+          { value: "grid", label: "Grid", content: gridBody },
+          { value: "statement", label: "Statement", content: <PayrollRunStatement detail={detail} /> },
+        ]}
+        footer={footer}
+      />
+
+      <AlertDialog open={confirmApprove} onOpenChange={setConfirmApprove}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Approve {detail.run.periodLabel} payroll?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This posts one payroll-expense ledger entry of{" "}
+              {formatMinorMoney(detail.baseTotalMinor, { currency: baseCurrency })} in {baseCurrency}. Posted entries are
+              immutable — to correct a run you reverse and repost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmApprove(false);
+                void withBusy(() => approveRun({ runId }));
+              }}
+            >
+              Approve & post
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
-type RunDetail = NonNullable<FunctionReturnType<typeof api.payroll.runDetail>>;
-type RunLineView = RunDetail["lines"][number];
-
-function PayrollRunLineRow({
+/**
+ * One payroll line as a card (label/value stacks), not a horizontal-scroll table
+ * row. Editable adjustment + FX use plain Inputs; the paid state is a shadcn
+ * Checkbox routed through --primary instead of the old raw-hex checkbox.
+ */
+function PayrollRunLineCard({
   line,
   baseCurrency,
   editable,
@@ -1281,58 +1960,66 @@ function PayrollRunLineRow({
   }
 
   return (
-    <TableRow data-testid="payroll-line-row">
-      <TableCell>
-        <div className="font-medium">{line.employeeName}</div>
-        <div className="text-xs text-muted-foreground">{line.country} · {line.currency}</div>
-      </TableCell>
-      <TableCell className="text-right">
-        <Amount amountMinor={line.baseSalaryMinor} currency={line.currency} />
-      </TableCell>
-      <TableCell className="text-right">
-        {editable ? (
-          <Input
-            value={adjustment}
-            onChange={(event) => setAdjustment(event.target.value)}
-            onBlur={commit}
-            inputMode="decimal"
-            className="ml-auto h-8 w-24 text-right"
-            data-testid="payroll-adjustment-input"
-          />
-        ) : (
-          <Amount amountMinor={line.adjustmentMinor} currency={line.currency} signed />
-        )}
-      </TableCell>
-      <TableCell className="text-right font-medium">
-        <Amount amountMinor={line.finalLocalMinor} currency={line.currency} />
-      </TableCell>
-      <TableCell className="text-right">
-        {editable && line.currency !== baseCurrency ? (
-          <Input
-            value={fxRate}
-            onChange={(event) => setFxRate(event.target.value)}
-            onBlur={commit}
-            inputMode="decimal"
-            className="ml-auto h-8 w-20 text-right"
-            data-testid="payroll-fx-input"
-          />
-        ) : (
-          <span className="money-figures text-muted-foreground">{line.fxDisplay}</span>
-        )}
-      </TableCell>
-      <TableCell className="text-right">
-        <Amount amountMinor={line.baseEquivalentMinor} currency={baseCurrency} />
-      </TableCell>
-      <TableCell className="text-center">
-        <input
-          type="checkbox"
-          checked={line.paid}
-          readOnly
-          className="size-4 align-middle accent-[#2ca01c]"
-          aria-label={`${line.employeeName} paid`}
-        />
-      </TableCell>
-    </TableRow>
+    <div data-testid="payroll-line-row" className="rounded-[14px] bg-card p-3 ring-1 ring-foreground/10 shadow-xs">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate font-medium">{line.employeeName}</div>
+          <div className="text-xs text-muted-foreground">{line.country} · {line.currency}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox checked={line.paid} disabled aria-label={`${line.employeeName} paid`} />
+          <span className="text-xs text-muted-foreground">{line.paid ? "Paid" : "Unpaid"}</span>
+        </div>
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+        <div className="flex flex-col">
+          <dt className="text-xs text-muted-foreground">Base salary</dt>
+          <dd className="money-figures"><Amount amountMinor={line.baseSalaryMinor} currency={line.currency} /></dd>
+        </div>
+        <div className="flex flex-col">
+          <dt className="text-xs text-muted-foreground">Adjustment</dt>
+          <dd>
+            {editable ? (
+              <Input
+                value={adjustment}
+                onChange={(event) => setAdjustment(event.target.value)}
+                onBlur={commit}
+                inputMode="decimal"
+                className="h-8 w-full text-right"
+                data-testid="payroll-adjustment-input"
+              />
+            ) : (
+              <span className="money-figures"><Amount amountMinor={line.adjustmentMinor} currency={line.currency} signed /></span>
+            )}
+          </dd>
+        </div>
+        <div className="flex flex-col">
+          <dt className="text-xs text-muted-foreground">Final</dt>
+          <dd className="money-figures font-medium"><Amount amountMinor={line.finalLocalMinor} currency={line.currency} /></dd>
+        </div>
+        <div className="flex flex-col">
+          <dt className="text-xs text-muted-foreground">FX rate</dt>
+          <dd>
+            {editable && line.currency !== baseCurrency ? (
+              <Input
+                value={fxRate}
+                onChange={(event) => setFxRate(event.target.value)}
+                onBlur={commit}
+                inputMode="decimal"
+                className="h-8 w-full text-right"
+                data-testid="payroll-fx-input"
+              />
+            ) : (
+              <span className="money-figures text-muted-foreground">{line.fxDisplay}</span>
+            )}
+          </dd>
+        </div>
+        <div className="flex flex-col">
+          <dt className="text-xs text-muted-foreground">{baseCurrency} equiv</dt>
+          <dd className="money-figures"><Amount amountMinor={line.baseEquivalentMinor} currency={baseCurrency} /></dd>
+        </div>
+      </dl>
+    </div>
   );
 }
 
@@ -1351,101 +2038,173 @@ function PayrollRunStatement({ detail }: { detail: RunDetail }) {
     );
   }
   return (
-    <Card className="shadow-xs">
-      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <CardTitle className="text-base">Payroll statement · {detail.run.periodLabel}</CardTitle>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => window.print()}>
-            <Printer className="size-4" /> Print
-          </Button>
-          <Button size="sm" onClick={exportCsv} data-testid="payroll-statement-csv">
-            <Download className="size-4" /> CSV
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {detail.statementGroups.map((group) => (
-          <div key={group.key} className="rounded-lg border">
-            <div className="border-b bg-muted/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {group.key}
-            </div>
-            <div className="divide-y">
-              {group.lines.map((line) => (
-                <div key={line.id} className="flex items-center justify-between px-4 py-2 text-sm">
-                  <span>{line.employeeName}</span>
-                  <span className="flex gap-6">
-                    <Amount amountMinor={line.finalLocalMinor} currency={line.currency} className="text-muted-foreground" />
-                    <Amount amountMinor={line.baseEquivalentMinor} currency={baseCurrency} />
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-between border-t px-4 py-2 text-sm font-semibold">
-              <span>Subtotal</span>
-              <span className="flex gap-6">
-                <Amount amountMinor={group.localMinor} currency={group.currency} />
-                <Amount amountMinor={group.baseMinor} currency={baseCurrency} />
-              </span>
-            </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => window.print()}>
+          <Printer data-icon="inline-start" /> Print
+        </Button>
+        <Button size="sm" onClick={exportCsv} data-testid="payroll-statement-csv">
+          <Download data-icon="inline-start" /> CSV
+        </Button>
+      </div>
+      {detail.statementGroups.map((group) => (
+        <div key={group.key} className="rounded-[14px] ring-1 ring-foreground/10">
+          <div className="border-b bg-muted/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {group.key}
           </div>
-        ))}
-        <div className="flex items-center justify-between rounded-lg bg-primary/5 px-4 py-3 text-sm font-semibold text-primary">
-          <span>{detail.run.periodLabel} total</span>
-          <Amount amountMinor={detail.baseTotalMinor} currency={baseCurrency} className="text-base" />
+          <div className="divide-y">
+            {group.lines.map((line) => (
+              <div key={line.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                <span>{line.employeeName}</span>
+                <span className="flex gap-6">
+                  <Amount amountMinor={line.finalLocalMinor} currency={line.currency} className="text-muted-foreground" />
+                  <Amount amountMinor={line.baseEquivalentMinor} currency={baseCurrency} />
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between border-t px-4 py-2 text-sm font-semibold">
+            <span>Subtotal</span>
+            <span className="flex gap-6">
+              <Amount amountMinor={group.localMinor} currency={group.currency} />
+              <Amount amountMinor={group.baseMinor} currency={baseCurrency} />
+            </span>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      ))}
+      <div className="flex items-center justify-between rounded-[14px] bg-primary/5 px-4 py-3 text-sm font-semibold text-primary">
+        <span>{detail.run.periodLabel} total</span>
+        <Amount amountMinor={detail.baseTotalMinor} currency={baseCurrency} className="text-base" />
+      </div>
+    </div>
   );
 }
 
-function PayrollStatement({ data }: { data: ModuleOverview }) {
+/**
+ * Statements tab — a printable roster statement plus the 12-month
+ * USD-equivalent spend trend (prototype 195-205) built from the scoped runs.
+ */
+function PayrollStatement({
+  data,
+  runs,
+  rows,
+}: {
+  data: ModuleOverview;
+  runs: ModuleOverview["payroll"]["runs"];
+  rows: ModuleOverview["payroll"]["statementRows"];
+}) {
+  const baseCurrency = data.entity?.currency ?? "USD";
+  // 12-month base-currency trend, oldest -> newest, from the run base totals.
+  const trend = [...runs]
+    .sort((a, b) => a.period.localeCompare(b.period))
+    .slice(-12)
+    .map((run) => ({ label: payrollPeriodLabel(run.period).split(" ")[0], value: run.totalBaseMinor / 100 }));
+
   return (
-    <Card className="shadow-xs">
-      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <CardTitle className="text-base">Printable statement</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">Grouped by employee with local and base currency totals. Open a run for its own statement.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => window.print()}>
-            <Printer className="size-4" />
-            Print
-          </Button>
-          <Button size="sm" onClick={() => downloadCsv("openbooks-payroll-statement.csv", data.payroll.statementCsv)}>
-            <Download className="size-4" />
-            CSV
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Employee</TableHead>
-              <TableHead>Country</TableHead>
-              <TableHead>FX</TableHead>
-              <TableHead className="text-right">Local</TableHead>
-              <TableHead className="text-right">Base</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.payroll.statementRows.map((row) => (
-              <TableRow key={row.employeeName}>
-                <TableCell className="font-medium">{row.employeeName}</TableCell>
-                <TableCell>{row.country}</TableCell>
-                <TableCell className="text-muted-foreground">{row.fxDisplay}</TableCell>
-                <TableCell className="text-right">
-                  <Amount amountMinor={row.localMinor} currency={row.currency} />
-                </TableCell>
-                <TableCell className="text-right">
-                  <Amount amountMinor={row.baseMinor} currency={data.entity?.currency} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-4">
+      {trend.length >= 2 ? (
+        <Card className="shadow-xs">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Payroll trend</CardTitle>
+            <CardDescription>{baseCurrency}-equivalent run totals, last {trend.length} periods.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BarChart data={trend} />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* E10-T5: one printable statement block + one CSV export PER CURRENCY.
+          Each LLC's payroll statement is a separate per-entity, USD-booked
+          document (decisions.md Q55); here we split that document by currency so
+          each block shows local AND base (USD) totals and exports its own CSV.
+          The visible rows respect the active search/facet filter; the CSV always
+          exports the full roster for that currency (the statutory document). */}
+      {data.payroll.statementsByCurrency.length === 0 ? (
+        <Card className="shadow-xs">
+          <CardContent className="py-8 text-center text-sm text-muted-foreground">
+            No payroll roster yet — add employees to generate statements.
+          </CardContent>
+        </Card>
+      ) : (
+        data.payroll.statementsByCurrency.map((block) => {
+          const blockRows = rows.filter((row) => row.currency === block.currency);
+          if (blockRows.length === 0) return null;
+          return (
+            <Card key={block.currency} className="shadow-xs" data-testid={`payroll-statement-${block.currency}`}>
+              <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle className="text-base">
+                    Statement · {block.currency}
+                    {block.isBaseCurrency ? (
+                      <span className="ml-2 rounded-full bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">
+                        Base
+                      </span>
+                    ) : null}
+                  </CardTitle>
+                  <CardDescription>
+                    {block.fxDisplay || `Local and ${baseCurrency} (base) totals.`} Open a run for its own statement.
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => window.print()}>
+                    <Printer data-icon="inline-start" />
+                    Print
+                  </Button>
+                  <Button
+                    size="sm"
+                    data-testid={`payroll-statement-csv-${block.currency}`}
+                    onClick={() => downloadCsv(block.csvFilename, block.csv)}
+                  >
+                    <Download data-icon="inline-start" />
+                    CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table className="min-w-full">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Country</TableHead>
+                        <TableHead>FX</TableHead>
+                        <TableHead className="text-right">Local</TableHead>
+                        <TableHead className="text-right">Base</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {blockRows.map((row) => (
+                        <TableRow key={row.employeeName}>
+                          <TableCell className="font-medium">{row.employeeName}</TableCell>
+                          <TableCell>{row.country}</TableCell>
+                          <TableCell className="text-muted-foreground">{row.fxDisplay}</TableCell>
+                          <TableCell className="money-figures text-right">
+                            <Amount amountMinor={row.localMinor} currency={row.currency} />
+                          </TableCell>
+                          <TableCell className="money-figures text-right">
+                            <Amount amountMinor={row.baseMinor} currency={baseCurrency} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="border-t font-medium">
+                        <TableCell colSpan={3}>Total · {block.currency}</TableCell>
+                        <TableCell className="money-figures text-right">
+                          <Amount amountMinor={block.localMinor} currency={block.currency} />
+                        </TableCell>
+                        <TableCell className="money-figures text-right" data-testid={`payroll-statement-base-${block.currency}`}>
+                          <Amount amountMinor={block.baseMinor} currency={baseCurrency} />
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })
+      )}
+    </div>
   );
 }
 
@@ -1465,6 +2224,8 @@ export function RemainingSettingsScreens() {
   const recordCategorizationEvalRun = useMutation(api.ai.recordCategorizationEvalRun);
   const testAiConnection = useAction(api.ai.testProviderConnection);
   const categorizePendingTransactions = useAction(api.bedrockCategorizer.categorizePendingTransactions);
+  // E2-T3: self-rescheduling backlog drainer (clears the whole queue, no 25-cap).
+  const startCategorizationBacklog = useMutation(api.bedrockCategorizer.startCategorizationBacklog);
   const [auditFilter, setAuditFilter] = useState("");
   const [entityMessage, setEntityMessage] = useState("");
   const [aiAutonomyOverride, setAiAutonomyOverride] = useState<AiAutonomyMode | null>(null);
@@ -1539,15 +2300,19 @@ export function RemainingSettingsScreens() {
     setRunningAiBatch(true);
     setAiBatchMessage("Checking imported transactions...");
     try {
+      // First pass runs inline for immediate feedback; the drainer then clears
+      // the remainder of the backlog in the background (no overall 25-item cap).
       const result = await categorizePendingTransactions({
         entityId: data.entity.id as Id<"entities">,
-        limit: 10,
       });
+      if (result.needsReviewCount > 0 || result.skippedCount > 0) {
+        await startCategorizationBacklog({ entityId: data.entity.id as Id<"entities"> });
+      }
       const status = result.batchStatus ? ` ${aiBatchStatusLabel(result.batchStatus)}.` : "";
       const degraded = result.degradedCount > 0 ? ` ${result.degradedCount} degraded.` : "";
       const fallback = result.fallbackCount > 0 ? ` ${result.fallbackCount} fallback.` : "";
       setAiBatchMessage(
-        `${result.attemptedCount} checked. ${result.postedCount} posted, ${result.needsReviewCount} updated for review, ${result.skippedCount} skipped.${status}${degraded}${fallback}`,
+        `${result.attemptedCount} checked. ${result.postedCount} posted, ${result.needsReviewCount} updated for review, ${result.skippedCount} skipped.${status}${degraded}${fallback} Remaining items are draining in the background.`,
       );
     } catch (error) {
       setAiBatchMessage(error instanceof Error ? error.message : "Could not run batch categorization.");
@@ -1565,7 +2330,7 @@ export function RemainingSettingsScreens() {
             Provider status, model display, and autonomy settings for the M10 AI layer.
           </p>
         </div>
-        <Badge variant="outline">{aiStatus.mode === "active" ? "Bedrock active" : "Degraded mode"}</Badge>
+        <Badge variant="outline">{aiStatus.label}</Badge>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-4">
@@ -1577,17 +2342,12 @@ export function RemainingSettingsScreens() {
           <div className="rounded-lg border p-3">
             <div className="text-xs font-medium uppercase text-muted-foreground">Provider</div>
             <div className="mt-2 text-sm font-medium">{aiStatus.provider}</div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">Bedrock is the v1 target when env is present.</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">The configured model provider, read from your Convex environment.</p>
           </div>
           <div className="rounded-lg border p-3">
             <div className="text-xs font-medium uppercase text-muted-foreground">Chat model</div>
             <div className="mt-2 text-sm font-medium">{aiStatus.chatModel}</div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">Loaded from AI_MODEL after backend provider wiring.</p>
-          </div>
-          <div className="rounded-lg border p-3">
-            <div className="text-xs font-medium uppercase text-muted-foreground">Embeddings</div>
-            <div className="mt-2 text-sm font-medium">{aiStatus.embeddingsModel}</div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">Loaded from AI_EMBEDDINGS_MODEL for memory search.</p>
           </div>
         </div>
 
@@ -1667,7 +2427,7 @@ export function RemainingSettingsScreens() {
           <div>
             <div className="text-sm font-medium">Batch categorization</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Runs memory and Bedrock categorization on imported transactions still waiting in review.
+              Runs memory and AI categorization on imported transactions still waiting in review.
             </p>
             {aiBatchMessage ? (
               <p className="mt-2 text-sm text-primary" data-testid="m10-ai-batch-result">

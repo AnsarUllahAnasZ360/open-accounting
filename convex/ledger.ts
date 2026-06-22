@@ -2,8 +2,9 @@ import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
+import { assertNotDemoWrite } from "./demoWorkspace";
 import { assertNonNegativeMinorUnit } from "./money";
 
 const accountTypeValidator = v.union(
@@ -38,13 +39,22 @@ export const chartTemplates: Array<ChartTemplateRow> = [
   { number: "1010", name: "Operating Checking", type: "asset", subtype: "bank" },
   { number: "1020", name: "Savings", type: "asset", subtype: "bank" },
   { number: "1100", name: "Accounts Receivable", type: "asset", subtype: "receivable" },
+  // Intercompany reciprocal accounts (Epic E5-T5). Balance-sheet ONLY —
+  // intercompany transfers NEVER hit P&L. The epic names these "1300/2300 Due
+  // from/to Affiliate", but 1300 (Inventory, ecommerce) and 2300 (Sales Tax
+  // Payable, base) are already taken, so we use the adjacent free numbers
+  // 1310/2310 to avoid duplicate account numbers within an entity.
+  { number: "1310", name: "Due from Affiliate", type: "asset", subtype: "due_from_affiliate", isSystem: true },
   { number: "1150", name: "Stripe Clearing", type: "asset", subtype: "clearing" },
+  { number: "1160", name: "Payouts In-Transit", type: "asset", subtype: "in_transit" },
   { number: "1200", name: "Prepaid Expenses", type: "asset", subtype: "prepaid" },
   { number: "1500", name: "Equipment", type: "asset", subtype: "fixed_asset" },
   { number: "2000", name: "Credit Card", type: "liability", subtype: "credit_card" },
   { number: "2100", name: "Accounts Payable", type: "liability", subtype: "payable" },
   { number: "2200", name: "Payroll Payable", type: "liability", subtype: "payroll" },
   { number: "2300", name: "Sales Tax Payable", type: "liability", subtype: "tax" },
+  // Intercompany reciprocal — balance-sheet only (Epic E5-T5). See note on 1310.
+  { number: "2310", name: "Due to Affiliate", type: "liability", subtype: "due_to_affiliate", isSystem: true },
   { number: "2500", name: "Loans Payable", type: "liability", subtype: "loan" },
   { number: "3000", name: "Owner's Equity", type: "equity", subtype: "equity" },
   { number: "3100", name: "Owner's Draw", type: "equity", subtype: "draw" },
@@ -88,6 +98,13 @@ export async function getEntityForWrite(
     throw new Error("OpenBooks entity not found.");
   }
   await requireWorkspaceRole(ctx, entity.workspaceId, role);
+  // E11-T6: the public demo workspace is READ-ONLY. `getEntityForWrite` is the
+  // shared entity-resolver for every session-bound WRITE mutation across
+  // ledger / invoices / bills / rules / contacts / categories / reconciliation,
+  // so one guard here blocks them all when the target is the demo. Internal
+  // seed/cron paths post via `postEntryInternal` / `routeTransactionInternal`
+  // and never call this, so the demo re-seed is unaffected.
+  await assertNotDemoWrite(ctx, entity.workspaceId);
   return entity;
 }
 
@@ -203,6 +220,13 @@ export const ensureDefaultEntity = mutation({
   args: {},
   handler: async (ctx) => {
     const { userId, membership } = await requireAnyWorkspaceRole(ctx, "admin");
+    if (
+      process.env.OPENBOOKS_DISABLE_DEMO_SEED === "1" ||
+      process.env.OPENBOOKS_REAL_TEST_MODE === "1" ||
+      process.env.OPENBOOKS_REAL_TEST_RESET_ENABLED === "1"
+    ) {
+      throw new ConvexError("Default demo business creation is disabled in this real-test environment.");
+    }
     const now = Date.now();
     const slug = "acme-studio-llc";
     let entity = await ctx.db
@@ -316,6 +340,14 @@ export type LedgerLineInput = {
   debitMinor: number;
   creditMinor: number;
   currency?: string;
+  // Optional contact attribution for this line (E1-T9 / RC10). Persisted to
+  // journalLines.contactId (a string id, matching schema.ts) so customer/vendor
+  // reports can roll up off the ledger itself rather than the fragile
+  // invoice/bill face-value add-on that double-counts. Strictly additive: every
+  // existing caller that omits it keeps current behavior. Callers must only pass
+  // an id already resolved by the caller — never invent a contact here. The GL is
+  // USD-only, so there is NO companion fxRate write (decisions Q3).
+  contactId?: string;
 };
 
 /**
@@ -410,6 +442,9 @@ export async function postLedgerEntryCore(
       debitMinor: line.debitMinor,
       creditMinor: line.creditMinor,
       currency: line.currency ?? args.entity.currency,
+      // E1-T9: persist optional contact attribution when the caller resolved one.
+      // Never write fxRate (USD-only GL, decisions Q3).
+      contactId: line.contactId,
       createdAt: now,
     });
   }
@@ -441,12 +476,16 @@ export const postEntry = mutation({
         debitMinor: v.number(),
         creditMinor: v.number(),
         currency: v.optional(v.string()),
+        // E1-T9: optional contact attribution (string id matching schema.ts).
+        contactId: v.optional(v.string()),
       }),
     ),
   },
   handler: async (ctx, args) => {
     const entity = await getEntityForWrite(ctx, args.entityId, "admin");
     const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    // E11-T6: the public demo workspace is read-only — block writes at the server.
+    await assertNotDemoWrite(ctx, entity.workspaceId);
     return await postLedgerEntryCore(ctx, {
       entity,
       userId,
@@ -468,6 +507,7 @@ export const setPeriodLock = mutation({
   handler: async (ctx, args) => {
     const entity = await getEntityForWrite(ctx, args.entityId, "admin");
     const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    await assertNotDemoWrite(ctx, entity.workspaceId);
     const existing = await ctx.db
       .query("periodLocks")
       .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
@@ -512,6 +552,92 @@ export const setPeriodLock = mutation({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Internal, system-actor posting path (Epic E11-T4).
+//
+// `postEntry`/`setPeriodLock` above are SESSION-bound: they re-derive the caller
+// and require an admin membership. The public demo workspace is system-owned
+// (no real-user member), so its seed cannot go through the session-bound
+// wrappers. These internal variants take an explicit `actorUserId` and skip
+// session re-derivation — they are callable ONLY from trusted internal
+// functions (the demo seed action). They still route every post through the one
+// `postLedgerEntryCore` path, so debits === credits, period locks, and the
+// immutable-entry invariant are all enforced identically. There is no public
+// surface here: an unauthenticated visitor can never reach an internalMutation.
+// ---------------------------------------------------------------------------
+
+export const postEntryInternal = internalMutation({
+  args: {
+    entityId: v.id("entities"),
+    actorUserId: v.id("users"),
+    date: v.string(),
+    memo: v.string(),
+    source: entrySourceValidator,
+    sourceId: v.optional(v.string()),
+    reversesEntryId: v.optional(v.id("journalEntries")),
+    lines: v.array(
+      v.object({
+        accountId: v.id("ledgerAccounts"),
+        debitMinor: v.number(),
+        creditMinor: v.number(),
+        currency: v.optional(v.string()),
+        contactId: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new Error("OpenBooks entity not found.");
+    }
+    return await postLedgerEntryCore(ctx, {
+      entity,
+      userId: args.actorUserId,
+      date: args.date,
+      memo: args.memo,
+      source: args.source,
+      sourceId: args.sourceId,
+      reversesEntryId: args.reversesEntryId,
+      lines: args.lines,
+    });
+  },
+});
+
+export const setPeriodLockInternal = internalMutation({
+  args: {
+    entityId: v.id("entities"),
+    actorUserId: v.id("users"),
+    lockedThroughDate: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("periodLocks")
+      .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+      .unique();
+    if (args.lockedThroughDate === null) {
+      if (existing) await ctx.db.delete(existing._id);
+      return { lockedThroughDate: null };
+    }
+    assertIsoDate(args.lockedThroughDate);
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        lockedThroughDate: args.lockedThroughDate,
+        updatedAt: now,
+        updatedByUserId: args.actorUserId,
+      });
+    } else {
+      await ctx.db.insert("periodLocks", {
+        entityId: args.entityId,
+        lockedThroughDate: args.lockedThroughDate,
+        updatedAt: now,
+        updatedByUserId: args.actorUserId,
+      });
+    }
+    return { lockedThroughDate: args.lockedThroughDate };
+  },
+});
+
 export const updateAccount = mutation({
   args: {
     accountId: v.id("ledgerAccounts"),
@@ -525,6 +651,7 @@ export const updateAccount = mutation({
     }
     const entity = await getEntityForWrite(ctx, account.entityId, "admin");
     const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    await assertNotDemoWrite(ctx, entity.workspaceId);
     const name = args.name.trim();
     if (!name) {
       throw new Error("Account name is required.");

@@ -102,8 +102,8 @@ test("H2 — mobile Dashboard, Inbox, Transactions, and Ask AI stay usable at 39
   await askButton.click();
   const panel = visibleByTestId(page, "ai-panel-mobile");
   await expect(panel).toBeVisible({ timeout: 15000 });
-  await expect(panel.getByText("Ask AI").first()).toBeVisible();
-  await expect(panel.getByPlaceholder("Ask about your books")).toBeEnabled({ timeout: 30000 });
+  await expect(panel.getByText("Chat", { exact: true }).first()).toBeVisible();
+  await expect(panel.getByLabel("Ask about your books")).toBeEnabled({ timeout: 30000 });
   await expectNoHorizontalScroll(page);
   await page.screenshot({
     path: `${FINISHING_EVIDENCE}/2026-06-12-H2-mobile-ask-ai.png`,

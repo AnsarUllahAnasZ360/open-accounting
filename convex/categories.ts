@@ -3,7 +3,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { requireWorkspaceRole } from "./authz";
-import { getEntityForWrite } from "./ledger";
+import { getEntityForWrite, postLedgerEntryCore } from "./ledger";
 
 // Which chart groups a category type belongs to in the friendly tree. Income and
 // Expenses are the headline groups; equity/asset/liability/system land in Other.
@@ -11,6 +11,14 @@ function categoryGroup(account: Doc<"ledgerAccounts">): "Income" | "Expenses" | 
   if (account.type === "income") return "Income";
   if (account.type === "expense") return "Expenses";
   return "Other";
+}
+
+// Normal side of an account (Epic E12-T3). Standard double-entry convention:
+// assets and expenses carry a DEBIT normal balance; liabilities, equity, and
+// income carry a CREDIT normal balance. Derived from `type` — no schema field is
+// needed and the posting path is untouched. Accountant mode surfaces this.
+function normalSideFor(type: Doc<"ledgerAccounts">["type"]): "debit" | "credit" {
+  return type === "asset" || type === "expense" ? "debit" : "credit";
 }
 
 /**
@@ -65,6 +73,7 @@ export const list = query({
             name: account.name,
             number: account.number,
             type: account.type,
+            normalSide: normalSideFor(account.type),
             isSystem: account.isSystem,
             ytdMinor,
           };
@@ -121,6 +130,46 @@ export const setArchived = mutation({
       createdAt: now,
     });
     return { accountId: account._id, archived: args.archived };
+  },
+});
+
+/**
+ * Set (or clear) the revenue STREAM tag on an income ledger account (Epic
+ * E9-T8). Several income accounts can share one stream label so they roll up
+ * into a single owner-facing stream on the dashboard revenue-by-stream widget.
+ * Pass an empty/blank tag to clear it (the account then falls back to its own
+ * name). Only valid on income accounts; the posting path never reads this.
+ * Owner/admin only. This ships the minimal override so the widget works before
+ * (or independent of) the onboarding AI-proposes/owner-approves taxonomy flow.
+ */
+export const setStreamTag = mutation({
+  args: { accountId: v.id("ledgerAccounts"), streamTag: v.string() },
+  handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.accountId);
+    if (!account) throw new ConvexError("Category not found.");
+    if (account.type !== "income") {
+      throw new ConvexError("Revenue streams can only be tagged on income accounts.");
+    }
+    const entity = await getEntityForWrite(ctx, account.entityId, "admin");
+    const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    const streamTag = args.streamTag.trim();
+    const now = Date.now();
+    await ctx.db.patch(account._id, {
+      streamTag: streamTag.length ? streamTag : undefined,
+      updatedAt: now,
+    });
+    await ctx.db.insert("auditEvents", {
+      workspaceId: entity.workspaceId,
+      actorUserId: userId,
+      action: "ledger.category.streamTagged",
+      entityType: "ledgerAccount",
+      entityId: account._id,
+      summary: streamTag.length
+        ? `Tagged income account ${account.number} to stream "${streamTag}"`
+        : `Cleared stream tag on income account ${account.number}`,
+      createdAt: now,
+    });
+    return { accountId: account._id, streamTag: streamTag.length ? streamTag : null };
   },
 });
 
@@ -211,16 +260,75 @@ export const createCategory = mutation({
 });
 
 /**
- * Recategorize a transaction onto a category account. If the transaction is
- * already posted to a journal entry, the underlying entry is corrected by
- * reversing the old categorization line and reposting to the new account — the
- * ledger stays immutable + balanced. (Used by the Expenses flow's "move a
- * transaction to a new category" path and its e2e.)
- *
- * Kept minimal: it re-points the transaction's category. For posted bank
- * expenses the existing categorize path in `pipeline`/inbox owns full reposting;
- * here we update uncategorized/needs-review rows that have no entry yet, which
- * is the case the Expenses "add category then use it" flow exercises.
+ * Move a non-system category between groups (Epic E12-T3). Reassigns the
+ * account's `type`/`subtype` and renumbers it into the destination group's
+ * number band (Income → 4xxx, Expenses/Other → 6xxx — matching the bands the
+ * "Add category" UI documents). System accounts cannot be moved. Posted journal
+ * lines reference the account by id, so existing history follows the account to
+ * its new group with no reposting — only the account doc is patched. Owner/admin
+ * only; writes an audit event. No ledger posting or money math is touched.
+ */
+export const moveGroup = mutation({
+  args: {
+    accountId: v.id("ledgerAccounts"),
+    group: v.union(v.literal("Expenses"), v.literal("Income"), v.literal("Other")),
+  },
+  handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.accountId);
+    if (!account) throw new ConvexError("Category not found.");
+    const entity = await getEntityForWrite(ctx, account.entityId, "admin");
+    const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
+    if (account.isSystem) throw new ConvexError("System categories can't be moved.");
+
+    const group: GroupId = args.group;
+    const band = GROUPS[group];
+
+    // No-op when the account is already in the destination group's type band.
+    const currentGroup = categoryGroup(account);
+    if (currentGroup === group && account.type === band.type) {
+      return { accountId: account._id, group, number: account.number, moved: false as const };
+    }
+
+    // Renumber only when changing type bands (Income⇄Expenses). Within the same
+    // type band (Expenses⇄Other both map to 6xxx) keep the existing number so we
+    // don't churn account numbers that already work.
+    const now = Date.now();
+    let number = account.number;
+    if (account.type !== band.type) {
+      number = await nextNumberInBand(ctx, entity._id, band.low, band.high);
+    }
+    await ctx.db.patch(account._id, {
+      type: band.type,
+      subtype: group === "Other" ? "other_expense" : group.toLowerCase(),
+      number,
+      updatedAt: now,
+    });
+    await ctx.db.insert("auditEvents", {
+      workspaceId: entity.workspaceId,
+      actorUserId: userId,
+      action: "ledger.category.moved",
+      entityType: "ledgerAccount",
+      entityId: account._id,
+      summary: `Moved category ${account.name} to ${group} (account ${number})`,
+      createdAt: now,
+    });
+    return { accountId: account._id, group, number, moved: true as const };
+  },
+});
+
+/**
+ * Recategorize a transaction onto a category account. Two cases, both keeping
+ * the ledger immutable + balanced:
+ *  - Already posted to a journal entry (the common settled-expense case): the
+ *    underlying entry is corrected by REVERSING the original entry (each line
+ *    inverted, exactly) and REPOSTING a fresh entry with the old category line
+ *    swapped for the new account. Posted entries are never mutated in place;
+ *    the correction is a reverse + repost pair, and `postLedgerEntryCore` owns
+ *    the balance + reversal-invert checks. The transaction repoints at the new
+ *    entry so reports (which query journal lines) move the spend cleanly.
+ *  - No entry yet (uncategorized / needs-review row): just re-point the
+ *    transaction's category — there is no posting to correct.
+ * Admin-gated; re-checks workspace authorization on the server.
  */
 export const recategorizeTransaction = mutation({
   args: {
@@ -240,8 +348,68 @@ export const recategorizeTransaction = mutation({
       throw new Error("Pick an income or expense category.");
     }
     const now = Date.now();
+
+    // No-op move: same category — nothing to repost.
+    if (txn.categoryAccountId === account._id) {
+      return { transactionId: txn._id, categoryAccountId: account._id, reposted: false as const };
+    }
+
+    let newEntryId = txn.entryId ?? null;
+
+    // Posted entry → reverse + repost so the journal lines (and therefore the
+    // P&L) move from the old category to the new one. Only re-point the line that
+    // was booked to the OLD category account; every other line (the bank side)
+    // is preserved exactly.
+    if (txn.entryId && txn.categoryAccountId) {
+      const oldCategoryId = txn.categoryAccountId;
+      const originalLines = await ctx.db
+        .query("journalLines")
+        .withIndex("by_entry", (q) => q.eq("entryId", txn.entryId!))
+        .collect();
+
+      if (originalLines.length >= 2) {
+        // Reverse: each line inverted (debit<->credit), exactly.
+        const reversedLines = originalLines.map((line) => ({
+          accountId: line.accountId,
+          debitMinor: line.creditMinor,
+          creditMinor: line.debitMinor,
+        }));
+        await postLedgerEntryCore(ctx, {
+          entity,
+          userId,
+          date: txn.date,
+          memo: `${txn.merchant} - recategorize reversal`,
+          source: "manual",
+          sourceId: `recategorize:${txn._id}:reverse`,
+          reversesEntryId: txn.entryId,
+          auditAction: "transaction.recategorized",
+          lines: reversedLines,
+        });
+
+        // Repost: same shape, but the line that hit the old category now hits the
+        // new one. (Currency is taken from the new posting's entity default.)
+        const repostLines = originalLines.map((line) => ({
+          accountId: line.accountId === oldCategoryId ? account._id : line.accountId,
+          debitMinor: line.debitMinor,
+          creditMinor: line.creditMinor,
+        }));
+        const repost = await postLedgerEntryCore(ctx, {
+          entity,
+          userId,
+          date: txn.date,
+          memo: `${txn.merchant} - ${account.number} ${account.name}`,
+          source: "manual",
+          sourceId: `recategorize:${txn._id}:repost`,
+          auditAction: "transaction.recategorized",
+          lines: repostLines,
+        });
+        newEntryId = repost.entryId;
+      }
+    }
+
     await ctx.db.patch(txn._id, {
       categoryAccountId: account._id,
+      ...(newEntryId ? { entryId: newEntryId } : {}),
       review: "confirmed",
       decidedBy: "rule",
       updatedAt: now,
@@ -255,6 +423,6 @@ export const recategorizeTransaction = mutation({
       summary: `${txn.merchant} categorized as ${account.number} ${account.name}`,
       createdAt: now,
     });
-    return { transactionId: txn._id, categoryAccountId: account._id };
+    return { transactionId: txn._id, categoryAccountId: account._id, reposted: Boolean(txn.entryId) };
   },
 });

@@ -48,6 +48,11 @@ type StatementRow = {
   totalMinor: number;
   columns?: ReportColumn[];
   drillDown?: DrillLine[];
+  // E6-T6: prior-period total + signed delta, present only when compare != none.
+  // Additive/optional so default (compare=none) packs and older serializations
+  // stay compatible.
+  priorTotalMinor?: number;
+  deltaMinor?: number;
 };
 
 type AgingRow = {
@@ -58,6 +63,9 @@ type AgingRow = {
   days60Minor: number;
   days90Minor: number;
   totalMinor: number;
+  // E6-T4: the open invoices/bills behind this row's totals, so an aging cell is
+  // drillable. Additive/optional — older serialized packs predate it.
+  drillDown?: DrillLine[];
 };
 
 export type ReportPack = {
@@ -66,6 +74,12 @@ export type ReportPack = {
     name: string;
     currency: string;
   };
+  // Present only in CONSOLIDATED (scope='all') packs (E5-T7/T8): the entity ids
+  // rolled up, and the intercompany amount eliminated from the group totals.
+  consolidatedFrom?: string[];
+  eliminatedMinor?: number;
+  eliminatedIncomeMinor?: number;
+  eliminatedExpenseMinor?: number;
   reportCards?: Array<{ id: ReportExportId; group: string; name: string; description: string }>;
   controls: {
     startDate: string;
@@ -132,15 +146,22 @@ export type ReportPack = {
   };
   expenses: {
     byCategory: StatementRow[];
-    byVendor: Array<{ id: string; name: string; totalMinor: number }>;
+    // E6-T4: drillDown additive so a vendor amount opens its journal lines.
+    byVendor: Array<{ id: string; name: string; totalMinor: number; drillDown?: DrillLine[] }>;
   };
   incomeByCustomer: {
-    rows: Array<{ id: string; name: string; totalMinor: number }>;
+    // E6-T4: drillDown additive so a customer amount opens its journal lines.
+    rows: Array<{ id: string; name: string; totalMinor: number; drillDown?: DrillLine[] }>;
     totalMinor: number;
   };
   payrollSummary: {
     totalMinor: number;
-    rows: Array<{ id: string; period: string; status: string; totalBaseMinor: number }>;
+    baseCurrency: string;
+    headcount: number;
+    hasFx: boolean;
+    byCurrency: Array<{ currency: string; localMinor: number; baseMinor: number }>;
+    // E6-T4: drillDown additive so a payroll period total opens its run lines.
+    rows: Array<{ id: string; period: string; status: string; totalBaseMinor: number; drillDown?: DrillLine[] }>;
   };
   generalLedger: {
     rows: DrillLine[];
@@ -177,6 +198,20 @@ export type ReportPack = {
   limits?: {
     reportLimit: number;
     truncated: boolean;
+  };
+  // E1-T8: count + absolute $ (integer minor units) of transactions that are
+  // unreviewed and therefore EXCLUDED from these figures. Optional so the type
+  // stays compatible with any older serialized pack.
+  unreviewed?: {
+    unreviewedCount: number;
+    unreviewedAbsMinor: number;
+  };
+  // E6-T5: count + absolute $ (integer minor units) of OPEN invoices/bills that a
+  // CASH-basis view drops. The basis badge surfaces this when basis='cash' so the
+  // owner knows exactly what the cash view excludes. Optional/additive.
+  cashBasisExcluded?: {
+    count: number;
+    amountMinor: number;
   };
 };
 
@@ -239,12 +274,19 @@ function moneyCells(amountMinor: number) {
 
 function statementCsv(title: string, rows: StatementRow[], pack: ReportPack) {
   const columnLabels = rows[0]?.columns?.map((column) => column.label) ?? [];
+  // E6-T6: emit prior + delta columns when a comparison is active and the rows
+  // carry the additive priorTotalMinor/deltaMinor (so the CSV reconciles to the
+  // on-screen Prior/Change columns). Absent for default compare=none packs.
+  const hasPrior = rows.some((row) => row.priorTotalMinor !== undefined);
   return csv([
     [title],
     ["entity", pack.entity.name],
     ["currency", pack.entity.currency],
     ["range", pack.controls.startDate, pack.controls.endDate],
     ["basis", pack.controls.basis],
+    ...(hasPrior && pack.controls.comparison
+      ? [["compare", pack.controls.comparison.startDate, pack.controls.comparison.endDate]]
+      : []),
     [],
     [
       "account_number",
@@ -254,6 +296,7 @@ function statementCsv(title: string, rows: StatementRow[], pack: ReportPack) {
       "total_minor",
       "total",
       ...columnLabels.flatMap((label) => [`${label}_minor`, label]),
+      ...(hasPrior ? ["prior_total_minor", "prior_total", "delta_minor", "delta"] : []),
     ],
     ...rows.map((row) => [
       row.accountNumber ?? "",
@@ -262,6 +305,7 @@ function statementCsv(title: string, rows: StatementRow[], pack: ReportPack) {
       row.accountSubtype ?? "",
       ...moneyCells(row.totalMinor),
       ...(row.columns ?? []).flatMap((column) => moneyCells(column.amountMinor)),
+      ...(hasPrior ? [...moneyCells(row.priorTotalMinor ?? 0), ...moneyCells(row.deltaMinor ?? 0)] : []),
     ]),
   ]);
 }
@@ -336,28 +380,47 @@ export function reportCsv(reportId: ReportExportId, pack: ReportPack) {
       ]);
     case "profit-and-loss":
       return statementCsv("Profit and Loss", pack.profitAndLoss.rows, pack);
-    case "balance-sheet":
+    case "balance-sheet": {
+      // E6-T3 parity: serialize the SAME `sections` the screen renders
+      // (assets/liabilities/equity, each with its account rows), plus the
+      // 'liabilities + equity + earnings' total the screen shows at the bottom.
+      const sections = pack.balanceSheet.sections ?? [
+        { key: "assets", label: "Assets", totalMinor: pack.balanceSheet.assetMinor, rows: pack.balanceSheet.rows.filter((row) => row.accountType === "asset") },
+        { key: "liabilities", label: "Liabilities", totalMinor: pack.balanceSheet.liabilityMinor, rows: pack.balanceSheet.rows.filter((row) => row.accountType === "liability") },
+        { key: "equity", label: "Equity", totalMinor: pack.balanceSheet.equityMinor, rows: pack.balanceSheet.rows.filter((row) => row.accountType === "equity") },
+      ];
+      const liabPlusEquityPlusEarnings =
+        pack.balanceSheet.liabilityMinor + pack.balanceSheet.equityMinor + pack.balanceSheet.currentEarningsMinor;
       return csv([
         ["Balance Sheet"],
         ["entity", pack.entity.name],
+        ["currency", pack.entity.currency],
         ["as_of", pack.balanceSheet.asOfDate],
+        ["basis", pack.controls.basis],
         ["balanced", pack.balanceSheet.balanced],
         ["difference_minor", pack.balanceSheet.differenceMinor],
         ["difference", minorDecimal(pack.balanceSheet.differenceMinor)],
         [],
-        ["section", "amount_minor", "amount"],
-        ["assets", ...moneyCells(pack.balanceSheet.assetMinor)],
-        ["liabilities", ...moneyCells(pack.balanceSheet.liabilityMinor)],
-        ["equity", ...moneyCells(pack.balanceSheet.equityMinor)],
-        ["current_earnings", ...moneyCells(pack.balanceSheet.currentEarningsMinor)],
+        ["section", "account_number", "account_name", "amount_minor", "amount"],
+        ...sections.flatMap((section) => [
+          [section.label, "", "SECTION TOTAL", ...moneyCells(section.totalMinor)],
+          ...section.rows.map((row) => [section.label, row.accountNumber ?? "", row.label, ...moneyCells(row.totalMinor)]),
+        ]),
         [],
-        ...statementCsv("Accounts", pack.balanceSheet.rows, pack).trimEnd().split("\n").map((line) => line.split(",")),
+        ["current_earnings", "", "", ...moneyCells(pack.balanceSheet.currentEarningsMinor)],
+        ["liabilities_equity_earnings", "", "", ...moneyCells(liabPlusEquityPlusEarnings)],
       ]);
+    }
     case "cash-flow":
+      // E6-T3 parity: emit the PER-ROW line items the screen renders, not just the
+      // group totals. Each group prints its total, then every contributing line
+      // (date · memo · signed amount). Opening/net/closing stay as header summary.
       return csv([
         ["Cash Flow"],
         ["entity", pack.entity.name],
+        ["currency", pack.entity.currency],
         ["range", pack.controls.startDate, pack.controls.endDate],
+        ["basis", pack.controls.basis],
         ["opening_cash_minor", pack.cashFlow.openingCashMinor],
         ["opening_cash", minorDecimal(pack.cashFlow.openingCashMinor)],
         ["net_cash_change_minor", pack.cashFlow.netCashChangeMinor],
@@ -365,8 +428,11 @@ export function reportCsv(reportId: ReportExportId, pack: ReportPack) {
         ["closing_cash_minor", pack.cashFlow.closingCashMinor],
         ["closing_cash", minorDecimal(pack.cashFlow.closingCashMinor)],
         [],
-        ["group", "amount_minor", "amount"],
-        ...pack.cashFlow.groups.map((group) => [group.label, ...moneyCells(group.totalMinor)]),
+        ["group", "date", "memo", "amount_minor", "amount"],
+        ...pack.cashFlow.groups.flatMap((group) => [
+          [group.label, "", "TOTAL", ...moneyCells(group.totalMinor)],
+          ...group.rows.map((row) => [group.label, row.date, row.memo, ...moneyCells(row.amountMinor)]),
+        ]),
       ]);
     case "ar-aging":
       return agingCsv("AR Aging", pack.arAging, pack);
@@ -376,7 +442,9 @@ export function reportCsv(reportId: ReportExportId, pack: ReportPack) {
       return csv([
         ["Expenses"],
         ["entity", pack.entity.name],
+        ["currency", pack.entity.currency],
         ["range", pack.controls.startDate, pack.controls.endDate],
+        ["basis", pack.controls.basis],
         [],
         ["by_category"],
         ["category", "amount_minor", "amount"],
@@ -386,24 +454,44 @@ export function reportCsv(reportId: ReportExportId, pack: ReportPack) {
         ["vendor", "amount_minor", "amount"],
         ...pack.expenses.byVendor.map((row) => [row.name, ...moneyCells(row.totalMinor)]),
       ]);
-    case "income-by-customer":
+    case "income-by-customer": {
+      // E6-T3 parity: include the % share column the screen computes
+      // (Math.round(row / total * 100)) so the CSV reconciles to what's shown.
+      const incomeTotal = pack.incomeByCustomer.totalMinor || 1;
       return csv([
         ["Income by Customer"],
         ["entity", pack.entity.name],
+        ["currency", pack.entity.currency],
         ["range", pack.controls.startDate, pack.controls.endDate],
+        ["basis", pack.controls.basis],
         ["total_minor", pack.incomeByCustomer.totalMinor],
         ["total", minorDecimal(pack.incomeByCustomer.totalMinor)],
         [],
-        ["customer", "amount_minor", "amount"],
-        ...pack.incomeByCustomer.rows.map((row) => [row.name, ...moneyCells(row.totalMinor)]),
+        ["customer", "amount_minor", "amount", "share_pct"],
+        ...pack.incomeByCustomer.rows.map((row) => [
+          row.name,
+          ...moneyCells(row.totalMinor),
+          Math.round((row.totalMinor / incomeTotal) * 100),
+        ]),
       ]);
+    }
     case "payroll-summary":
       return csv([
         ["Payroll Summary"],
         ["entity", pack.entity.name],
         ["range", pack.controls.startDate, pack.controls.endDate],
+        ["base_currency", pack.payrollSummary.baseCurrency],
+        ["headcount", pack.payrollSummary.headcount],
         ["total_minor", pack.payrollSummary.totalMinor],
         ["total", minorDecimal(pack.payrollSummary.totalMinor)],
+        [],
+        ["by_currency"],
+        ["currency", "local_minor", "local", "base_minor", "base"],
+        ...pack.payrollSummary.byCurrency.map((row) => [
+          row.currency,
+          ...moneyCells(row.localMinor),
+          ...moneyCells(row.baseMinor),
+        ]),
         [],
         ["period", "status", "total_minor", "total"],
         ...pack.payrollSummary.rows.map((row) => [row.period, row.status, ...moneyCells(row.totalBaseMinor)]),

@@ -41,6 +41,11 @@ const convexServerSecrets = [
   "JWKS",
   "SITE_URL",
   "OPENBOOKS_SECRET_ENCRYPTION_KEY",
+  // Local dev owner bypass needs all three on the Convex deployment: the flag,
+  // and the owner email/password that bootstrapOwner + the bypass resolver read.
+  "OPENBOOKS_DEV_AUTH_BYPASS",
+  "OWNER_EMAIL",
+  "OWNER_PASSWORD",
   "AI_PROVIDER",
   "AI_MODEL",
   "AI_EMBEDDINGS_MODEL",
@@ -176,6 +181,9 @@ function convexEnvSet(name, value) {
     input: value,
     encoding: "utf8",
     stdio: ["pipe", "pipe", "pipe"],
+    // Windows resolves `npx` only as `npx.cmd`; spawn through a shell so the
+    // secret push works cross-platform (value still arrives via stdin, unechoed).
+    shell: true,
   });
   return result.status === 0;
 }

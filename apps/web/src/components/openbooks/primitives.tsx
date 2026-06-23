@@ -1,16 +1,7 @@
-import {
-  ArrowRight,
-  BarChart3,
-  Check,
-  CircleAlert,
-  Inbox,
-  Sparkles,
-  type LucideIcon,
-} from "lucide-react";
+import { Inbox, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -271,69 +262,3 @@ export function AgingMiniBar({
   );
 }
 
-export function ReasoningPopover({ children }: { children: ReactNode }) {
-  return (
-    <details className="group relative">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-primary">
-        <Sparkles className="size-3" />
-        Reasoning
-      </summary>
-      <div className="absolute right-0 z-20 mt-2 w-72 rounded-lg border bg-popover p-3 text-sm text-popover-foreground shadow-md">
-        {children}
-      </div>
-    </details>
-  );
-}
-
-export function ReviewItem({
-  counterparty,
-  date,
-  amountMinor,
-  question,
-  options,
-}: {
-  counterparty: string;
-  date: string;
-  amountMinor: number;
-  question: string;
-  options: string[];
-}) {
-  return (
-    <div className="rounded-lg border bg-card p-4 shadow-xs">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm font-medium">{counterparty}</div>
-          <div className="money-figures mt-0.5 text-xs text-muted-foreground">{date}</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Amount amountMinor={amountMinor} tone={amountMinor > 0 ? "income" : "expense"} />
-          <Badge variant="outline">
-            <CircleAlert className="size-3" />
-            Review
-          </Badge>
-        </div>
-      </div>
-      <div className="mt-3 flex gap-2 text-sm text-muted-foreground">
-        <Sparkles className="mt-0.5 size-4 text-primary" />
-        <span>{question}</span>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {options.map((option) => (
-          <Button key={option} size="sm" variant="outline">
-            <Check className="size-3" />
-            {option}
-          </Button>
-        ))}
-        <Button size="sm" variant="ghost">
-          Skip
-          <ArrowRight className="size-3" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-export const primitiveIcons = {
-  BarChart3,
-  Inbox,
-};

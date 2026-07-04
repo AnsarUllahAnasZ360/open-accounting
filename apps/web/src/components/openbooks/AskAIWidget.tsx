@@ -7,6 +7,7 @@ import {
   type UIMessage,
 } from "@convex-dev/agent/react";
 import { useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import {
   Check,
   ChevronsUpDown,
@@ -346,7 +347,7 @@ function ThreadSwitcher({
       await onRename(active.threadId, title);
       setOpen(false);
     } catch (error) {
-      setRenameError(error instanceof Error ? error.message : "Could not rename this conversation.");
+      setRenameError(getErrorMessage(error, "Could not rename this conversation."));
     } finally {
       setSavingName(false);
     }
@@ -501,7 +502,7 @@ function ThreadRow({
       await onRename(thread.threadId, title);
       setMenuOpen(false);
     } catch (error) {
-      setRenameError(error instanceof Error ? error.message : "Could not rename this conversation.");
+      setRenameError(getErrorMessage(error, "Could not rename this conversation."));
     } finally {
       setSaving(false);
     }
@@ -993,7 +994,7 @@ function AskAIConversation({
         await sendMessage({ threadId, prompt: trimmed });
         return true;
       } catch (error) {
-        setSendError(error instanceof Error ? error.message : "Could not send this Ask AI message.");
+        setSendError(getErrorMessage(error, "Could not send this Ask AI message."));
         return false;
       } finally {
         setSending(false);
@@ -1062,7 +1063,7 @@ function AskAIConversation({
           ...current,
           [proposal.id]: {
             status: "error",
-            message: error instanceof Error ? error.message : "Could not confirm this proposal.",
+            message: getErrorMessage(error, "Could not confirm this proposal."),
           },
         }));
       }
@@ -1087,7 +1088,7 @@ function AskAIConversation({
           ...current,
           [proposal.id]: {
             status: "error",
-            message: error instanceof Error ? error.message : "Could not dismiss this proposal.",
+            message: getErrorMessage(error, "Could not dismiss this proposal."),
           },
         }));
       }

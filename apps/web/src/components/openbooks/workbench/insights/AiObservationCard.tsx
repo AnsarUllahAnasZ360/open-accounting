@@ -1,6 +1,7 @@
 "use client";
 
 import { useAction } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -163,7 +164,7 @@ export function AiObservationColumn({
       })) as InsightsResult;
       setResult(next);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not generate insights.");
+      setError(getErrorMessage(caught, "Could not generate insights."));
     } finally {
       setLoading(false);
     }

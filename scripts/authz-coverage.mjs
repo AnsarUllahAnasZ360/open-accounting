@@ -69,6 +69,7 @@ const GUARD_HELPERS = [
   "resolveActiveEntity", // activeEntity.ts → requireAnyWorkspaceRole / requireWorkspaceRole
   "resolveDefaultEntity", // activeEntity.ts → requires membership
   "runWorkspaceReset", // workspaceReset.ts → delegates to requireAnyWorkspacePermission("workspace.reset")
+  "loadEmployeeForWrite", // employees.ts → loadEntityForPayrollWrite → requireWorkspacePermission("payroll.prepare") + assertNotDemoWrite
 ];
 
 // Intentionally-public / authorized-by-caller functions. Each MUST carry a
@@ -83,6 +84,12 @@ const ALLOW_LIST = {
     ["intentionally-public", "Landing 'request access' form — accepts an email from an unauthenticated visitor by design (rate/format validated, write-only)."],
   "team.ts:lookupInvite":
     ["intentionally-public", "Invitee with no session looks up their pending invite by a 32+ char unguessable token; the token is the capability (returns invalid for short/unknown tokens)."],
+  "payroll.ts:payslipByToken":
+    ["intentionally-public", "Employee with no session opens their payslip by a 48-char unguessable per-line token emailed to them; the token is the capability (returns null for short/unknown tokens). Same pattern as team.lookupInvite."],
+  "payroll.ts:setPayslipToken":
+    ["authorized", "internalMutation; called only from the sendPayslip action AFTER payroll.payslipSendData authorizes payroll.prepare + blocks demo. Not client-callable."],
+  "payroll.ts:autoSettleApprovedRunsForEntity":
+    ["authorized", "internalMutation; scheduled ONLY from the guarded Plaid sync (syncItemTransactionsInternal) with a system-sync actor. Not client-callable; operates on the sync's own entity and only settles a strict, keyworded, unique bank match."],
 
   // Ask-AI agent read tools — internalQuery, called only from the streaming
   // action AFTER authorizeThreadAccess derives the thread's entity. The

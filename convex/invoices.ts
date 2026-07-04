@@ -576,6 +576,13 @@ export const detail = query({
       number: invoice.number,
       status: invoice.status,
       currency: invoice.currency,
+      // Issuer ("from") identity for the printable invoice / PDF.
+      businessName: entity.name,
+      businessLegalName: entity.legalName ?? null,
+      businessLogoUrl: entity.logoStorageId ? await ctx.storage.getUrl(entity.logoStorageId) : null,
+      businessEmail: entity.contactEmail?.trim() ? entity.contactEmail.trim() : null,
+      businessPhone: entity.contactPhone?.trim() ? entity.contactPhone.trim() : null,
+      businessTaxId: entity.showTaxIdOnInvoice && entity.taxId?.trim() ? entity.taxId.trim() : null,
       contactId: invoice.contactId,
       customerName: contact?.name ?? "Customer",
       customerEmail: contact?.email ?? null,

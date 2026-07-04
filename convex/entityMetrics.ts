@@ -112,7 +112,8 @@ export async function computeEntityMetrics(
   const [journal, accounts, bankAccounts, invoices, bills] = await Promise.all([
     loadEntityJournal(ctx, entity._id),
     ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(METRIC_TABLE_LIMIT),
-    ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
+    ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200)
+      .then((rows) => rows.filter((account) => !account.archived)),
     ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(METRIC_TABLE_LIMIT),
     ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(METRIC_TABLE_LIMIT),
   ]);

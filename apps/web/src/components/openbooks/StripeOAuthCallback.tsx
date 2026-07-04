@@ -1,6 +1,7 @@
 "use client";
 
 import { useAction } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import { CheckCircle2, CircleAlert } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -34,7 +35,7 @@ export function StripeOAuthCallback() {
       .catch((caught) => {
         if (cancelled) return;
         setStatus("error");
-        setMessage(caught instanceof Error ? caught.message : "Could not complete Stripe OAuth.");
+        setMessage(getErrorMessage(caught, "Could not complete Stripe OAuth."));
       });
     return () => {
       cancelled = true;

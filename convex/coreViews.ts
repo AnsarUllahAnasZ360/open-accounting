@@ -226,7 +226,8 @@ export const dashboard = query({
         ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(DASHBOARD_LIMIT),
       )),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(200),
+        ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(200)
+          .then((rows) => rows.filter((account) => !account.archived)),
       )),
       Promise.all(entityIds.map((entityId) =>
         ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(DASHBOARD_LIMIT),
@@ -298,6 +299,10 @@ export const dashboard = query({
     let incomeMinor = 0;
     let expenseMinor = 0;
     const expensesByCategory: Array<{ name: string; amountMinor: number; categoryAccountId: Id<"ledgerAccounts"> }> = [];
+    // "Where money came from" donut: income broken down by source account, the
+    // mirror of expensesByCategory. Built from the SAME normalBalance values that
+    // feed incomeMinor, so the slices sum exactly to the period P&L revenue.
+    const incomeByCategory: Array<{ name: string; amountMinor: number; categoryAccountId: Id<"ledgerAccounts"> }> = [];
     // Revenue-by-stream (E9-T8): roll the SELECTED-month income up by the
     // owner-facing `streamTag` (several income accounts → one stream), falling
     // back to the account's own name when untagged. Built from the SAME
@@ -310,6 +315,7 @@ export const dashboard = query({
       const amountMinor = normalBalance(account, balance);
       if (account.type === "income") {
         incomeMinor += amountMinor;
+        if (amountMinor > 0) incomeByCategory.push({ name: account.name, amountMinor, categoryAccountId: accountId });
         const stream = account.streamTag?.trim() || account.name;
         const bucket = streamPeriodTotals.get(stream) ?? { totalMinor: 0, accountIds: [] };
         bucket.totalMinor += amountMinor;
@@ -754,6 +760,7 @@ export const dashboard = query({
         upcoming: payablesUpcoming.slice(0, 4),
       },
       expensesByCategory: expensesByCategory.sort((a, b) => b.amountMinor - a.amountMinor).slice(0, 5),
+      incomeByCategory: incomeByCategory.sort((a, b) => b.amountMinor - a.amountMinor).slice(0, 5),
       // Revenue-by-stream (E9-T8): per-stream period total + trend. Sum of
       // `totalMinor` == period P&L revenue (`profitAndLoss.incomeMinor`).
       revenueByStream,
@@ -830,7 +837,8 @@ export const inbox = query({
       ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
       ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(DASHBOARD_LIMIT),
       ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500),
-      ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
+      ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200)
+        .then((rows) => rows.filter((account) => !account.archived)),
       ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
       ctx.db.query("aiCorrectionMemories").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
     ]);
@@ -931,6 +939,10 @@ export const inbox = query({
           suggestions,
           categoryName: category?.name ?? "Needs category",
           categoryAccountId: category?._id ?? null,
+          // The linked customer/vendor (the Inbox can set it via the contact
+          // picker when AI didn't attach one). Name is resolved client-side from
+          // the contacts list, so the item only carries the id.
+          contactId: transaction?.contactId ?? null,
           bankAccountName: bankAccount?.name ?? "OpenBooks",
           receiptDocument: document
             ? {
@@ -1020,7 +1032,8 @@ export const transactions = query({
         ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(500),
       )),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(200),
+        ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(200)
+          .then((rows) => rows.filter((account) => !account.archived)),
       )),
       Promise.all(entityIds.map((entityId) =>
         ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(2000),
@@ -1292,6 +1305,9 @@ export const transactions = query({
           merchant: transaction.merchant,
           rawDescription: transaction.rawDescription,
           amountMinor: signedTransactionAmount(transaction),
+          currency: transaction.currency,
+          // Revenue-stream split (streams redesign) for the detail-drawer editor.
+          streams: transaction.streams ?? [],
           source: transaction.source,
           review: transaction.review,
           decidedBy: transaction.decidedBy ?? null,

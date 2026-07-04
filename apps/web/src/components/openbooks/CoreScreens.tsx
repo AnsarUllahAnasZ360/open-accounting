@@ -1,6 +1,7 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -13,6 +14,7 @@ import {
   ChevronRight,
   CircleAlert,
   Coins,
+  Eye,
   FileText,
   Landmark,
   FileUp,
@@ -20,6 +22,7 @@ import {
   Info,
   Layers2,
   Link2Off,
+  Loader2,
   type LucideIcon,
   Paperclip,
   Plug,
@@ -39,6 +42,7 @@ import { toast } from "sonner";
 
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import { AnimatedAmount } from "@/components/openbooks/AnimatedNumber";
 import {
   Amount,
   CategoryChip,
@@ -46,6 +50,7 @@ import {
   EmptyState,
   formatMinorMoney,
 } from "@/components/openbooks/primitives";
+import { StreamSplitEditor } from "@/components/openbooks/StreamSplitEditor";
 import {
   AgingBar,
   CashFlowChart,
@@ -53,9 +58,9 @@ import {
   CustomerBars,
   Delta,
   ExpenseDonut,
+  IncomeDonut,
   PayrollTrendChart,
   PnlTrendChart,
-  RevenueStreamBars,
   RunwaySegments,
   shortMonth,
 } from "@/components/openbooks/dashboard/DashboardViz";
@@ -84,6 +89,7 @@ import {
   type GroupByKey,
   GroupByMenu,
   InlineCategoryCombobox,
+  ContactCombobox,
   InsightBanner,
   InsightBannerExplain,
   buildPageInsight,
@@ -99,9 +105,17 @@ import {
   WorkbenchSurface,
   type WorkbenchTableGroup,
 } from "@/components/openbooks/workbench";
-import { AttachmentPanel, CommentsThread } from "@/components/openbooks/TransactionDrawerExtras";
+import {
+  AttachmentPanel,
+  CommentsThread,
+} from "@/components/openbooks/TransactionDrawerExtras";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -137,6 +151,25 @@ import { cn } from "@/lib/utils";
 
 type ReviewFilter = "all" | "auto" | "confirmed" | "needs_review" | "excluded";
 
+function InfoTip({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="More information"
+          className="inline-flex shrink-0 items-center text-muted-foreground/35 transition-colors hover:text-muted-foreground"
+        >
+          <Info className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-64 text-xs leading-relaxed">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function LoadingBlock({ label }: { label: string }) {
   return (
     <section className="rounded-[14px] p-4 text-sm text-muted-foreground shadow-xs ring-1 ring-foreground/10">
@@ -154,7 +187,9 @@ function categoryLabel(kind: string) {
 function humanizeReasoning(reasoning?: string | null) {
   if (!reasoning) return null;
   const cleaned = reasoning.replace(/^Pipeline stage \d+\s*/i, "").trim();
-  return cleaned.length > 0 ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : null;
+  return cleaned.length > 0
+    ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+    : null;
 }
 
 // E2-T11: a plain-English provenance line for a decided Inbox item, derived from
@@ -166,7 +201,8 @@ function inboxProvenanceLine(args: {
   merchant: string;
   topMemoryOccurrences?: number | null;
 }): string | null {
-  const pct = args.confidence != null ? Math.round(args.confidence * 100) : null;
+  const pct =
+    args.confidence != null ? Math.round(args.confidence * 100) : null;
   switch (args.decidedBy) {
     case "rule":
       return "Matched your rule";
@@ -193,10 +229,33 @@ function entityArg(entityId?: string) {
   return entityId ? { entityId: entityId as Id<"entities"> } : {};
 }
 
-const MONTH_NAMES_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_NAMES_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 const MONTH_NAMES_LONG = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 const TOPBAR_PAGE_ACTIONS_ID = "ob-topbar-page-actions";
 
@@ -209,7 +268,10 @@ function DashboardPeriodPortal({
   value: string;
   onValueChange: (value: string) => void;
 }) {
-  const target = typeof document === "undefined" ? null : document.getElementById(TOPBAR_PAGE_ACTIONS_ID);
+  const target =
+    typeof document === "undefined"
+      ? null
+      : document.getElementById(TOPBAR_PAGE_ACTIONS_ID);
   if (!target) return null;
 
   return createPortal(
@@ -277,6 +339,78 @@ function activityIconFor(source: string): LucideIcon {
 // Dashboard
 // ---------------------------------------------------------------------------
 
+// Revenue-by-stream donut for the dashboard's money-in / money-out row. Self-
+// contained: fetches its own per-stream P&L for the active business + period. A
+// "Detail" button opens the full Revenue Streams insights.
+function StreamRevenueDonutCard({
+  entityId,
+  currency,
+}: {
+  entityId: Id<"entities">;
+  currency: string;
+}) {
+  const now = new Date();
+  const startDate = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
+    .toISOString()
+    .slice(0, 10);
+  const data = useQuery(api.streamViews.streamPnl, { entityId, startDate, endDate });
+
+  const slices = (data?.streams ?? [])
+    .filter((stream) => stream.revenueMinor > 0)
+    .map((stream) => ({ name: stream.stream, amountMinor: stream.revenueMinor }))
+    .sort((a, b) => b.amountMinor - a.amountMinor);
+  const total = slices.reduce((sum, slice) => sum + slice.amountMinor, 0);
+  const top = slices[0] ?? null;
+  const topSharePct = top && total > 0 ? Math.round((top.amountMinor / total) * 100) : 0;
+
+  return (
+    <div
+      className="flex flex-col gap-3 rounded-[14px] bg-card p-5 shadow-xs ring-1 ring-foreground/10"
+      data-testid="stream-revenue-donut"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-sm font-semibold">Revenue by stream</h2>
+          <InfoTip text="Income grouped by revenue stream (e.g. Web Dev, Marketing). Tag payments, invoices, or bills to a stream to populate this." />
+        </div>
+        <Button asChild size="sm" variant="outline" className="h-7 px-2 text-xs">
+          <Link href="/revenue-streams">
+            Detail
+            <ArrowUpRight className="ml-0.5 size-3" />
+          </Link>
+        </Button>
+      </div>
+      {data === undefined ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : slices.length > 0 ? (
+        <>
+          <IncomeDonut data={slices} currency={currency} />
+          <div className="mt-auto grid grid-cols-2 gap-2 border-t pt-3 text-xs">
+            <div className="min-w-0">
+              <div className="text-muted-foreground">Top stream</div>
+              <div className="truncate font-medium">
+                {top?.name ?? "—"} · {topSharePct}%
+              </div>
+            </div>
+            <div className="min-w-0 text-right">
+              <div className="text-muted-foreground">Streams</div>
+              <div className="font-medium">{slices.length}</div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Tag payments to a revenue stream to see this.{" "}
+          <Link href="/revenue-streams" className="text-primary hover:underline">
+            Set up
+          </Link>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function DashboardScreen() {
   return <SingleBusinessDashboard />;
 }
@@ -296,7 +430,9 @@ function SingleBusinessDashboard() {
   const searchParams = useSearchParams();
   const justFinishedSetup = searchParams.get("setup") === "1";
   const dashboard = useQuery(api.coreViews.dashboard, {
-    ...(scope === "all" ? { scope: "all" as const } : entityArg(activeEntity.id)),
+    ...(scope === "all"
+      ? { scope: "all" as const }
+      : entityArg(activeEntity.id)),
     period: period ?? undefined,
     // E1-T11: anchor the trailing cash-flow window to the client's real "today"
     // so the trend ends at the current month rather than a server-side default.
@@ -305,7 +441,12 @@ function SingleBusinessDashboard() {
 
   if (dashboard === undefined) return <LoadingBlock label="dashboard" />;
   if (!dashboard) {
-    return <EmptyState title="No entity yet" description="Create a business before reviewing the dashboard." />;
+    return (
+      <EmptyState
+        title="No entity yet"
+        description="Create a business before reviewing the dashboard."
+      />
+    );
   }
 
   const month = dashboard.selectedMonth;
@@ -313,33 +454,66 @@ function SingleBusinessDashboard() {
   // the Dashboard summarizes and the register/lens owns the truth (report 6.1).
   const periodQuery = `period=${month}&start=${dashboard.periodStart}&end=${dashboard.periodEnd}`;
   const currency = dashboard.entity.currency ?? "USD";
-  const obCard = "rounded-[14px] bg-card p-5 shadow-xs ring-1 ring-foreground/10";
+  const obCard =
+    "rounded-[14px] bg-card p-5 shadow-xs ring-1 ring-foreground/10";
   const obCardCol = `${obCard} flex flex-col gap-3`;
   // Hero cash trend = cumulative cash flow (the server's cashSparkline), by month.
   const cashTrend = dashboard.cashFlowByMonth.map((cashMonth, index) => ({
     label: shortMonth(cashMonth.month),
     value: dashboard.cashSparkline[index] ?? 0,
   }));
-  const thisMonthNet = dashboard.cashFlowByMonth.find((cashMonth) => cashMonth.month === month)?.netMinor ?? 0;
+  const thisMonthNet =
+    dashboard.cashFlowByMonth.find((cashMonth) => cashMonth.month === month)
+      ?.netMinor ?? 0;
   const recentFlow = dashboard.cashFlowByMonth.slice(-6);
   const avgNetMinor = Math.round(
-    recentFlow.reduce((sum, cashMonth) => sum + cashMonth.netMinor, 0) / Math.max(1, recentFlow.length),
+    recentFlow.reduce((sum, cashMonth) => sum + cashMonth.netMinor, 0) /
+      Math.max(1, recentFlow.length),
   );
-  const allMonthsPositive = recentFlow.every((cashMonth) => cashMonth.netMinor >= 0);
+  const allMonthsPositive = recentFlow.every(
+    (cashMonth) => cashMonth.netMinor >= 0,
+  );
   const pnl = dashboard.profitAndLoss;
-  const topBankBalances = [...dashboard.bankBalances].sort((a, b) => b.amountMinor - a.amountMinor).slice(0, 3);
-  const hiddenBankBalanceCount = Math.max(0, dashboard.bankBalances.length - topBankBalances.length);
-  const totalDisplayedExpenseMinor = dashboard.expensesByCategory.reduce((sum, item) => sum + item.amountMinor, 0);
+  const topBankBalances = [...dashboard.bankBalances]
+    .sort((a, b) => b.amountMinor - a.amountMinor)
+    .slice(0, 3);
+  const hiddenBankBalanceCount = Math.max(
+    0,
+    dashboard.bankBalances.length - topBankBalances.length,
+  );
+  const totalDisplayedExpenseMinor = dashboard.expensesByCategory.reduce(
+    (sum, item) => sum + item.amountMinor,
+    0,
+  );
   const topExpense = dashboard.expensesByCategory[0] ?? null;
-  const topExpenseSharePct = topExpense && totalDisplayedExpenseMinor > 0
-    ? Math.round((topExpense.amountMinor / totalDisplayedExpenseMinor) * 100)
-    : 0;
-  const spendRatePct = pnl.incomeMinor > 0 ? Math.round((pnl.expenseMinor / pnl.incomeMinor) * 100) : 0;
-  const topCustomerName = dashboard.incomeConcentration.topName || dashboard.incomeByCustomer[0]?.name || "Customer";
+  const topExpenseSharePct =
+    topExpense && totalDisplayedExpenseMinor > 0
+      ? Math.round((topExpense.amountMinor / totalDisplayedExpenseMinor) * 100)
+      : 0;
+  const spendRatePct =
+    pnl.incomeMinor > 0
+      ? Math.round((pnl.expenseMinor / pnl.incomeMinor) * 100)
+      : 0;
+  const totalDisplayedIncomeMinor = dashboard.incomeByCategory.reduce(
+    (sum, item) => sum + item.amountMinor,
+    0,
+  );
+  const topIncome = dashboard.incomeByCategory[0] ?? null;
+  const topIncomeSharePct =
+    topIncome && totalDisplayedIncomeMinor > 0
+      ? Math.round((topIncome.amountMinor / totalDisplayedIncomeMinor) * 100)
+      : 0;
+  const topCustomerName =
+    dashboard.incomeConcentration.topName ||
+    dashboard.incomeByCustomer[0]?.name ||
+    "Customer";
   const topCustomerSharePct = dashboard.incomeConcentration.topSharePct;
 
   return (
-    <div className="flex flex-col gap-4" data-testid="dashboard-screen">
+    <div
+      className="ob-animate-in flex flex-col gap-4"
+      data-testid="dashboard-screen"
+    >
       <DashboardPeriodPortal
         months={dashboard.cashFlowByMonth.map((cashMonth) => cashMonth.month)}
         value={period ?? dashboard.selectedMonth}
@@ -351,13 +525,20 @@ function SingleBusinessDashboard() {
           data-testid="dashboard-setup-running"
           className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[14px] border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-foreground"
         >
-          <Sparkles className="size-4 shrink-0 text-primary" aria-hidden="true" />
+          <Sparkles
+            className="size-4 shrink-0 text-primary"
+            aria-hidden="true"
+          />
           <span>
-            <span className="font-medium">Your books are being set up.</span> AI is
-            categorizing and posting your synced history — confident items post to the
-            ledger and the rest land in your Inbox. These numbers fill in as it runs.
+            <span className="font-medium">Your books are being set up.</span> AI
+            is categorizing and posting your synced history — confident items
+            post to the ledger and the rest land in your Inbox. These numbers
+            fill in as it runs.
           </span>
-          <Link className="font-medium text-primary underline-offset-2 hover:underline" href="/inbox">
+          <Link
+            className="font-medium text-primary underline-offset-2 hover:underline"
+            href="/inbox"
+          >
             Review in Inbox
           </Link>
         </section>
@@ -373,17 +554,27 @@ function SingleBusinessDashboard() {
         >
           <Info className="size-4 shrink-0" aria-hidden="true" />
           <span>
-            <span className="font-medium text-foreground tabular-nums" data-testid="dashboard-unreviewed-count">
+            <span
+              className="font-medium text-foreground tabular-nums"
+              data-testid="dashboard-unreviewed-count"
+            >
               {dashboard.unreviewed.unreviewedCount}{" "}
-              {dashboard.unreviewed.unreviewedCount === 1 ? "transaction" : "transactions"}
+              {dashboard.unreviewed.unreviewedCount === 1
+                ? "transaction"
+                : "transactions"}
             </span>{" "}
             (
             <span className="tabular-nums">
-              {formatMinorMoney(dashboard.unreviewed.unreviewedAbsMinor, { currency: "USD" })}
+              {formatMinorMoney(dashboard.unreviewed.unreviewedAbsMinor, {
+                currency: "USD",
+              })}
             </span>
             ) are unreviewed and excluded from these figures.
           </span>
-          <Link className="font-medium text-foreground underline-offset-2 hover:underline" href="/inbox">
+          <Link
+            className="font-medium text-foreground underline-offset-2 hover:underline"
+            href="/inbox"
+          >
             Review in Inbox
           </Link>
         </section>
@@ -393,20 +584,32 @@ function SingleBusinessDashboard() {
       <section className={obCard}>
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <div className="text-sm font-medium text-muted-foreground">Cash position</div>
+            <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+              Cash position
+              <InfoTip text="Total cash across all connected bank accounts. The monthly change shows how much your balance grew or shrunk since the 1st. Credit card balance is subtracted since it's money you still owe." />
+            </div>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <Link className="hover:text-primary" href={`/transactions?${periodQuery}`}>
-                <Amount
+              <Link
+                className="hover:text-primary"
+                href={`/transactions?${periodQuery}`}
+              >
+                <AnimatedAmount
                   amountMinor={dashboard.cashPositionMinor}
                   className="text-[34px] font-semibold leading-none tracking-tight"
                 />
               </Link>
               <span className="text-sm text-muted-foreground">
-                <Amount amountMinor={thisMonthNet} signed tone={thisMonthNet >= 0 ? "income" : "neutral"} /> this month
+                <Amount
+                  amountMinor={thisMonthNet}
+                  signed
+                  tone={thisMonthNet >= 0 ? "income" : "neutral"}
+                />{" "}
+                this month
               </span>
             </div>
             <div className="mt-2 text-sm text-muted-foreground">
-              {dashboard.bankBalances.length} {dashboard.bankBalances.length === 1 ? "account" : "accounts"}
+              {dashboard.bankBalances.length}{" "}
+              {dashboard.bankBalances.length === 1 ? "account" : "accounts"}
               {dashboard.creditCardBalanceMinor !== 0 ? (
                 <>
                   {" · card balance "}
@@ -420,17 +623,29 @@ function SingleBusinessDashboard() {
                 data-testid="dashboard-cash-reconciliation"
               >
                 <span>
-                  Bank says <Amount amountMinor={dashboard.cashReconciliation.bankCashMinor} className="font-medium text-foreground" />
+                  Bank says{" "}
+                  <Amount
+                    amountMinor={dashboard.cashReconciliation.bankCashMinor}
+                    className="font-medium text-foreground"
+                  />
                 </span>
                 <span aria-hidden>·</span>
                 <span>
-                  Books say <Amount amountMinor={dashboard.cashReconciliation.booksCashMinor} className="font-medium text-foreground" />
+                  Books say{" "}
+                  <Amount
+                    amountMinor={dashboard.cashReconciliation.booksCashMinor}
+                    className="font-medium text-foreground"
+                  />
                 </span>
                 {dashboard.cashReconciliation.itemsToReviewCount > 0 ? (
                   <>
                     <span aria-hidden>·</span>
-                    <Link className="font-medium text-foreground hover:text-primary" href={`/inbox`}>
-                      {dashboard.cashReconciliation.itemsToReviewCount} to review
+                    <Link
+                      className="font-medium text-foreground hover:text-primary"
+                      href={`/inbox`}
+                    >
+                      {dashboard.cashReconciliation.itemsToReviewCount} to
+                      review
                     </Link>
                   </>
                 ) : null}
@@ -452,13 +667,25 @@ function SingleBusinessDashboard() {
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-foreground/85 text-[10px] font-semibold uppercase text-background">
                   {account.name.slice(0, 2)}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-xs font-medium">{account.name}</span>
-                <span className="money-figures shrink-0 text-[11px] text-muted-foreground">····{account.mask}</span>
-                <Amount amountMinor={account.amountMinor} className="shrink-0 text-xs font-semibold" />
+                <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                  {account.name}
+                </span>
+                <span className="money-figures shrink-0 text-[11px] text-muted-foreground">
+                  ····{account.mask}
+                </span>
+                <Amount
+                  amountMinor={account.amountMinor}
+                  className="shrink-0 text-xs font-semibold"
+                />
               </Link>
             ))}
             {hiddenBankBalanceCount > 0 ? (
-              <Button asChild size="sm" variant="outline" className="h-10 shrink-0 rounded-[10px] px-3">
+              <Button
+                asChild
+                size="sm"
+                variant="outline"
+                className="h-10 shrink-0 rounded-[10px] px-3"
+              >
                 <Link href={`/transactions?${periodQuery}`}>
                   Show all {dashboard.bankBalances.length}
                   <ArrowRight data-icon="inline-end" />
@@ -469,11 +696,14 @@ function SingleBusinessDashboard() {
         ) : null}
       </section>
 
-      {/* Row A — profit & loss · where money went · inbox */}
-      <section className="grid gap-4 lg:grid-cols-3">
+      {/* Row A (2×2) — profit & loss · inbox / where money came from · where money went */}
+      <section className="grid gap-4 lg:grid-cols-2">
         <div className={obCardCol}>
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">Profit &amp; loss</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-sm font-semibold">Profit &amp; loss</h2>
+              <InfoTip text="Income minus expenses for the selected period. Net profit is what's left after all costs. Margin is net profit as a percentage of income — 30% margin means you keep $0.30 of every $1 earned." />
+            </div>
             <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
               {pnl.marginPct}% margin
             </span>
@@ -481,39 +711,159 @@ function SingleBusinessDashboard() {
           <div className="flex flex-col gap-1.5 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Income</span>
-              <Link className="hover:text-primary" href={`/income?${periodQuery}`}>
-                <Amount amountMinor={pnl.incomeMinor} tone="income" className="font-semibold" />
+              <Link
+                className="hover:text-primary"
+                href={`/income?${periodQuery}`}
+              >
+                <AnimatedAmount
+                  amountMinor={pnl.incomeMinor}
+                  tone="income"
+                  className="font-semibold"
+                />
               </Link>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Expenses</span>
-              <Link className="hover:text-primary" href={`/expenses?${periodQuery}`}>
-                <Amount amountMinor={pnl.expenseMinor} className="font-semibold" />
+              <Link
+                className="hover:text-primary"
+                href={`/expenses?${periodQuery}`}
+              >
+                <AnimatedAmount
+                  amountMinor={pnl.expenseMinor}
+                  tone="expense"
+                  className="font-semibold"
+                />
               </Link>
             </div>
           </div>
           <div className="border-t pt-2.5">
             <div className="text-xs text-muted-foreground">Net profit</div>
             <div className="flex items-baseline gap-2">
-              <Link className="hover:text-primary" href={`/reports?report=profit-and-loss&${periodQuery}`}>
-                <Amount amountMinor={pnl.netIncomeMinor} className="text-2xl font-semibold tracking-tight" />
+              <Link
+                className="hover:text-primary"
+                href={`/reports?report=profit-and-loss&${periodQuery}`}
+              >
+                <AnimatedAmount
+                  amountMinor={pnl.netIncomeMinor}
+                  className="text-2xl font-semibold tracking-tight"
+                />
               </Link>
-              <Delta current={pnl.netIncomeMinor} previous={pnl.previousNetIncomeMinor} />
+              <Delta
+                current={pnl.netIncomeMinor}
+                previous={pnl.previousNetIncomeMinor}
+              />
             </div>
           </div>
           <div className="mt-auto pt-1">
-            <PnlTrendChart data={dashboard.profitAndLossTrend} currency={currency} />
+            <PnlTrendChart
+              data={dashboard.profitAndLossTrend}
+              currency={currency}
+            />
           </div>
         </div>
 
+        <div className={obCardCol}>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold">Inbox</h2>
+            <InfoTip text="Transactions that arrived from your bank or Stripe but haven't been categorized yet. Each item needs your review before it posts to your books. Rules can automate future similar transactions." />
+          </div>
+          {dashboard.inbox.openCount > 0 ? (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="money-figures text-3xl font-semibold tracking-tight">
+                  {dashboard.inbox.openCount}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  items need you
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {dashboard.inbox.byKind.map((item) => (
+                  <span
+                    key={item.kind}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground"
+                  >
+                    {inboxKindLabel(item.kind)}
+                    <span className="money-figures font-semibold text-foreground">
+                      {item.count}
+                    </span>
+                  </span>
+                ))}
+              </div>
+              <Button asChild className="mt-auto">
+                <Link href="/inbox">Open inbox</Link>
+              </Button>
+            </>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 py-4 text-center">
+              <span className="flex size-9 items-center justify-center rounded-full bg-ob-green-50">
+                <Check className="size-4 text-ob-green-700" />
+              </span>
+              <div className="text-sm font-medium">Books up to date</div>
+              <div className="text-xs text-muted-foreground">
+                {dashboard.inbox.automationRate}% automated this month
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Row A2 — money in · money out · revenue by stream (three pies) */}
+      <section className="grid gap-4 lg:grid-cols-3">
+        <Link
+          href={`/income?${periodQuery}`}
+          className={cn(
+            obCardCol,
+            "transition-shadow hover:ring-foreground/20",
+          )}
+        >
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold">Where money came from</h2>
+            <InfoTip text="Income broken down by category — consulting, subscriptions, product sales, etc. Each slice shows what percentage of total revenue came from that source." />
+          </div>
+          {dashboard.incomeByCategory.length > 0 ? (
+            <>
+              <IncomeDonut
+                data={dashboard.incomeByCategory}
+                currency={currency}
+              />
+              <div className="mt-auto grid grid-cols-2 gap-2 border-t pt-3 text-xs">
+                <div className="min-w-0">
+                  <div className="text-muted-foreground">Top source</div>
+                  <div className="truncate font-medium">
+                    {topIncome?.name ?? "Income"} · {topIncomeSharePct}%
+                  </div>
+                </div>
+                <div className="min-w-0 text-right">
+                  <div className="text-muted-foreground">Net margin</div>
+                  <div className="font-medium">{pnl.marginPct}%</div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No income booked this period.
+            </p>
+          )}
+        </Link>
+
         <Link
           href={`/reports?report=expenses&${periodQuery}`}
-          className={cn(obCardCol, "transition-shadow hover:ring-foreground/20")}
+          className={cn(
+            obCardCol,
+            "transition-shadow hover:ring-foreground/20",
+          )}
         >
-          <h2 className="text-sm font-semibold">Where money went</h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold">Where money went</h2>
+            <InfoTip text="Expenses broken down by category. Spend rate is total expenses as a percentage of income — a lower rate means more profit per dollar earned." />
+          </div>
           {dashboard.expensesByCategory.length > 0 ? (
             <>
-              <ExpenseDonut data={dashboard.expensesByCategory} currency={currency} />
+              <ExpenseDonut
+                data={dashboard.expensesByCategory}
+                currency={currency}
+              />
               <div className="mt-auto grid grid-cols-2 gap-2 border-t pt-3 text-xs">
                 <div className="min-w-0">
                   <div className="text-muted-foreground">Largest cost</div>
@@ -528,53 +878,40 @@ function SingleBusinessDashboard() {
               </div>
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">No expenses booked this period.</p>
+            <p className="text-sm text-muted-foreground">
+              No expenses booked this period.
+            </p>
           )}
         </Link>
 
-        <div className={obCardCol}>
-          <h2 className="text-sm font-semibold">Inbox</h2>
-          {dashboard.inbox.openCount > 0 ? (
-            <>
-              <div className="flex items-baseline gap-2">
-                <span className="money-figures text-3xl font-semibold tracking-tight">{dashboard.inbox.openCount}</span>
-                <span className="text-sm text-muted-foreground">items need you</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {dashboard.inbox.byKind.map((item) => (
-                  <span
-                    key={item.kind}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground"
-                  >
-                    {inboxKindLabel(item.kind)}
-                    <span className="money-figures font-semibold text-foreground">{item.count}</span>
-                  </span>
-                ))}
-              </div>
-              <Button asChild className="mt-auto">
-                <Link href="/inbox">Open inbox</Link>
-              </Button>
-            </>
-          ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 py-4 text-center">
-              <span className="flex size-9 items-center justify-center rounded-full bg-ob-green-50">
-                <Check className="size-4 text-ob-green-700" />
-              </span>
-              <div className="text-sm font-medium">Books up to date</div>
-              <div className="text-xs text-muted-foreground">{dashboard.inbox.automationRate}% automated this month</div>
-            </div>
-          )}
-        </div>
+        {scope !== "all" && activeEntity.id ? (
+          <StreamRevenueDonutCard
+            entityId={activeEntity.id as Id<"entities">}
+            currency={currency}
+          />
+        ) : null}
       </section>
 
       {/* Row B — owed to you · you owe · payroll */}
       <section className="grid gap-4 lg:grid-cols-3">
-        <Link href={`/income?${periodQuery}`} className={cn(obCardCol, "transition-shadow hover:ring-foreground/20")}>
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold">Owed to you</h2>
+        <Link
+          href={`/income?${periodQuery}`}
+          className={cn(
+            obCardCol,
+            "transition-shadow hover:ring-foreground/20",
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-sm font-semibold">Owed to you</h2>
+              <InfoTip text="Accounts Receivable: total on invoices you've sent that haven't been paid yet. The aging bar shows how long they've been outstanding — older balances are harder to collect." />
+            </div>
             <span className="text-xs text-muted-foreground">A/R</span>
           </div>
-          <Amount amountMinor={dashboard.receivables.openMinor} className="text-2xl font-semibold tracking-tight" />
+          <Amount
+            amountMinor={dashboard.receivables.openMinor}
+            className="text-2xl font-semibold tracking-tight"
+          />
           <AgingBar buckets={dashboard.receivables.aging} />
           <div className="text-xs text-muted-foreground">
             {dashboard.receivables.averageDaysToPay > 0
@@ -584,26 +921,48 @@ function SingleBusinessDashboard() {
           {dashboard.receivables.overdue.length > 0 ? (
             <div className="mt-auto flex flex-col gap-1.5 pt-1">
               {dashboard.receivables.overdue.map((item, index) => (
-                <div key={`${item.contactId}-${item.daysLate}-${item.amountMinor}-${index}`} className="flex items-center gap-2 text-xs">
+                <div
+                  key={`${item.contactId}-${item.daysLate}-${item.amountMinor}-${index}`}
+                  className="flex items-center gap-2 text-xs"
+                >
                   <span className="min-w-0 flex-1 truncate">{item.name}</span>
                   <span className="text-negative">{item.daysLate}d late</span>
-                  <Amount amountMinor={item.amountMinor} className="font-medium" />
+                  <Amount
+                    amountMinor={item.amountMinor}
+                    className="font-medium"
+                  />
                 </div>
               ))}
             </div>
           ) : null}
         </Link>
 
-        <Link href="/expenses/bills" className={cn(obCardCol, "transition-shadow hover:ring-foreground/20")}>
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold">You owe</h2>
+        <Link
+          href="/expenses/bills"
+          className={cn(
+            obCardCol,
+            "transition-shadow hover:ring-foreground/20",
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-sm font-semibold">You owe</h2>
+              <InfoTip text="Accounts Payable: total on bills you've received but haven't paid yet. Staying current protects vendor relationships and avoids late fees." />
+            </div>
             <span className="text-xs text-muted-foreground">A/P</span>
           </div>
-          <Amount amountMinor={dashboard.payables.openMinor} className="text-2xl font-semibold tracking-tight" />
+          <Amount
+            amountMinor={dashboard.payables.openMinor}
+            className="text-2xl font-semibold tracking-tight"
+          />
           <div className="text-xs text-muted-foreground">
             {dashboard.payables.dueThisWeekMinor > 0 ? (
               <>
-                <Amount amountMinor={dashboard.payables.dueThisWeekMinor} className="font-medium text-foreground" /> due this week
+                <Amount
+                  amountMinor={dashboard.payables.dueThisWeekMinor}
+                  className="font-medium text-foreground"
+                />{" "}
+                due this week
               </>
             ) : (
               `${dashboard.payables.dueSoonCount} due soon`
@@ -612,40 +971,72 @@ function SingleBusinessDashboard() {
           {dashboard.payables.upcoming.length > 0 ? (
             <div className="mt-auto flex flex-col gap-1.5 pt-1">
               {dashboard.payables.upcoming.map((bill) => (
-                <div key={`${bill.contactId}-${bill.dueDate}`} className="flex items-center gap-2 text-xs">
+                <div
+                  key={`${bill.contactId}-${bill.dueDate}`}
+                  className="flex items-center gap-2 text-xs"
+                >
                   <span className="min-w-0 flex-1 truncate">{bill.vendor}</span>
-                  <span className="text-muted-foreground">{formatDay(bill.dueDate)}</span>
-                  <Amount amountMinor={bill.amountMinor} className="font-medium" />
+                  <span className="text-muted-foreground">
+                    {formatDay(bill.dueDate)}
+                  </span>
+                  <Amount
+                    amountMinor={bill.amountMinor}
+                    className="font-medium"
+                  />
                 </div>
               ))}
             </div>
           ) : null}
         </Link>
 
-        <Link href="/payroll" className={cn(obCardCol, "transition-shadow hover:ring-foreground/20")}>
-          <h2 className="text-sm font-semibold">Payroll</h2>
+        <Link
+          href="/payroll"
+          className={cn(
+            obCardCol,
+            "transition-shadow hover:ring-foreground/20",
+          )}
+        >
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold">Payroll</h2>
+            <InfoTip text="Total payroll cost for the last run, converted to your base currency at the FX rate on pay date. Includes base salaries plus any bonuses or deductions." />
+          </div>
           {dashboard.payroll ? (
             <>
               <div>
-                <div className="text-xs text-muted-foreground">Last run · {longMonth(dashboard.payroll.period)}</div>
-                <Amount amountMinor={dashboard.payroll.totalBaseMinor} className="text-2xl font-semibold tracking-tight" />
+                <div className="text-xs text-muted-foreground">
+                  Last run · {longMonth(dashboard.payroll.period)}
+                </div>
+                <Amount
+                  amountMinor={dashboard.payroll.totalBaseMinor}
+                  className="text-2xl font-semibold tracking-tight"
+                />
               </div>
-              {dashboard.payrollMeta && dashboard.payrollMeta.currencies.length > 0 ? (
+              {dashboard.payrollMeta &&
+              dashboard.payrollMeta.currencies.length > 0 ? (
                 <div className="money-figures text-xs text-muted-foreground">
                   {dashboard.payrollMeta.currencies
                     .slice(0, 3)
-                    .map((entry) => formatMinorMoney(entry.localMinor, { currency: entry.currency, compact: true }))
+                    .map((entry) =>
+                      formatMinorMoney(entry.localMinor, {
+                        currency: entry.currency,
+                        compact: true,
+                      }),
+                    )
                     .join(" · ")}
                 </div>
               ) : null}
               <div className="mt-auto flex flex-col gap-2 pt-1">
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                   <span>Last 3 months</span>
-                  {dashboard.payrollMeta && dashboard.payrollMeta.headcount > 0 ? (
+                  {dashboard.payrollMeta &&
+                  dashboard.payrollMeta.headcount > 0 ? (
                     <span>{dashboard.payrollMeta.headcount} people</span>
                   ) : null}
                 </div>
-                <PayrollTrendChart data={dashboard.payrollTrend} currency={currency} />
+                <PayrollTrendChart
+                  data={dashboard.payrollTrend}
+                  currency={currency}
+                />
                 {dashboard.payrollMeta ? (
                   <div className="flex items-center gap-1.5 border-t pt-2 text-xs text-muted-foreground">
                     <CalendarDays className="size-3.5" />
@@ -663,30 +1054,52 @@ function SingleBusinessDashboard() {
       {/* Row C — income by customer · cash flow */}
       <section className="grid gap-4 lg:grid-cols-2">
         <div className={obCardCol}>
-          <h2 className="text-sm font-semibold">Income by customer</h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold">Income by customer</h2>
+            <InfoTip text="Revenue broken down by who paid you. Concentration risk appears when one customer drives more than 50% of revenue — losing them would have an outsized impact on the business." />
+          </div>
           {dashboard.incomeByCustomer.length > 0 ? (
-            <CustomerBars data={dashboard.incomeByCustomer} currency={currency} />
+            <CustomerBars
+              data={dashboard.incomeByCustomer}
+              currency={currency}
+            />
           ) : (
-            <p className="text-sm text-muted-foreground">No customer income this period.</p>
+            <p className="text-sm text-muted-foreground">
+              No customer income this period.
+            </p>
           )}
           {dashboard.incomeByCustomer.length > 0 ? (
             <div
               className={cn(
                 "mt-auto grid gap-2 rounded-[10px] px-3 py-2 text-xs sm:grid-cols-[1fr_auto]",
-                topCustomerSharePct > 50 ? "bg-warning-surface text-warning" : "bg-muted/60 text-muted-foreground",
+                topCustomerSharePct > 50
+                  ? "bg-warning-surface text-warning"
+                  : "bg-muted/60 text-muted-foreground",
               )}
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  {topCustomerSharePct > 50 ? <CircleAlert className="size-3.5 shrink-0" /> : null}
-                  <span>{topCustomerSharePct > 50 ? "Concentration risk" : "Top customer"}</span>
+                  {topCustomerSharePct > 50 ? (
+                    <CircleAlert className="size-3.5 shrink-0" />
+                  ) : null}
+                  <span>
+                    {topCustomerSharePct > 50
+                      ? "Concentration risk"
+                      : "Top customer"}
+                  </span>
                 </div>
-                <div className="truncate font-medium text-foreground">{topCustomerName}</div>
+                <div className="truncate font-medium text-foreground">
+                  {topCustomerName}
+                </div>
               </div>
               <div className="sm:text-right">
                 <div>{topCustomerSharePct}% of revenue</div>
                 <div className="font-medium text-foreground">
-                  {formatMinorMoney(dashboard.incomeConcentration.totalMinor, { currency, compact: true })} total
+                  {formatMinorMoney(dashboard.incomeConcentration.totalMinor, {
+                    currency,
+                    compact: true,
+                  })}{" "}
+                  total
                 </div>
               </div>
             </div>
@@ -695,14 +1108,20 @@ function SingleBusinessDashboard() {
 
         <div className={obCardCol}>
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">Cash flow</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-sm font-semibold">Cash flow</h2>
+              <InfoTip text="Money actually received (In) vs. actually spent (Out) each month. Cash basis — reflects when money moved, not when it was earned or billed." />
+            </div>
             <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <span className="size-2 rounded-[3px] bg-primary" />
                 In
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-[3px]" style={{ background: "#cbd2d9" }} />
+                <span
+                  className="size-2 rounded-[3px]"
+                  style={{ background: "#cbd2d9" }}
+                />
                 Out
               </span>
             </div>
@@ -711,74 +1130,85 @@ function SingleBusinessDashboard() {
           <div className="mt-auto flex flex-wrap items-center gap-x-1 border-t pt-2.5 text-xs text-muted-foreground">
             <TrendingUp className="size-3.5 text-ob-green-600" />
             {allMonthsPositive ? "Net positive every month · " : ""}avg
-            <Amount amountMinor={avgNetMinor} className="font-semibold text-ob-green-700" />
+            <Amount
+              amountMinor={avgNetMinor}
+              className="font-semibold text-ob-green-700"
+            />
             /mo
           </div>
         </div>
       </section>
 
-      {/* Revenue by stream (E9-T8) — owner-approved stream taxonomy over income
-          accounts; the row total reconciles to Reports P&L revenue. */}
-      {dashboard.revenueByStream.length > 0 ? (
-        <section className={obCardCol}>
-          <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold">Revenue by stream</h2>
-            <Link className="text-xs text-muted-foreground hover:text-primary" href={`/income?${periodQuery}`}>
-              Income
-              <ArrowUpRight className="ml-0.5 inline size-3" />
-            </Link>
-          </div>
-          <RevenueStreamBars data={dashboard.revenueByStream} currency={currency} />
-          <div className="mt-auto flex items-center justify-between border-t pt-2.5 text-xs text-muted-foreground">
-            Total this period
-            <Amount amountMinor={dashboard.profitAndLoss.incomeMinor} tone="income" className="font-semibold" />
-          </div>
-        </section>
-      ) : null}
-
       {/* Row D — cash cushion · coming up */}
       <section className="grid gap-4 lg:grid-cols-2">
         <div className={obCardCol}>
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-center gap-1.5">
             <h2 className="text-sm font-semibold">Cash cushion</h2>
-            <span className="text-xs text-muted-foreground">if income stopped today</span>
+            <InfoTip text="How many months you could cover average expenses using only your current cash, with zero new income. 3+ months is a healthy safety net for most businesses." />
+            <span className="text-xs text-muted-foreground">
+              if income stopped today
+            </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="money-figures text-2xl font-semibold tracking-tight">{dashboard.cashCushion.months}</span>
-            <span className="text-sm text-muted-foreground">months of expenses in the bank</span>
+            <span className="money-figures text-2xl font-semibold tracking-tight">
+              {dashboard.cashCushion.months}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              months of expenses in the bank
+            </span>
           </div>
           <RunwaySegments months={dashboard.cashCushion.months} />
           <div className="text-xs text-muted-foreground">
             An average month costs{" "}
-            <Amount amountMinor={dashboard.cashCushion.avgMonthlyExpenseMinor} className="text-foreground" /> all-in.
+            <Amount
+              amountMinor={dashboard.cashCushion.avgMonthlyExpenseMinor}
+              className="text-foreground"
+            />{" "}
+            all-in.
           </div>
         </div>
 
         <div className={obCardCol}>
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-center gap-1.5">
             <h2 className="text-sm font-semibold">Coming up</h2>
+            <InfoTip text="Invoices due, bills to pay, and payroll scheduled in the next 30 days. Expected net impact is the sum — positive means more cash is expected in than out." />
             <span className="text-xs text-muted-foreground">next 30 days</span>
           </div>
           {dashboard.comingUp.items.length > 0 ? (
             <div className="flex flex-col gap-2">
               {dashboard.comingUp.items.map((item, index) => (
-                <div key={`${item.label}-${index}`} className="flex items-center gap-2 text-xs">
+                <div
+                  key={`${item.label}-${index}`}
+                  className="flex items-center gap-2 text-xs"
+                >
                   <span
                     className="size-1.5 shrink-0 rounded-full"
-                    style={{ background: item.amountMinor > 0 ? "var(--ob-green-500)" : "#cbd2d9" }}
+                    style={{
+                      background:
+                        item.amountMinor > 0
+                          ? "var(--ob-green-500)"
+                          : "#cbd2d9",
+                    }}
                   />
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  <span className="text-muted-foreground">{formatDay(item.when)}</span>
+                  <span className="text-muted-foreground">
+                    {formatDay(item.when)}
+                  </span>
                   <Amount
                     amountMinor={item.amountMinor}
                     signed
-                    className={cn("font-medium", item.amountMinor > 0 && "text-ob-green-600")}
+                    className={cn(
+                      "font-medium",
+                      item.amountMinor > 0 && "text-ob-green-600",
+                    )}
                   />
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Nothing scheduled in the next 30 days.</p>
+            <p className="text-sm text-muted-foreground">
+              Nothing scheduled in the next 30 days.
+            </p>
           )}
           <div className="mt-auto flex items-center justify-between border-t pt-2.5 text-xs text-muted-foreground">
             Expected net impact
@@ -795,7 +1225,10 @@ function SingleBusinessDashboard() {
       {/* Activity stream */}
       <section className={obCard}>
         <div className="mb-2 flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold">Activity</h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold">Activity</h2>
+            <InfoTip text="Recent journal entries posted to your books, showing whether they came from a bank sync, AI categorization, a rule, or an invoice." />
+          </div>
           <Button asChild size="sm" variant="ghost">
             <Link href={`/reports?report=cash-flow&${periodQuery}`}>
               Reports
@@ -807,19 +1240,29 @@ function SingleBusinessDashboard() {
           <div className="flex flex-col">
             {dashboard.recentActivity.map((entry) => {
               const Icon = activityIconFor(entry.source);
-              const positive = entry.source === "ai" || entry.source === "invoice";
+              const positive =
+                entry.source === "ai" || entry.source === "invoice";
               return (
-                <div key={entry.id} className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/50">
+                <div
+                  key={entry.id}
+                  className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/50"
+                >
                   <span
                     className={cn(
                       "flex size-7 shrink-0 items-center justify-center rounded-lg",
-                      positive ? "bg-ob-green-50 text-ob-green-700" : "bg-muted text-muted-foreground",
+                      positive
+                        ? "bg-ob-green-50 text-ob-green-700"
+                        : "bg-muted text-muted-foreground",
                     )}
                   >
                     <Icon className="size-3.5" />
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm">{entry.memo}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{formatDay(entry.date)}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {entry.memo}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {formatDay(entry.date)}
+                  </span>
                 </div>
               );
             })}
@@ -847,7 +1290,11 @@ function useInboxData() {
 // connection) never reach the screen (report 6.2).
 type InboxKind = InboxItem["kind"];
 
-const INBOX_GROUPS: Array<{ kind: InboxKind; label: string; icon: LucideIcon }> = [
+const INBOX_GROUPS: Array<{
+  kind: InboxKind;
+  label: string;
+  icon: LucideIcon;
+}> = [
   { kind: "categorize", label: "Needs a category", icon: Tags },
   { kind: "receipt", label: "Receipts to match", icon: ReceiptText },
   { kind: "transfer", label: "Possible transfers", icon: ArrowLeftRight },
@@ -857,7 +1304,10 @@ const INBOX_GROUPS: Array<{ kind: InboxKind; label: string; icon: LucideIcon }> 
 ];
 
 function inboxKindLabel(kind: string) {
-  return INBOX_GROUPS.find((group) => group.kind === kind)?.label ?? categoryLabel(kind);
+  return (
+    INBOX_GROUPS.find((group) => group.kind === kind)?.label ??
+    categoryLabel(kind)
+  );
 }
 
 // The pipeline tags a needs-review transaction "question" when the AI attaches a
@@ -877,12 +1327,30 @@ export function InboxScreen() {
   // the owner sees the backlog clearing in the background.
   const batchRuns = useQuery(
     api.ai.latestCategorizationBatchRuns,
-    activeEntity.id ? { entityId: activeEntity.id as Id<"entities">, limit: 1 } : "skip",
+    activeEntity.id
+      ? { entityId: activeEntity.id as Id<"entities">, limit: 1 }
+      : "skip",
   );
   const confirmTransaction = useMutation(api.pipeline.confirmTransaction);
   const excludeTransaction = useMutation(api.pipeline.excludeTransaction);
-  const createRuleFromTransaction = useMutation(api.pipeline.createRuleFromTransaction);
+  const createRuleFromTransaction = useMutation(
+    api.pipeline.createRuleFromTransaction,
+  );
   const confirmReceiptMatch = useMutation(api.receipts.manualMatch);
+  const setTransactionContact = useMutation(api.pipeline.setTransactionContact);
+  const categorizePendingTransactions = useAction(
+    api.bedrockCategorizer.categorizePendingTransactions,
+  );
+  const startCategorizationBacklog = useMutation(
+    api.bedrockCategorizer.startCategorizationBacklog,
+  );
+  const contactOptions =
+    useQuery(
+      api.contacts.listForEntity,
+      activeEntity.id
+        ? { entityId: activeEntity.id as Id<"entities"> }
+        : "skip",
+    ) ?? [];
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>("");
@@ -890,13 +1358,18 @@ export function InboxScreen() {
   const [checkedItemIds, setCheckedItemIds] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
+  const [aiFilter, setAiFilter] = useState<"all" | "reviewed" | "needs-ai">(
+    "all",
+  );
   const isMobile = useIsMobile();
 
   const items = useMemo(() => inbox?.items ?? [], [inbox]);
   // Visual (grouped) order so J/K walk the list exactly as it reads on screen.
   const orderedItems = useMemo(
     () =>
-      INBOX_GROUPS.flatMap((group) => items.filter((item) => resolvedKind(item) === group.kind)),
+      INBOX_GROUPS.flatMap((group) =>
+        items.filter((item) => resolvedKind(item) === group.kind),
+      ),
     [items],
   );
   // Detail is CLOSED until the user picks a row — no auto-open fallback.
@@ -904,11 +1377,20 @@ export function InboxScreen() {
     () => items.find((item) => item.id === selectedId) ?? null,
     [items, selectedId],
   );
-  const chosenCategoryId = categoryId || selected?.categoryAccountId || inbox?.categoryOptions[0]?.id || "";
-  const selectedIndex = orderedItems.findIndex((item) => item.id === selected?.id);
+  const chosenCategoryId =
+    categoryId ||
+    selected?.categoryAccountId ||
+    inbox?.categoryOptions[0]?.id ||
+    "";
+  const selectedIndex = orderedItems.findIndex(
+    (item) => item.id === selected?.id,
+  );
   const selectedReceipt = selected?.receiptDocument ?? null;
   const selectedBatchItems = items.filter(
-    (item) => checkedItemIds.has(item.id) && item.transactionId && item.kind !== "receipt",
+    (item) =>
+      checkedItemIds.has(item.id) &&
+      item.transactionId &&
+      item.kind !== "receipt",
   );
 
   const clearChecked = useCallback((id: string) => {
@@ -927,7 +1409,13 @@ export function InboxScreen() {
   }
 
   const confirmSelected = useCallback(async () => {
-    if (!selected || selected.kind === "receipt" || !selected.transactionId || !chosenCategoryId) return;
+    if (
+      !selected ||
+      selected.kind === "receipt" ||
+      !selected.transactionId ||
+      !chosenCategoryId
+    )
+      return;
     setPending(true);
     setMessage("");
     try {
@@ -951,14 +1439,22 @@ export function InboxScreen() {
     } finally {
       setPending(false);
     }
-  }, [selected, chosenCategoryId, createRule, confirmTransaction, createRuleFromTransaction, clearChecked]);
+  }, [
+    selected,
+    chosenCategoryId,
+    createRule,
+    confirmTransaction,
+    createRuleFromTransaction,
+    clearChecked,
+  ]);
 
   // E2-T11: accept a Top-N suggestion — selects that category AND confirms it
   // through the existing pipeline mutation (no new ledger path), so a single
   // click posts the item.
   const acceptSuggestion = useCallback(
     async (accountId: string) => {
-      if (!selected || selected.kind === "receipt" || !selected.transactionId) return;
+      if (!selected || selected.kind === "receipt" || !selected.transactionId)
+        return;
       setCategoryId(accountId);
       setPending(true);
       setMessage("");
@@ -977,8 +1473,34 @@ export function InboxScreen() {
     [selected, confirmTransaction, clearChecked],
   );
 
+  // Manually link/clear the customer or vendor on the selected transaction —
+  // the fallback when AI didn't attach one. Saves immediately; for an unposted
+  // item it rides into the ledger when the owner confirms.
+  const changeSelectedContact = useCallback(
+    async (contactId: string | null) => {
+      if (!selected?.transactionId) return;
+      setPending(true);
+      setMessage("");
+      try {
+        await setTransactionContact({
+          transactionId: selected.transactionId as Id<"transactions">,
+          contactId: contactId ? (contactId as Id<"contacts">) : null,
+        });
+        setMessage(
+          contactId
+            ? "Contact linked to this transaction."
+            : "Contact cleared.",
+        );
+      } finally {
+        setPending(false);
+      }
+    },
+    [selected, setTransactionContact],
+  );
+
   const excludeSelected = useCallback(async () => {
-    if (!selected || selected.kind === "receipt" || !selected.transactionId) return;
+    if (!selected || selected.kind === "receipt" || !selected.transactionId)
+      return;
     setPending(true);
     setMessage("");
     try {
@@ -1003,7 +1525,9 @@ export function InboxScreen() {
         transactionId: selected.transactionId as Id<"transactions">,
       });
       clearChecked(selected.id);
-      setMessage("Receipt match confirmed. The transaction now carries the receipt.");
+      setMessage(
+        "Receipt match confirmed. The transaction now carries the receipt.",
+      );
     } finally {
       setPending(false);
     }
@@ -1015,7 +1539,8 @@ export function InboxScreen() {
     setMessage("");
     try {
       for (const item of selectedBatchItems) {
-        const categoryForItem = item.categoryAccountId || inbox?.categoryOptions[0]?.id;
+        const categoryForItem =
+          item.categoryAccountId || inbox?.categoryOptions[0]?.id;
         if (!item.transactionId || !categoryForItem) continue;
         await confirmTransaction({
           transactionId: item.transactionId as Id<"transactions">,
@@ -1031,7 +1556,13 @@ export function InboxScreen() {
   }, [selectedBatchItems, inbox, confirmTransaction]);
 
   async function saveRuleFromSelected() {
-    if (!selected || selected.kind === "receipt" || !selected.transactionId || !chosenCategoryId) return;
+    if (
+      !selected ||
+      selected.kind === "receipt" ||
+      !selected.transactionId ||
+      !chosenCategoryId
+    )
+      return;
     setPending(true);
     setMessage("");
     try {
@@ -1054,16 +1585,25 @@ export function InboxScreen() {
         void confirmBatch();
         return;
       }
-      if (target?.closest("input, textarea, select, button, [role='combobox'], [role='dialog']")) return;
+      if (
+        target?.closest(
+          "input, textarea, select, button, [role='combobox'], [role='dialog']",
+        )
+      )
+        return;
       if (!orderedItems.length || pending) return;
-      const key = event.key.toLowerCase();
+      const key = event.key?.toLowerCase();
       if (key === "j") {
         event.preventDefault();
-        const next = orderedItems[Math.min(orderedItems.length - 1, Math.max(0, selectedIndex) + 1)];
+        const next =
+          orderedItems[
+            Math.min(orderedItems.length - 1, Math.max(0, selectedIndex) + 1)
+          ];
         if (next) selectItem(next);
       } else if (key === "k") {
         event.preventDefault();
-        const previous = orderedItems[Math.max(0, Math.max(0, selectedIndex) - 1)];
+        const previous =
+          orderedItems[Math.max(0, Math.max(0, selectedIndex) - 1)];
         if (previous) selectItem(previous);
       } else if (key === "e") {
         event.preventDefault();
@@ -1080,13 +1620,105 @@ export function InboxScreen() {
 
   if (inbox === null) return <LoadingBlock label="Inbox" />;
   if (items.length === 0) {
-    return <EmptyState title="Inbox zero" description="There are no open review cards for the active entity." />;
+    return (
+      <EmptyState
+        title="Inbox zero"
+        description="There are no open review cards for the active entity."
+      />
+    );
   }
+
+  // Filter by AI-review state: "reviewed" = the AI already proposed a category
+  // (decidedBy "ai") and it's waiting on you; "needs-ai" = the AI hasn't checked
+  // it yet (imported with no key, out of credits, or it abstained). Receipts /
+  // transfers carry no AI decision, so they only appear under "All".
+  const filteredItems =
+    aiFilter === "all"
+      ? items
+      : items.filter((item) => {
+          const reviewedByAi = item.decidedBy === "ai";
+          return aiFilter === "reviewed"
+            ? reviewedByAi
+            : Boolean(item.transactionId) && !reviewedByAi;
+        });
+
+  // Per-bucket counts for the filter tabs.
+  const aiReviewedCount = items.filter(
+    (item) => item.decidedBy === "ai",
+  ).length;
+  const needsAiCount = items.filter(
+    (item) => Boolean(item.transactionId) && item.decidedBy !== "ai",
+  ).length;
 
   const grouped = INBOX_GROUPS.map((group) => ({
     ...group,
-    rows: items.filter((item) => resolvedKind(item) === group.kind),
+    rows: filteredItems.filter((item) => resolvedKind(item) === group.kind),
   })).filter((group) => group.rows.length > 0);
+
+  // Catch-up categorization from the Inbox: run AI over transactions still
+  // waiting in review (imported with no AI key, or while out of credits). The
+  // first pass runs inline; the drainer clears the rest in the background.
+  async function runAiOnInbox() {
+    if (!activeEntity.id) return;
+    setPending(true);
+    setMessage("");
+    try {
+      const result = await categorizePendingTransactions({
+        entityId: activeEntity.id as Id<"entities">,
+      });
+      if (result.needsReviewCount > 0 || result.skippedCount > 0) {
+        await startCategorizationBacklog({
+          entityId: activeEntity.id as Id<"entities">,
+        });
+      }
+      setMessage(
+        `AI checked ${result.attemptedCount}: ${result.postedCount} posted, ${result.needsReviewCount} still need review, ${result.skippedCount} skipped. Remaining items are draining in the background.`,
+      );
+    } catch (error) {
+      setMessage(getErrorMessage(error, "Could not run AI categorization."));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  // Run AI on ONLY the rows the owner checked — targeted re-categorization with a
+  // loading toast that resolves into a result toast. The rest of the Inbox is
+  // untouched. Clears the selection on success.
+  async function runAiOnSelected() {
+    if (!activeEntity.id) return;
+    const transactionIds = items
+      .filter((item) => checkedItemIds.has(item.id) && item.transactionId)
+      .map((item) => item.transactionId as Id<"transactions">);
+    if (transactionIds.length === 0) {
+      toast.info("Select one or more transactions to re-check with AI.");
+      return;
+    }
+    setPending(true);
+    const toastId = toast.loading(
+      `Running AI on ${transactionIds.length} selected transaction${transactionIds.length === 1 ? "" : "s"}…`,
+    );
+    try {
+      const result = await categorizePendingTransactions({
+        entityId: activeEntity.id as Id<"entities">,
+        transactionIds,
+      });
+      toast.success(
+        `AI checked ${result.attemptedCount}: ${result.postedCount} posted, ${result.needsReviewCount} still need review, ${result.skippedCount} skipped.`,
+        { id: toastId },
+      );
+      setCheckedItemIds(new Set());
+    } catch (error) {
+      toast.error(
+        getErrorMessage(
+          error,
+          "Could not run AI on the selected transactions.",
+        ),
+        { id: toastId },
+      );
+    } finally {
+      setPending(false);
+    }
+  }
 
   const detailProps: InboxDetailProps | null = selected
     ? {
@@ -1094,6 +1726,9 @@ export function InboxScreen() {
         categoryOptions: inbox.categoryOptions,
         chosenCategoryId,
         onCategoryChange: setCategoryId,
+        contactOptions,
+        selectedContactId: selected.contactId ?? null,
+        onContactChange: changeSelectedContact,
         createRule,
         onCreateRuleChange: setCreateRule,
         onConfirm: confirmSelected,
@@ -1109,10 +1744,79 @@ export function InboxScreen() {
     <div
       className={cn(
         "flex h-full min-h-0 flex-col bg-background",
-        isMobile ? "rounded-[14px] shadow-xs ring-1 ring-foreground/10" : "border-r",
+        isMobile
+          ? "rounded-[14px] shadow-xs ring-1 ring-foreground/10"
+          : "border-r",
       )}
       data-testid="inbox-list"
     >
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+        <div
+          className="inline-flex items-center rounded-[8px] bg-muted p-0.5 text-xs"
+          role="tablist"
+          aria-label="Filter by AI review"
+        >
+          {(
+            [
+              { id: "all", label: "All", count: items.length },
+              { id: "needs-ai", label: "Needs AI", count: needsAiCount },
+              { id: "reviewed", label: "AI-reviewed", count: aiReviewedCount },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="tab"
+              aria-selected={aiFilter === option.id}
+              onClick={() => setAiFilter(option.id)}
+              data-testid={`inbox-ai-filter-${option.id}`}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-[6px] px-2 py-1 font-medium transition-colors",
+                aiFilter === option.id
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {option.label}
+              <span className="money-figures text-[11px] text-muted-foreground">
+                {option.count}
+              </span>
+            </button>
+          ))}
+        </div>
+        {checkedItemIds.size > 0 ? (
+          <Button
+            size="sm"
+            onClick={() => void runAiOnSelected()}
+            disabled={pending}
+            data-testid="inbox-run-ai-selected"
+            title="Run AI on the selected transactions"
+          >
+            {pending ? (
+              <Loader2 className="animate-spin" data-icon="inline-start" />
+            ) : (
+              <Sparkles data-icon="inline-start" />
+            )}
+            Run AI on {checkedItemIds.size}
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void runAiOnInbox()}
+            disabled={pending}
+            data-testid="inbox-run-ai"
+            title="Categorize all transactions still waiting in review with your configured AI"
+          >
+            {pending ? (
+              <Loader2 className="animate-spin" data-icon="inline-start" />
+            ) : (
+              <Sparkles data-icon="inline-start" />
+            )}
+            Run AI
+          </Button>
+        )}
+      </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col">
           {grouped.map((group) => {
@@ -1152,11 +1856,14 @@ export function InboxScreen() {
       {/* Action result lives at the queue level so it survives an item being
           resolved (and the detail panel closing) after a confirm. */}
       {message ? (
-        <div className="border-t bg-primary/5 px-3 py-2 text-sm text-primary" data-testid="inbox-message">
+        <div
+          className="border-t bg-primary/5 px-3 py-2 text-sm text-primary"
+          data-testid="inbox-message"
+        >
           {message}
         </div>
       ) : null}
-      <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-t bg-background px-3 py-2 text-xs text-muted-foreground">
+      <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t bg-background px-3 py-2 text-xs text-muted-foreground">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <InboxKeyHint keys={["J", "K"]} label="move" />
           <InboxKeyHint keys={["Enter"]} label="confirm" />
@@ -1165,6 +1872,7 @@ export function InboxScreen() {
         {selectedBatchItems.length > 0 ? (
           <Button
             size="xs"
+            className="ml-auto"
             data-testid="inbox-confirm-selected"
             disabled={pending}
             onClick={confirmBatch}
@@ -1173,12 +1881,13 @@ export function InboxScreen() {
             Confirm {selectedBatchItems.length}
           </Button>
         ) : (
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex min-w-0 items-center gap-2">
             {/* E2-T11: drainer progress so the background backlog clearing
-                (E2-T3) is visible while items resolve. */}
+                (E2-T3) is visible while items resolve. Capped + truncated so it
+                never shoves the count off the row in the narrow queue pane. */}
             {batchRuns && batchRuns.length > 0 ? (
               <span
-                className="hidden truncate rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground sm:inline"
+                className="hidden max-w-[150px] truncate rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground lg:inline"
                 data-testid="inbox-batch-progress"
                 title={batchRuns[0].summary}
               >
@@ -1186,7 +1895,7 @@ export function InboxScreen() {
               </span>
             ) : null}
             <span
-              className="money-figures rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground"
+              className="money-figures shrink-0 whitespace-nowrap rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground"
               data-testid="inbox-unreviewed-count"
             >
               {items.length} unreviewed
@@ -1208,7 +1917,11 @@ export function InboxScreen() {
           onOpenChange={(open) => {
             if (!open) setSelectedId(null);
           }}
-          title={<span data-testid="inbox-detail-title">{selected?.merchant ?? ""}</span>}
+          title={
+            <span data-testid="inbox-detail-title">
+              {selected?.merchant ?? ""}
+            </span>
+          }
           subtitle={selected?.summary}
           footer={detailProps ? <InboxDetailActions {...detailProps} /> : null}
         >
@@ -1233,10 +1946,12 @@ export function InboxScreen() {
               <span className="mx-auto flex size-12 items-center justify-center rounded-[14px] bg-muted text-muted-foreground">
                 <FileText className="size-6" strokeWidth={1.5} />
               </span>
-              <h2 className="mt-4 text-base font-semibold">Pick an item to resolve</h2>
+              <h2 className="mt-4 text-base font-semibold">
+                Pick an item to resolve
+              </h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Select a card on the left, or press J to start at the top. Each card explains why it needs you and
-                what posts when you confirm.
+                Select a card on the left, or press J to start at the top. Each
+                card explains why it needs you and what posts when you confirm.
               </p>
             </div>
           </div>
@@ -1275,7 +1990,9 @@ function InboxListRow({
   onSelect: () => void;
   onCheckedChange: (checked: boolean) => void;
 }) {
-  const Icon = INBOX_GROUPS.find((group) => group.kind === resolvedKind(item))?.icon ?? Tags;
+  const Icon =
+    INBOX_GROUPS.find((group) => group.kind === resolvedKind(item))?.icon ??
+    Tags;
   const moneyIn = item.amountMinor > 0;
   return (
     <div
@@ -1309,14 +2026,25 @@ function InboxListRow({
       </span>
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate font-medium">{item.merchant}</span>
-          <Amount amountMinor={item.amountMinor} tone={moneyIn ? "income" : "neutral"} className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate font-medium">
+            {item.merchant}
+          </span>
+          <Amount
+            amountMinor={item.amountMinor}
+            tone={moneyIn ? "income" : "expense"}
+            className="shrink-0 text-[13px] font-medium"
+          />
         </div>
         <div className="mt-1 flex items-center gap-2">
-          <span className="truncate text-xs text-muted-foreground">{item.categoryName}</span>
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {item.categoryName}
+          </span>
           {resolvedKind(item) === "categorize" && item.confidence != null ? (
-            <span className="ml-auto shrink-0">
-              <ConfidenceRing value={Math.round(item.confidence * 100)} />
+            <span className="shrink-0">
+              <ConfidenceRing
+                value={Math.round(item.confidence * 100)}
+                size="sm"
+              />
             </span>
           ) : null}
         </div>
@@ -1325,7 +2053,13 @@ function InboxListRow({
   );
 }
 
-function InboxDetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+function InboxDetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <div className="rounded-[14px] px-3 py-2 ring-1 ring-foreground/10">
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -1334,7 +2068,13 @@ function InboxDetailRow({ label, value }: { label: string; value: React.ReactNod
   );
 }
 
-function InboxImpactNote({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
+function InboxImpactNote({
+  icon: Icon,
+  children,
+}: {
+  icon: LucideIcon;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex items-start gap-2 rounded-[14px] bg-muted/50 p-3 text-sm text-muted-foreground">
       <Icon className="mt-0.5 size-4 shrink-0" />
@@ -1345,9 +2085,14 @@ function InboxImpactNote({ icon: Icon, children }: { icon: LucideIcon; children:
 
 type InboxDetailProps = {
   item: InboxItem;
-  categoryOptions: NonNullable<ReturnType<typeof useInboxData>>["categoryOptions"];
+  categoryOptions: NonNullable<
+    ReturnType<typeof useInboxData>
+  >["categoryOptions"];
   chosenCategoryId: string;
   onCategoryChange: (id: string) => void;
+  contactOptions: { id: string; name: string }[];
+  selectedContactId: string | null;
+  onContactChange: (contactId: string | null) => void;
   createRule: boolean;
   onCreateRuleChange: (value: boolean) => void;
   onConfirm: () => void;
@@ -1370,13 +2115,23 @@ function InboxDetailActions({
   pending,
 }: Pick<
   InboxDetailProps,
-  "item" | "chosenCategoryId" | "onConfirm" | "onExclude" | "onSaveRule" | "onConfirmReceipt" | "pending"
+  | "item"
+  | "chosenCategoryId"
+  | "onConfirm"
+  | "onExclude"
+  | "onSaveRule"
+  | "onConfirmReceipt"
+  | "pending"
 >) {
   const kind = resolvedKind(item);
   if (kind === "receipt") {
     return (
       <>
-        <Button data-testid="receipt-confirm-match" onClick={onConfirmReceipt} disabled={pending || !item.transactionId}>
+        <Button
+          data-testid="receipt-confirm-match"
+          onClick={onConfirmReceipt}
+          disabled={pending || !item.transactionId}
+        >
           <Check data-icon="inline-start" />
           Confirm receipt match
         </Button>
@@ -1392,15 +2147,28 @@ function InboxDetailActions({
   if (kind === "categorize") {
     return (
       <>
-        <Button data-testid="inbox-confirm" onClick={onConfirm} disabled={pending || !item.transactionId || !chosenCategoryId}>
+        <Button
+          data-testid="inbox-confirm"
+          onClick={onConfirm}
+          disabled={pending || !item.transactionId || !chosenCategoryId}
+        >
           <Check data-icon="inline-start" />
           Confirm and post
         </Button>
-        <Button variant="outline" onClick={onSaveRule} disabled={pending || !item.transactionId || !chosenCategoryId} data-testid="inbox-save-rule">
+        <Button
+          variant="outline"
+          onClick={onSaveRule}
+          disabled={pending || !item.transactionId || !chosenCategoryId}
+          data-testid="inbox-save-rule"
+        >
           <Layers2 data-icon="inline-start" />
           Always do this
         </Button>
-        <Button variant="outline" onClick={onExclude} disabled={pending || !item.transactionId}>
+        <Button
+          variant="outline"
+          onClick={onExclude}
+          disabled={pending || !item.transactionId}
+        >
           <X data-icon="inline-start" />
           Exclude
         </Button>
@@ -1424,16 +2192,23 @@ function InboxDetailContent({
   categoryOptions,
   chosenCategoryId,
   onCategoryChange,
+  contactOptions,
+  selectedContactId,
+  onContactChange,
   createRule,
   onCreateRuleChange,
   onAcceptSuggestion,
-}: Omit<InboxDetailProps, "onConfirm" | "onExclude" | "onSaveRule" | "onConfirmReceipt" | "pending">) {
+}: Omit<
+  InboxDetailProps,
+  "onConfirm" | "onExclude" | "onSaveRule" | "onConfirmReceipt" | "pending"
+>) {
   const receipt = item.receiptDocument ?? null;
   const moneyIn = item.amountMinor > 0;
   const kind = resolvedKind(item);
   // When the AI attached a clarifying question to a categorizable transaction,
   // surface it as context above the category picker rather than a dead end.
-  const aiQuestion = item.kind === "question" && item.transactionId ? item.summary : null;
+  const aiQuestion =
+    item.kind === "question" && item.transactionId ? item.summary : null;
   // E2-T11: provenance line + Top-N suggestions for a decided categorize item.
   const suggestions = item.suggestions ?? [];
   const topMemoryOccurrences =
@@ -1446,200 +2221,269 @@ function InboxDetailContent({
   });
 
   return (
-        <div className="flex flex-col gap-4 p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div className="min-w-0">
-              <h2 className="truncate text-lg font-semibold" data-testid="inbox-detail-title">{item.merchant}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{item.summary}</p>
-            </div>
-            {kind === "categorize" && item.confidence != null ? (
-              <ConfidenceRing value={Math.round(item.confidence * 100)} />
-            ) : null}
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <InboxDetailRow label="Date" value={item.date ?? "Needs context"} />
-            <InboxDetailRow
-              label="Amount"
-              value={<Amount amountMinor={item.amountMinor} tone={moneyIn ? "income" : "neutral"} />}
-            />
-            <InboxDetailRow
-              label={receipt ? "Candidate account" : "Account"}
-              value={receipt?.candidate ? receipt.candidate.bankAccountName : item.bankAccountName}
-            />
-          </div>
-
-          {/* Per-kind body keyed off the resolved kind (report 6.2). */}
-          {kind === "categorize" ? (
-            <div className="flex flex-col gap-3">
-              {aiQuestion ? (
-                <div className="flex items-start gap-2 rounded-[14px] bg-ai-surface p-3 text-sm text-ai">
-                  <Sparkles className="mt-0.5 size-4 shrink-0" />
-                  <span className="min-w-0">{aiQuestion}</span>
-                </div>
-              ) : null}
-
-              {/* E2-T11: provenance line — why this item was decided the way it
-                  was (rule/memory/embedding/ai/plaid_prior). */}
-              {provenance ? (
-                <p className="text-xs font-medium text-muted-foreground" data-testid="inbox-provenance">
-                  {provenance}
-                </p>
-              ) : null}
-
-              {/* E2-T11: Top-N one-click suggestions. Accepting one confirms the
-                  transaction through the existing pipeline mutation. */}
-              {suggestions.length > 0 ? (
-                <div className="flex flex-col gap-1.5" data-testid="inbox-suggestions">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">
-                    Suggestions
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {suggestions.map((suggestion) => (
-                      <button
-                        key={suggestion.accountId}
-                        type="button"
-                        data-testid="inbox-suggestion"
-                        data-account-id={suggestion.accountId}
-                        onClick={() => onAcceptSuggestion(suggestion.accountId)}
-                        className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs font-medium transition-colors hover:border-primary hover:bg-ob-green-50/40"
-                      >
-                        <Sparkles className="size-3 text-primary" />
-                        {suggestion.number} - {suggestion.name}
-                        {suggestion.source === "memory" && suggestion.occurrenceCount ? (
-                          <span className="text-[10.5px] text-muted-foreground">×{suggestion.occurrenceCount}</span>
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <Field>
-                <FieldLabel htmlFor="inbox-category">Category</FieldLabel>
-                <Select value={chosenCategoryId} onValueChange={onCategoryChange}>
-                  <SelectTrigger id="inbox-category" data-testid="inbox-category-select">
-                    <SelectValue placeholder="Choose category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {categoryOptions.map((option) => (
-                        <SelectItem key={option.id} value={option.id} data-testid={`inbox-category-option-${option.number}`}>
-                          {option.number} - {option.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <FieldDescription>Confirming posts a balanced journal entry through the ledger.</FieldDescription>
-              </Field>
-
-              <Collapsible>
-                <CollapsibleTrigger className="flex items-center gap-1.5 text-sm font-medium text-ai outline-none">
-                  <Sparkles className="size-3.5" />
-                  Why this
-                  <ChevronDown className="size-3.5" />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2">
-                  <AiInsightBadge
-                    variant="inline"
-                    confidence={item.confidence ?? undefined}
-                    reasoning={humanizeReasoning(item.reasoning) ?? "No rule or match reached the posting threshold, so it waits for you."}
-                  />
-                </CollapsibleContent>
-              </Collapsible>
-
-              <Field orientation="horizontal">
-                <Checkbox
-                  id="inbox-create-rule"
-                  checked={createRule}
-                  onCheckedChange={(value) => onCreateRuleChange(value === true)}
-                />
-                <FieldLabel htmlFor="inbox-create-rule" className="font-normal">
-                  Always do this — categorize {item.merchant} this way next time
-                </FieldLabel>
-              </Field>
-            </div>
-          ) : null}
-
-          {kind === "receipt" ? (
-            <div className="grid gap-3 md:grid-cols-2" data-testid="receipt-inbox-card">
-              <div className="rounded-[14px] p-3 ring-1 ring-foreground/10">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <ReceiptText className="size-4 text-primary" />
-                  <span className="min-w-0 truncate">Extracted receipt</span>
-                </div>
-                <dl className="mt-3 flex flex-col gap-2 text-sm">
-                  <CompareRow label="Vendor" value={receipt?.vendor ?? "—"} />
-                  <CompareRow label="Date" value={receipt?.date ?? "—"} mono />
-                  <CompareRow
-                    label="Total"
-                    value={receipt ? formatMinorMoney(receipt.totalMinor, { currency: receipt.currency }) : "—"}
-                    mono
-                  />
-                  <CompareRow label="File" value={receipt?.fileName ?? "Receipt file"} />
-                </dl>
-              </div>
-              <div className="rounded-[14px] p-3 ring-1 ring-foreground/10">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <FileText className="size-4 text-primary" />
-                  <span className="min-w-0 truncate">Candidate transaction</span>
-                </div>
-                {receipt?.candidate ? (
-                  <dl className="mt-3 flex flex-col gap-2 text-sm">
-                    <CompareRow label="Merchant" value={receipt.candidate.merchant} />
-                    <CompareRow label="Date" value={receipt.candidate.date} mono />
-                    <CompareRow
-                      label="Amount"
-                      value={formatMinorMoney(receipt.candidate.amountMinor, { currency: receipt.currency })}
-                      mono
-                    />
-                    <CompareRow label="Category" value={receipt.candidate.categoryName} />
-                  </dl>
-                ) : (
-                  <div className="mt-3 rounded-[10px] bg-muted p-3 text-sm text-muted-foreground">
-                    No close transaction candidate yet.
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : null}
-
-          {kind === "transfer" ? (
-            <InboxImpactNote icon={ArrowLeftRight}>
-              This looks like money moving between your own accounts. Confirming records a transfer —
-              same amount, opposite direction — so it never counts as income or an expense on your P&amp;L.
-            </InboxImpactNote>
-          ) : null}
-
-          {kind === "payout_mismatch" ? (
-            <InboxImpactNote icon={CircleAlert}>
-              A payout settled for a different amount than expected, usually because of processor fees or a
-              refund. Resolving it reconciles the deposit against the underlying charges so your books match the bank.
-            </InboxImpactNote>
-          ) : null}
-
-          {kind === "connection" ? (
-            <div className="flex flex-col gap-3">
-              <InboxImpactNote icon={Link2Off}>
-                One of your connected accounts needs to be reauthorized before new activity can sync.
-                Reconnect to resume automatic imports.
-              </InboxImpactNote>
-              <Button asChild variant="outline" className="self-start">
-                <Link href="/settings/connections">
-                  <Plug data-icon="inline-start" />
-                  Reconnect account
-                </Link>
-              </Button>
-            </div>
-          ) : null}
-
-          {kind === "question" ? (
-            <InboxImpactNote icon={Sparkles}>
-              {item.summary} Answer in chat so the assistant can route it the right way — nothing posts until you confirm.
-            </InboxImpactNote>
-          ) : null}
+    <div className="flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <h2
+            className="truncate text-lg font-semibold"
+            data-testid="inbox-detail-title"
+          >
+            {item.merchant}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">{item.summary}</p>
         </div>
+        {kind === "categorize" && item.confidence != null ? (
+          <ConfidenceRing value={Math.round(item.confidence * 100)} />
+        ) : null}
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <InboxDetailRow label="Date" value={item.date ?? "Needs context"} />
+        <InboxDetailRow
+          label="Amount"
+          value={
+            <Amount
+              amountMinor={item.amountMinor}
+              tone={moneyIn ? "income" : "expense"}
+            />
+          }
+        />
+        <InboxDetailRow
+          label={receipt ? "Candidate account" : "Account"}
+          value={
+            receipt?.candidate
+              ? receipt.candidate.bankAccountName
+              : item.bankAccountName
+          }
+        />
+      </div>
+
+      {/* Per-kind body keyed off the resolved kind (report 6.2). */}
+      {kind === "categorize" ? (
+        <div className="flex flex-col gap-3">
+          {aiQuestion ? (
+            <div className="flex items-start gap-2 rounded-[14px] bg-ai-surface p-3 text-sm text-ai">
+              <Sparkles className="mt-0.5 size-4 shrink-0" />
+              <span className="min-w-0">{aiQuestion}</span>
+            </div>
+          ) : null}
+
+          {/* E2-T11: provenance line — why this item was decided the way it
+                  was (rule/memory/embedding/ai/plaid_prior). */}
+          {provenance ? (
+            <p
+              className="text-xs font-medium text-muted-foreground"
+              data-testid="inbox-provenance"
+            >
+              {provenance}
+            </p>
+          ) : null}
+
+          {/* E2-T11: Top-N one-click suggestions. Accepting one confirms the
+                  transaction through the existing pipeline mutation. */}
+          {suggestions.length > 0 ? (
+            <div
+              className="flex flex-col gap-1.5"
+              data-testid="inbox-suggestions"
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">
+                Suggestions
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.accountId}
+                    type="button"
+                    data-testid="inbox-suggestion"
+                    data-account-id={suggestion.accountId}
+                    onClick={() => onAcceptSuggestion(suggestion.accountId)}
+                    className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs font-medium transition-colors hover:border-primary hover:bg-ob-green-50/40"
+                  >
+                    <Sparkles className="size-3 text-primary" />
+                    {suggestion.number} - {suggestion.name}
+                    {suggestion.source === "memory" &&
+                    suggestion.occurrenceCount ? (
+                      <span className="text-[10.5px] text-muted-foreground">
+                        ×{suggestion.occurrenceCount}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <Field>
+            <FieldLabel htmlFor="inbox-category">Category</FieldLabel>
+            <InlineCategoryCombobox
+              value={chosenCategoryId || null}
+              options={categoryOptions.map((option) => ({
+                id: option.id,
+                // Keep the "<number> - <name>" label so it groups by type with a
+                // search box, exactly like the Transactions inline picker.
+                label: `${option.number} - ${option.name}`,
+                type: option.type,
+              }))}
+              onChange={onCategoryChange}
+              placeholder="Choose category"
+              testId="inbox-category-select"
+              className="w-full"
+            />
+            <FieldDescription>
+              Confirming posts a balanced journal entry through the ledger.
+            </FieldDescription>
+          </Field>
+
+          {item.transactionId ? (
+            <Field>
+              <FieldLabel>Contact</FieldLabel>
+              <ContactCombobox
+                value={selectedContactId}
+                options={contactOptions}
+                onChange={onContactChange}
+                placeholder="No contact"
+                testId="inbox-contact"
+                className="w-full"
+              />
+              <FieldDescription>
+                Link the customer or vendor if AI didn&rsquo;t. Saves on the
+                spot; it posts with the entry when you confirm.
+              </FieldDescription>
+            </Field>
+          ) : null}
+
+          <Collapsible>
+            <CollapsibleTrigger className="flex items-center gap-1.5 text-sm font-medium text-ai outline-none">
+              <Sparkles className="size-3.5" />
+              Why this
+              <ChevronDown className="size-3.5" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <AiInsightBadge
+                variant="inline"
+                confidence={item.confidence ?? undefined}
+                reasoning={
+                  humanizeReasoning(item.reasoning) ??
+                  "No rule or match reached the posting threshold, so it waits for you."
+                }
+              />
+            </CollapsibleContent>
+          </Collapsible>
+
+          <Field orientation="horizontal">
+            <Checkbox
+              id="inbox-create-rule"
+              checked={createRule}
+              onCheckedChange={(value) => onCreateRuleChange(value === true)}
+            />
+            <FieldLabel htmlFor="inbox-create-rule" className="font-normal">
+              Always do this — categorize {item.merchant} this way next time
+            </FieldLabel>
+          </Field>
+        </div>
+      ) : null}
+
+      {kind === "receipt" ? (
+        <div
+          className="grid gap-3 md:grid-cols-2"
+          data-testid="receipt-inbox-card"
+        >
+          <div className="rounded-[14px] p-3 ring-1 ring-foreground/10">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <ReceiptText className="size-4 text-primary" />
+              <span className="min-w-0 truncate">Extracted receipt</span>
+            </div>
+            <dl className="mt-3 flex flex-col gap-2 text-sm">
+              <CompareRow label="Vendor" value={receipt?.vendor ?? "—"} />
+              <CompareRow label="Date" value={receipt?.date ?? "—"} mono />
+              <CompareRow
+                label="Total"
+                value={
+                  receipt
+                    ? formatMinorMoney(receipt.totalMinor, {
+                        currency: receipt.currency,
+                      })
+                    : "—"
+                }
+                mono
+              />
+              <CompareRow
+                label="File"
+                value={receipt?.fileName ?? "Receipt file"}
+              />
+            </dl>
+          </div>
+          <div className="rounded-[14px] p-3 ring-1 ring-foreground/10">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <FileText className="size-4 text-primary" />
+              <span className="min-w-0 truncate">Candidate transaction</span>
+            </div>
+            {receipt?.candidate ? (
+              <dl className="mt-3 flex flex-col gap-2 text-sm">
+                <CompareRow
+                  label="Merchant"
+                  value={receipt.candidate.merchant}
+                />
+                <CompareRow label="Date" value={receipt.candidate.date} mono />
+                <CompareRow
+                  label="Amount"
+                  value={formatMinorMoney(receipt.candidate.amountMinor, {
+                    currency: receipt.currency,
+                  })}
+                  mono
+                />
+                <CompareRow
+                  label="Category"
+                  value={receipt.candidate.categoryName}
+                />
+              </dl>
+            ) : (
+              <div className="mt-3 rounded-[10px] bg-muted p-3 text-sm text-muted-foreground">
+                No close transaction candidate yet.
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {kind === "transfer" ? (
+        <InboxImpactNote icon={ArrowLeftRight}>
+          This looks like money moving between your own accounts. Confirming
+          records a transfer — same amount, opposite direction — so it never
+          counts as income or an expense on your P&amp;L.
+        </InboxImpactNote>
+      ) : null}
+
+      {kind === "payout_mismatch" ? (
+        <InboxImpactNote icon={CircleAlert}>
+          A payout settled for a different amount than expected, usually because
+          of processor fees or a refund. Resolving it reconciles the deposit
+          against the underlying charges so your books match the bank.
+        </InboxImpactNote>
+      ) : null}
+
+      {kind === "connection" ? (
+        <div className="flex flex-col gap-3">
+          <InboxImpactNote icon={Link2Off}>
+            One of your connected accounts needs to be reauthorized before new
+            activity can sync. Reconnect to resume automatic imports.
+          </InboxImpactNote>
+          <Button asChild variant="outline" className="self-start">
+            <Link href="/settings/connections">
+              <Plug data-icon="inline-start" />
+              Reconnect account
+            </Link>
+          </Button>
+        </div>
+      ) : null}
+
+      {kind === "question" ? (
+        <InboxImpactNote icon={Sparkles}>
+          {item.summary} Answer in chat so the assistant can route it the right
+          way — nothing posts until you confirm.
+        </InboxImpactNote>
+      ) : null}
+    </div>
   );
 }
 
@@ -1657,11 +2501,26 @@ function InboxDetailPanel(props: InboxDetailProps) {
   );
 }
 
-function CompareRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function CompareRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
     <div className="flex min-w-0 justify-between gap-3">
       <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className={cn("min-w-0 truncate text-right font-medium", mono && "money-figures")}>{value}</dd>
+      <dd
+        className={cn(
+          "min-w-0 truncate text-right font-medium",
+          mono && "money-figures",
+        )}
+      >
+        {value}
+      </dd>
     </div>
   );
 }
@@ -1684,12 +2543,15 @@ function useTransactionsData(args: {
 }) {
   const { activeEntity, scope } = useActiveEntity();
   const result = useQuery(api.coreViews.transactions, {
-    ...(scope === "all" ? { scope: "all" as const } : entityArg(activeEntity.id)),
+    ...(scope === "all"
+      ? { scope: "all" as const }
+      : entityArg(activeEntity.id)),
     review: args.review,
     search: args.search,
     from: args.from,
     to: args.to,
-    direction: args.direction && args.direction !== "any" ? args.direction : undefined,
+    direction:
+      args.direction && args.direction !== "any" ? args.direction : undefined,
     source: args.source as "bank" | "stripe" | "manual" | undefined,
     bankAccountIds: args.bankAccountIds?.length
       ? (args.bankAccountIds as Id<"bankAccounts">[])
@@ -1709,7 +2571,8 @@ function rowAttention(row: TransactionRow): AttentionKind | null {
   if (row.review === "needs_review") return "needs-review";
   if (row.hasInboxItem) return "needs-review";
   if (!row.entryId && row.review !== "excluded") return "unposted";
-  if ((row.confidence ?? 1) < 0.75 && row.decidedBy === "ai") return "low-confidence";
+  if ((row.confidence ?? 1) < 0.75 && row.decidedBy === "ai")
+    return "low-confidence";
   return null;
 }
 
@@ -1726,13 +2589,18 @@ function TransactionRowDetailStrip({ row }: { row: TransactionRow }) {
     { label: "Source", value: sourceLabel(row.source) },
   ];
   return (
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2" data-testid="tx-row-detail">
+    <dl
+      className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4"
+      data-testid="tx-row-detail"
+    >
       {fields.map((field) => (
-        <div key={field.label} className="flex min-w-0 items-baseline gap-2">
-          <dt className="shrink-0 text-xs font-medium uppercase tracking-[0.03em] text-muted-foreground">
+        <div key={field.label} className="min-w-0">
+          <dt className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">
             {field.label}
           </dt>
-          <dd className="min-w-0 break-words text-foreground">{field.value}</dd>
+          <dd className="mt-1 min-w-0 break-words text-foreground">
+            {field.value}
+          </dd>
         </div>
       ))}
     </dl>
@@ -1742,7 +2610,9 @@ function TransactionRowDetailStrip({ row }: { row: TransactionRow }) {
 // ---- Transactions filter model + saved-view helpers ------------------------
 
 /** localStorage-safe form of a DateRangeValue (Date objects don't round-trip). */
-type StoredRange = { preset: DateRangePreset } | { fromISO: string; toISO: string };
+type StoredRange =
+  | { preset: DateRangePreset }
+  | { fromISO: string; toISO: string };
 
 type TxFilters = {
   search: string;
@@ -1777,8 +2647,18 @@ const DEFAULT_TX_FILTERS: TxFilters = {
 // Built-in views ship ahead of the user's saved views, echoing Mercury's
 // "Monthly money in / out" defaults — recolored, scoped to this month.
 const BUILTIN_TX_VIEWS: SavedView<TxFilters>[] = [
-  { id: "builtin-money-in", name: "Monthly money in", builtIn: true, filters: { ...DEFAULT_TX_FILTERS, amount: { direction: "in" } } },
-  { id: "builtin-money-out", name: "Monthly money out", builtIn: true, filters: { ...DEFAULT_TX_FILTERS, amount: { direction: "out" } } },
+  {
+    id: "builtin-money-in",
+    name: "Monthly money in",
+    builtIn: true,
+    filters: { ...DEFAULT_TX_FILTERS, amount: { direction: "in" } },
+  },
+  {
+    id: "builtin-money-out",
+    name: "Monthly money out",
+    builtIn: true,
+    filters: { ...DEFAULT_TX_FILTERS, amount: { direction: "out" } },
+  },
 ];
 
 function toStoredRange(range: DateRangeValue): StoredRange {
@@ -1845,7 +2725,12 @@ function aiFilterLabel(value: string) {
   return value;
 }
 
-const URL_PERIOD_PRESETS: DateRangePreset[] = ["this-month", "last-month", "last-3-months", "ytd"];
+const URL_PERIOD_PRESETS: DateRangePreset[] = [
+  "this-month",
+  "last-month",
+  "last-3-months",
+  "ytd",
+];
 
 export function TransactionsScreen() {
   const searchParams = useSearchParams();
@@ -1856,7 +2741,9 @@ export function TransactionsScreen() {
   // because global command search already owns cross-record lookup.
   const urlState = useWorkbenchUrlState();
   const initialPeriodParam = searchParams.get("period");
-  const initialPeriod: DateRangeValue = URL_PERIOD_PRESETS.includes(initialPeriodParam as DateRangePreset)
+  const initialPeriod: DateRangeValue = URL_PERIOD_PRESETS.includes(
+    initialPeriodParam as DateRangePreset,
+  )
     ? { preset: initialPeriodParam as DateRangePreset }
     : { preset: "this-month" };
 
@@ -1865,13 +2752,18 @@ export function TransactionsScreen() {
   const [range, setRange] = useState<DateRangeValue>(initialPeriod);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [amount, setAmount] = useState<AmountValue>({});
-  const [accountIds, setAccountIds] = useState<string[]>(accountParam ? [accountParam] : []);
+  const [accountIds, setAccountIds] = useState<string[]>(
+    accountParam ? [accountParam] : [],
+  );
   const [source, setSource] = useState<string[]>([]);
   const [receipt, setReceipt] = useState<string[]>([]);
   const [ai, setAi] = useState<string[]>([]);
   const [needsAttention, setNeedsAttention] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupByKey>("none");
-  const [sort, setSort] = useState<SortState>({ key: "date", direction: "desc" });
+  const [sort, setSort] = useState<SortState>({
+    key: "date",
+    direction: "desc",
+  });
   const [display, setDisplay] = useState<DisplaySettings>({
     // E7-3: the register defaults to compact density now that the raw bank
     // description is behind an expand toggle (no permanent second line). The
@@ -1885,7 +2777,9 @@ export function TransactionsScreen() {
   // compact; the full TransactionDetail drawer stays the complete record.
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   function toggleExpanded(id: string) {
-    setExpandedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+    setExpandedIds((prev) =>
+      prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id],
+    );
   }
   // Detail is CLOSED by default. A ⌘K deep-link (?focus=) is the only thing that
   // opens it on first render; otherwise nothing is selected until a row click.
@@ -1925,16 +2819,25 @@ export function TransactionsScreen() {
     source: source.length === 1 ? source[0] : undefined,
     bankAccountIds: accountIds,
   });
-  const recategorizeTransaction = useMutation(api.pipeline.recategorizeTransaction);
+  const recategorizeTransaction = useMutation(
+    api.pipeline.recategorizeTransaction,
+  );
   const confirmTransaction = useMutation(api.pipeline.confirmTransaction);
   const excludeTransaction = useMutation(api.pipeline.excludeTransaction);
   const splitTransaction = useMutation(api.pipeline.splitTransaction);
   const routeTransaction = useMutation(api.pipeline.routeTransaction);
-  const categorizePendingTransactions = useAction(api.bedrockCategorizer.categorizePendingTransactions);
+  const categorizePendingTransactions = useAction(
+    api.bedrockCategorizer.categorizePendingTransactions,
+  );
   // E2-T3: drain the whole needs_review backlog (self-rescheduling) after an
   // import, rather than a single capped pass.
-  const startCategorizationBacklog = useMutation(api.bedrockCategorizer.startCategorizationBacklog);
-  const savedViewsStore = useSavedViews<TxFilters>("transactions", data?.entity.id);
+  const startCategorizationBacklog = useMutation(
+    api.bedrockCategorizer.startCategorizationBacklog,
+  );
+  const savedViewsStore = useSavedViews<TxFilters>(
+    "transactions",
+    data?.entity.id,
+  );
 
   const selected = useMemo(
     () => data?.rows.find((row) => row.id === selectedId) ?? null,
@@ -1955,7 +2858,9 @@ export function TransactionsScreen() {
   useEffect(() => {
     if (!focusId || !data?.rows.length) return;
     if (!data.rows.some((row) => row.id === focusId)) return;
-    const node = document.querySelector<HTMLElement>(`[data-transaction-id="${focusId}"]`);
+    const node = document.querySelector<HTMLElement>(
+      `[data-transaction-id="${focusId}"]`,
+    );
     node?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusId, data]);
 
@@ -1971,14 +2876,20 @@ export function TransactionsScreen() {
   }, [periodParam, setUrlParams]);
 
   const defaultBankAccountId = data?.bankAccounts[0]?.id ?? "";
-  const defaultCategoryId = data?.categoryOptions.find((option) => option.type === "expense")?.id ?? data?.categoryOptions[0]?.id ?? "";
+  const defaultCategoryId =
+    data?.categoryOptions.find((option) => option.type === "expense")?.id ??
+    data?.categoryOptions[0]?.id ??
+    "";
   const otherIncomeCategoryId =
     data?.categoryOptions.find((option) => option.number === "4200")?.id ??
     data?.categoryOptions.find((option) => option.type === "income")?.id ??
     "";
   const secondDefaultCategoryId =
-    data?.categoryOptions.find((option) => option.type === "expense" && option.id !== defaultCategoryId)?.id ??
-    data?.categoryOptions.find((option) => option.id !== defaultCategoryId)?.id ??
+    data?.categoryOptions.find(
+      (option) => option.type === "expense" && option.id !== defaultCategoryId,
+    )?.id ??
+    data?.categoryOptions.find((option) => option.id !== defaultCategoryId)
+      ?.id ??
     "";
 
   const csvRows = useMemo(
@@ -1990,7 +2901,8 @@ export function TransactionsScreen() {
         .filter((row) => row.length >= 3 && row[0] && row[1] && row[2]),
     [csvText],
   );
-  const duplicateCsvCount = csvRows.length - new Set(csvRows.map((row) => row.join(":"))).size;
+  const duplicateCsvCount =
+    csvRows.length - new Set(csvRows.map((row) => row.join(":"))).size;
 
   // Client-side filtering over the server rows. The server returns the latest
   // page (review + search applied); these refine it for the table. The insights
@@ -1999,7 +2911,11 @@ export function TransactionsScreen() {
     const rows = data?.rows ?? [];
     return rows.filter((row) => {
       if (row.date < bounds.from || row.date > bounds.to) return false;
-      if (accountIds.length && (!row.bankAccountId || !accountIds.includes(row.bankAccountId))) return false;
+      if (
+        accountIds.length &&
+        (!row.bankAccountId || !accountIds.includes(row.bankAccountId))
+      )
+        return false;
       if (amount.direction === "in" && row.amountMinor <= 0) return false;
       if (amount.direction === "out" && row.amountMinor >= 0) return false;
       const absAmount = Math.abs(row.amountMinor);
@@ -2013,21 +2929,38 @@ export function TransactionsScreen() {
       // the chip never disagree. Rule/Memory are provenance-aware facets too.
       if (ai.includes("decided") && row.provenance.kind !== "ai") return false;
       if (ai.includes("rule") && row.provenance.kind !== "rule") return false;
-      if (ai.includes("memory") && row.provenance.kind !== "memory") return false;
+      if (ai.includes("memory") && row.provenance.kind !== "memory")
+        return false;
       if (ai.includes("high") && (row.confidence ?? 0) < 0.9) return false;
       if (ai.includes("low") && (row.confidence ?? 1) >= 0.9) return false;
       if (
         keywords.length &&
         !keywords.some((keyword) =>
-          `${row.merchant} ${row.rawDescription}`.toLowerCase().includes(keyword.toLowerCase()),
+          `${row.merchant} ${row.rawDescription}`
+            .toLowerCase()
+            .includes(keyword.toLowerCase()),
         )
       ) {
         return false;
       }
-      if (needsAttention && !(row.review === "needs_review" || row.hasInboxItem)) return false;
+      if (
+        needsAttention &&
+        !(row.review === "needs_review" || row.hasInboxItem)
+      )
+        return false;
       return true;
     });
-  }, [data, accountIds, amount, source, receipt, ai, keywords, needsAttention, bounds]);
+  }, [
+    data,
+    accountIds,
+    amount,
+    source,
+    receipt,
+    ai,
+    keywords,
+    needsAttention,
+    bounds,
+  ]);
 
   const groupedRows = useMemo(() => {
     if (groupBy === "none") return null;
@@ -2048,7 +2981,11 @@ export function TransactionsScreen() {
   }, [visibleRows, groupBy]);
 
   const accountOptions = useMemo(
-    () => (data?.bankAccounts ?? []).map((account) => ({ id: account.id, label: account.name })),
+    () =>
+      (data?.bankAccounts ?? []).map((account) => ({
+        id: account.id,
+        label: account.name,
+      })),
     [data],
   );
 
@@ -2086,12 +3023,15 @@ export function TransactionsScreen() {
     toast.success(text);
   }
   function reportError(error: unknown, fallback: string) {
-    const text = error instanceof Error ? error.message : fallback;
+    const text = getErrorMessage(error, fallback);
     setTransactionMessage(text);
     toast.error(text);
   }
 
-  async function updateCategory(transactionId: string, categoryAccountId: string) {
+  async function updateCategory(
+    transactionId: string,
+    categoryAccountId: string,
+  ) {
     setPending(true);
     setTransactionMessage("");
     try {
@@ -2114,7 +3054,8 @@ export function TransactionsScreen() {
     try {
       await routeTransaction({
         entityId: data.entity.id as Id<"entities">,
-        bankAccountId: (manualBankAccountId || defaultBankAccountId) as Id<"bankAccounts">,
+        bankAccountId: (manualBankAccountId ||
+          defaultBankAccountId) as Id<"bankAccounts">,
         date: manualDate || todayIso(),
         amountMinor: Math.round(Number(manualAmount) * 100),
         currency: data.entity.currency,
@@ -2123,7 +3064,8 @@ export function TransactionsScreen() {
         status: "posted",
         source: "bank",
         externalId: `manual:${Date.now()}:${manualMerchant}`,
-        categoryAccountId: (manualCategoryId || defaultCategoryId) as Id<"ledgerAccounts">,
+        categoryAccountId: (manualCategoryId ||
+          defaultCategoryId) as Id<"ledgerAccounts">,
       });
       reportOk("Manual transaction imported and posted through the ledger.");
     } catch (error) {
@@ -2158,7 +3100,9 @@ export function TransactionsScreen() {
         entityId: data.entity.id as Id<"entities">,
       });
       if (aiResult.needsReviewCount > 0 || aiResult.skippedCount > 0) {
-        await startCategorizationBacklog({ entityId: data.entity.id as Id<"entities"> });
+        await startCategorizationBacklog({
+          entityId: data.entity.id as Id<"entities">,
+        });
       }
       const status = aiResult.batchStatus ? ` ${aiResult.batchStatus}` : "";
       reportOk(
@@ -2166,6 +3110,34 @@ export function TransactionsScreen() {
       );
     } catch (error) {
       reportError(error, "Could not import CSV rows.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  // Catch-up categorization: run the AI cascade over transactions still waiting
+  // in review (e.g. imported while no AI key was configured, or the key was out
+  // of credits). First pass runs inline; the drainer clears the rest in the
+  // background. Only touches un-posted/needs-review rows — posted entries stay
+  // immutable, and confident results post per the autonomy threshold.
+  async function runAiOnPending() {
+    if (!data?.entity?.id) return;
+    setPending(true);
+    setTransactionMessage("");
+    try {
+      const aiResult = await categorizePendingTransactions({
+        entityId: data.entity.id as Id<"entities">,
+      });
+      if (aiResult.needsReviewCount > 0 || aiResult.skippedCount > 0) {
+        await startCategorizationBacklog({
+          entityId: data.entity.id as Id<"entities">,
+        });
+      }
+      reportOk(
+        `AI checked ${aiResult.attemptedCount}: ${aiResult.postedCount} posted, ${aiResult.needsReviewCount} sent to review, ${aiResult.skippedCount} skipped. Remaining items are draining in the background.`,
+      );
+    } catch (error) {
+      reportError(error, "Could not run AI categorization.");
     } finally {
       setPending(false);
     }
@@ -2217,7 +3189,9 @@ export function TransactionsScreen() {
           reason: "Bulk excluded from register.",
         });
       }
-      reportOk(`${ids.length} transaction${ids.length === 1 ? "" : "s"} excluded.`);
+      reportOk(
+        `${ids.length} transaction${ids.length === 1 ? "" : "s"} excluded.`,
+      );
       setCheckedIds([]);
     } catch (error) {
       reportError(error, "Could not exclude transactions.");
@@ -2237,7 +3211,10 @@ export function TransactionsScreen() {
     setBulkRecategorizeOpen(true);
   }
 
-  async function bulkRecategorizeWith(ids: string[], categoryAccountId: string) {
+  async function bulkRecategorizeWith(
+    ids: string[],
+    categoryAccountId: string,
+  ) {
     if (!ids.length || !categoryAccountId) return;
     setPending(true);
     setTransactionMessage("");
@@ -2248,7 +3225,9 @@ export function TransactionsScreen() {
           categoryAccountId: categoryAccountId as Id<"ledgerAccounts">,
         });
       }
-      reportOk(`${ids.length} transaction${ids.length === 1 ? "" : "s"} recategorized with reversal and repost.`);
+      reportOk(
+        `${ids.length} transaction${ids.length === 1 ? "" : "s"} recategorized with reversal and repost.`,
+      );
       setCheckedIds([]);
     } catch (error) {
       reportError(error, "Could not recategorize transactions.");
@@ -2259,15 +3238,27 @@ export function TransactionsScreen() {
 
   // Split editor working values (derived from the selected row).
   const selectedAbsoluteAmount = Math.abs(selected?.amountMinor ?? 0);
-  const defaultSplitFirstAmount = (Math.floor(selectedAbsoluteAmount / 2) / 100).toFixed(2);
-  const defaultSplitSecondAmount = ((selectedAbsoluteAmount - Math.floor(selectedAbsoluteAmount / 2)) / 100).toFixed(2);
+  const defaultSplitFirstAmount = (
+    Math.floor(selectedAbsoluteAmount / 2) / 100
+  ).toFixed(2);
+  const defaultSplitSecondAmount = (
+    (selectedAbsoluteAmount - Math.floor(selectedAbsoluteAmount / 2)) /
+    100
+  ).toFixed(2);
   const activeSplitFirstAmount = splitFirstAmount || defaultSplitFirstAmount;
   const activeSplitSecondAmount = splitSecondAmount || defaultSplitSecondAmount;
-  const activeSplitFirstCategoryId = splitFirstCategoryId || selected?.categoryAccountId || defaultCategoryId;
-  const activeSplitSecondCategoryId = splitSecondCategoryId || secondDefaultCategoryId || defaultCategoryId;
+  const activeSplitFirstCategoryId =
+    splitFirstCategoryId || selected?.categoryAccountId || defaultCategoryId;
+  const activeSplitSecondCategoryId =
+    splitSecondCategoryId || secondDefaultCategoryId || defaultCategoryId;
 
   async function postSplit() {
-    if (!selected || !activeSplitFirstCategoryId || !activeSplitSecondCategoryId) return;
+    if (
+      !selected ||
+      !activeSplitFirstCategoryId ||
+      !activeSplitSecondCategoryId
+    )
+      return;
     setPending(true);
     setTransactionMessage("");
     try {
@@ -2275,11 +3266,13 @@ export function TransactionsScreen() {
         transactionId: selected.id as Id<"transactions">,
         splits: [
           {
-            categoryAccountId: activeSplitFirstCategoryId as Id<"ledgerAccounts">,
+            categoryAccountId:
+              activeSplitFirstCategoryId as Id<"ledgerAccounts">,
             amountMinor: Math.round(Number(activeSplitFirstAmount) * 100),
           },
           {
-            categoryAccountId: activeSplitSecondCategoryId as Id<"ledgerAccounts">,
+            categoryAccountId:
+              activeSplitSecondCategoryId as Id<"ledgerAccounts">,
             amountMinor: Math.round(Number(activeSplitSecondAmount) * 100),
           },
         ],
@@ -2297,7 +3290,10 @@ export function TransactionsScreen() {
     setPending(true);
     setTransactionMessage("");
     try {
-      await excludeTransaction({ transactionId: selected.id as Id<"transactions">, reason: "Excluded from register." });
+      await excludeTransaction({
+        transactionId: selected.id as Id<"transactions">,
+        reason: "Excluded from register.",
+      });
       reportOk("Transaction excluded with a reversal when needed.");
     } catch (error) {
       reportError(error, "Could not exclude transaction.");
@@ -2310,7 +3306,10 @@ export function TransactionsScreen() {
     setPending(true);
     setTransactionMessage("");
     try {
-      await excludeTransaction({ transactionId: transactionId as Id<"transactions">, reason: "Excluded from register." });
+      await excludeTransaction({
+        transactionId: transactionId as Id<"transactions">,
+        reason: "Excluded from register.",
+      });
       reportOk("Transaction excluded with a reversal when needed.");
     } catch (error) {
       reportError(error, "Could not exclude transaction.");
@@ -2326,13 +3325,16 @@ export function TransactionsScreen() {
   // while typing in an input/textarea/contenteditable, inside the category
   // combobox typeahead, or while a dialog/drawer is open (which owns Enter/Escape).
   const keyboardRows = useMemo<TransactionRow[]>(
-    () => (groupedRows ? groupedRows.flatMap((group) => group.rows) : visibleRows),
+    () =>
+      groupedRows ? groupedRows.flatMap((group) => group.rows) : visibleRows,
     [groupedRows, visibleRows],
   );
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      const key = event.key.toLowerCase();
-      if (!["j", "k", "enter", "e"].includes(key)) return;
+      // event.key can be undefined for autofill / IME / synthetic key events;
+      // guard before lowercasing so the listener never throws.
+      const key = event.key?.toLowerCase();
+      if (!key || !["j", "k", "enter", "e"].includes(key)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
@@ -2341,7 +3343,9 @@ export function TransactionsScreen() {
         tag === "TEXTAREA" ||
         tag === "SELECT" ||
         target?.isContentEditable ||
-        target?.closest("[role='combobox'],[role='dialog'],[role='menu'],[role='listbox']")
+        target?.closest(
+          "[role='combobox'],[role='dialog'],[role='menu'],[role='listbox']",
+        )
       ) {
         return;
       }
@@ -2356,12 +3360,22 @@ export function TransactionsScreen() {
         return;
       }
       if (!keyboardRows.length) return;
-      const currentIndex = keyboardRows.findIndex((row) => row.id === focusedRowId);
+      const currentIndex = keyboardRows.findIndex(
+        (row) => row.id === focusedRowId,
+      );
       if (key === "j" || key === "k") {
         event.preventDefault();
         const delta = key === "j" ? 1 : -1;
-        const base = currentIndex === -1 ? (key === "j" ? -1 : keyboardRows.length) : currentIndex;
-        const nextIndex = Math.max(0, Math.min(keyboardRows.length - 1, base + delta));
+        const base =
+          currentIndex === -1
+            ? key === "j"
+              ? -1
+              : keyboardRows.length
+            : currentIndex;
+        const nextIndex = Math.max(
+          0,
+          Math.min(keyboardRows.length - 1, base + delta),
+        );
         const next = keyboardRows[nextIndex];
         if (next) {
           setFocusedRowId(next.id);
@@ -2388,10 +3402,26 @@ export function TransactionsScreen() {
     // selectRow/excludeRowById are stable enough for this handler; we re-bind on
     // the values it reads so the closure never goes stale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyboardRows, focusedRowId, addOpen, importOpen, bulkRecategorizeOpen, selectedId]);
+  }, [
+    keyboardRows,
+    focusedRowId,
+    addOpen,
+    importOpen,
+    bulkRecategorizeOpen,
+    selectedId,
+  ]);
 
   function exportRowsCsv(rows: TransactionRow[], suffix: string) {
-    const header = ["Date", "Merchant", "Description", "Category", "Account", "Source", "Status", "Amount"];
+    const header = [
+      "Date",
+      "Merchant",
+      "Description",
+      "Category",
+      "Account",
+      "Source",
+      "Status",
+      "Amount",
+    ];
     const lines = rows.map((row) =>
       [
         row.date,
@@ -2406,7 +3436,10 @@ export function TransactionsScreen() {
         .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
         .join(","),
     );
-    downloadCsv([header.join(","), ...lines].join("\n"), `transactions-${suffix}`);
+    downloadCsv(
+      [header.join(","), ...lines].join("\n"),
+      `transactions-${suffix}`,
+    );
   }
 
   function exportAuditLog() {
@@ -2418,7 +3451,10 @@ export function TransactionsScreen() {
           .join(","),
       ),
     );
-    downloadCsv([header.join(","), ...lines].join("\n"), "transactions-audit-log");
+    downloadCsv(
+      [header.join(","), ...lines].join("\n"),
+      "transactions-audit-log",
+    );
   }
 
   if (data === null) return <LoadingBlock label="transactions" />;
@@ -2426,10 +3462,27 @@ export function TransactionsScreen() {
   // Saved views: built-ins ahead of the user's, with dirty-tracking against the
   // active view. FE-only persistence today (see useSavedViews).
   const allViews = [...BUILTIN_TX_VIEWS, ...savedViewsStore.userViews];
-  const savedViewSummaries = allViews.map((view) => ({ id: view.id, name: view.name, builtIn: view.builtIn }));
+  const savedViewSummaries = allViews.map((view) => ({
+    id: view.id,
+    name: view.name,
+    builtIn: view.builtIn,
+  }));
 
   function captureFilters(): TxFilters {
-    return { search: "", range: toStoredRange(range), keywords, amount, accountIds, source, receipt, ai, review, needsAttention, groupBy, sort };
+    return {
+      search: "",
+      range: toStoredRange(range),
+      keywords,
+      amount,
+      accountIds,
+      source,
+      receipt,
+      ai,
+      review,
+      needsAttention,
+      groupBy,
+      sort,
+    };
   }
   function applyFilters(filters: TxFilters) {
     setSearch("");
@@ -2506,23 +3559,107 @@ export function TransactionsScreen() {
     else if (key === "source") setSource(next as string[]);
     else if (key === "receipt") setReceipt(next as string[]);
     else if (key === "ai") setAi(next as string[]);
-    else if (key === "review") setReview(((next as string[])[0] as ReviewFilter) ?? "all");
-    else if (key === "attention") setNeedsAttention((next as string[]).includes("needs"));
+    else if (key === "review")
+      setReview(((next as string[])[0] as ReviewFilter) ?? "all");
+    else if (key === "attention")
+      setNeedsAttention((next as string[]).includes("needs"));
   }
   const isDefaultRange = "preset" in range && range.preset === "this-month";
   const filterFacets: FilterFacetSpec[] = [
-    { kind: "custom", key: "date", label: "Date", icon: CalendarDays, active: !isDefaultRange, render: () => <DateRangeControl value={range} onChange={setRange} compact /> },
-    { kind: "keyword", key: "keywords", label: "Keyword", icon: Tags, recent: recentNames },
+    {
+      kind: "custom",
+      key: "date",
+      label: "Date",
+      icon: CalendarDays,
+      active: !isDefaultRange,
+      render: () => (
+        <DateRangeControl value={range} onChange={setRange} compact />
+      ),
+    },
+    {
+      kind: "keyword",
+      key: "keywords",
+      label: "Keyword",
+      icon: Tags,
+      recent: recentNames,
+    },
     { kind: "amount", key: "amount", label: "Amount", icon: Coins },
-    { kind: "custom", key: "account", label: "Account", icon: Landmark, active: accountIds.length > 0, render: () => <AccountMultiSelect options={accountOptions} value={accountIds} onChange={setAccountIds} placeholder="All accounts" /> },
-    { kind: "options", key: "source", label: "Source", mode: "multi", icon: ArrowLeftRight, options: [ { value: "bank", label: "Bank" }, { value: "stripe", label: "Stripe" }, { value: "manual", label: "Manual" } ] },
-    { kind: "options", key: "review", label: "Status", mode: "single", icon: CircleAlert, options: [ { value: "auto", label: "Auto-posted" }, { value: "confirmed", label: "Confirmed" }, { value: "needs_review", label: "Needs review" }, { value: "excluded", label: "Excluded" } ] },
-    { kind: "options", key: "receipt", label: "Receipt", mode: "single", icon: ReceiptText, options: [ { value: "has", label: "Has receipt" }, { value: "none", label: "No receipt" } ] },
+    {
+      kind: "custom",
+      key: "account",
+      label: "Account",
+      icon: Landmark,
+      active: accountIds.length > 0,
+      render: () => (
+        <AccountMultiSelect
+          options={accountOptions}
+          value={accountIds}
+          onChange={setAccountIds}
+          placeholder="All accounts"
+        />
+      ),
+    },
+    {
+      kind: "options",
+      key: "source",
+      label: "Source",
+      mode: "multi",
+      icon: ArrowLeftRight,
+      options: [
+        { value: "bank", label: "Bank" },
+        { value: "stripe", label: "Stripe" },
+        { value: "manual", label: "Manual" },
+      ],
+    },
+    {
+      kind: "options",
+      key: "review",
+      label: "Status",
+      mode: "single",
+      icon: CircleAlert,
+      options: [
+        { value: "auto", label: "Auto-posted" },
+        { value: "confirmed", label: "Confirmed" },
+        { value: "needs_review", label: "Needs review" },
+        { value: "excluded", label: "Excluded" },
+      ],
+    },
+    {
+      kind: "options",
+      key: "receipt",
+      label: "Receipt",
+      mode: "single",
+      icon: ReceiptText,
+      options: [
+        { value: "has", label: "Has receipt" },
+        { value: "none", label: "No receipt" },
+      ],
+    },
     // E7-4: a single "Decision" facet over the provenance kinds + AI confidence
     // bands. Rule/Memory/AI-decided each match provenance.kind exactly, so the
     // facet and the row's provenance chip never disagree.
-    { kind: "options", key: "ai", label: "Decision", mode: "single", icon: Sparkles, options: [ { value: "decided", label: "AI-decided" }, { value: "rule", label: "Rule" }, { value: "memory", label: "Memory" }, { value: "high", label: "High confidence" }, { value: "low", label: "Low confidence" } ] },
-    { kind: "options", key: "attention", label: "Attention", mode: "single", icon: CircleAlert, options: [ { value: "needs", label: "Needs attention" } ] },
+    {
+      kind: "options",
+      key: "ai",
+      label: "Decision",
+      mode: "single",
+      icon: Sparkles,
+      options: [
+        { value: "decided", label: "AI-decided" },
+        { value: "rule", label: "Rule" },
+        { value: "memory", label: "Memory" },
+        { value: "high", label: "High confidence" },
+        { value: "low", label: "Low confidence" },
+      ],
+    },
+    {
+      kind: "options",
+      key: "attention",
+      label: "Attention",
+      mode: "single",
+      icon: CircleAlert,
+      options: [{ value: "needs", label: "Needs attention" }],
+    },
   ];
 
   // E7-9: filter-rail single source. Date and Amount are the two
@@ -2534,35 +3671,68 @@ export function TransactionsScreen() {
   // dropped from the panel here so the same facet is never editable in two places
   // at once. Removing a chip and the panel stay in sync because both write the
   // SAME screen state via onFilterPanelChange / setRange / setAmount.
-  const panelFacets = filterFacets.filter((facet) => facet.key !== "date" && facet.key !== "amount");
+  const panelFacets = filterFacets.filter(
+    (facet) => facet.key !== "date" && facet.key !== "amount",
+  );
 
   // Active-filter chips with their removal handlers.
   const chips: ActiveChip[] = [];
-  if (!isDefaultRange) chips.push({ key: "date", label: `Date: ${bounds.from} – ${bounds.to}` });
-  for (const keyword of keywords) chips.push({ key: `kw:${keyword}`, label: `Keyword: ${keyword}` });
+  if (!isDefaultRange)
+    chips.push({ key: "date", label: `Date: ${bounds.from} – ${bounds.to}` });
+  for (const keyword of keywords)
+    chips.push({ key: `kw:${keyword}`, label: `Keyword: ${keyword}` });
   if (isAmountActive(amount)) {
     const parts: string[] = [];
-    if (amount.direction && amount.direction !== "any") parts.push(amount.direction === "in" ? "in" : "out");
-    if (amount.minMinor != null) parts.push(`≥ ${formatMinorMoney(amount.minMinor, { currency: data.entity.currency })}`);
-    if (amount.maxMinor != null) parts.push(`≤ ${formatMinorMoney(amount.maxMinor, { currency: data.entity.currency })}`);
+    if (amount.direction && amount.direction !== "any")
+      parts.push(amount.direction === "in" ? "in" : "out");
+    if (amount.minMinor != null)
+      parts.push(
+        `≥ ${formatMinorMoney(amount.minMinor, { currency: data.entity.currency })}`,
+      );
+    if (amount.maxMinor != null)
+      parts.push(
+        `≤ ${formatMinorMoney(amount.maxMinor, { currency: data.entity.currency })}`,
+      );
     chips.push({ key: "amount", label: `Amount: ${parts.join(" ")}`.trim() });
   }
-  if (accountIds.length) chips.push({ key: "account", label: `Accounts: ${accountIds.length}` });
-  for (const value of source) chips.push({ key: `source:${value}`, label: `Source: ${sourceLabel(value)}` });
-  if (review !== "all") chips.push({ key: "review", label: `Status: ${reviewFilterLabel(review)}` });
-  for (const value of receipt) chips.push({ key: `receipt:${value}`, label: value === "has" ? "Has receipt" : "No receipt" });
-  for (const value of ai) chips.push({ key: `ai:${value}`, label: `Decision: ${aiFilterLabel(value)}` });
-  if (needsAttention) chips.push({ key: "needsAttention", label: "Needs attention" });
+  if (accountIds.length)
+    chips.push({ key: "account", label: `Accounts: ${accountIds.length}` });
+  for (const value of source)
+    chips.push({
+      key: `source:${value}`,
+      label: `Source: ${sourceLabel(value)}`,
+    });
+  if (review !== "all")
+    chips.push({
+      key: "review",
+      label: `Status: ${reviewFilterLabel(review)}`,
+    });
+  for (const value of receipt)
+    chips.push({
+      key: `receipt:${value}`,
+      label: value === "has" ? "Has receipt" : "No receipt",
+    });
+  for (const value of ai)
+    chips.push({
+      key: `ai:${value}`,
+      label: `Decision: ${aiFilterLabel(value)}`,
+    });
+  if (needsAttention)
+    chips.push({ key: "needsAttention", label: "Needs attention" });
 
   function removeChip(key: string) {
     if (key === "date") setRange({ preset: "this-month" });
-    else if (key.startsWith("kw:")) setKeywords(keywords.filter((term) => `kw:${term}` !== key));
+    else if (key.startsWith("kw:"))
+      setKeywords(keywords.filter((term) => `kw:${term}` !== key));
     else if (key === "amount") setAmount({});
     else if (key === "account") setAccountIds([]);
-    else if (key.startsWith("source:")) setSource(source.filter((value) => `source:${value}` !== key));
+    else if (key.startsWith("source:"))
+      setSource(source.filter((value) => `source:${value}` !== key));
     else if (key === "review") setReview("all");
-    else if (key.startsWith("receipt:")) setReceipt(receipt.filter((value) => `receipt:${value}` !== key));
-    else if (key.startsWith("ai:")) setAi(ai.filter((value) => `ai:${value}` !== key));
+    else if (key.startsWith("receipt:"))
+      setReceipt(receipt.filter((value) => `receipt:${value}` !== key));
+    else if (key.startsWith("ai:"))
+      setAi(ai.filter((value) => `ai:${value}` !== key));
     else if (key === "needsAttention") setNeedsAttention(false);
   }
 
@@ -2582,7 +3752,7 @@ export function TransactionsScreen() {
       key: "merchant",
       header: "Merchant",
       mobilePrimary: true,
-      width: "32%",
+      width: "16%",
       sortValue: (row) => row.merchant,
       // E7-3: compact merchant cell — merchant + ONE provenance chip, no
       // permanent raw-description second line. An expand chevron reveals the
@@ -2613,9 +3783,13 @@ export function TransactionsScreen() {
               className="truncate font-medium"
               title={[
                 row.merchant,
-                row.rawDescription && row.rawDescription !== row.merchant ? row.rawDescription : null,
+                row.rawDescription && row.rawDescription !== row.merchant
+                  ? row.rawDescription
+                  : null,
                 humanizeReasoning(row.reasoning),
-              ].filter(Boolean).join(" · ")}
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             >
               {row.merchant}
             </span>
@@ -2627,7 +3801,7 @@ export function TransactionsScreen() {
       key: "category",
       header: "Category",
       priority: 1,
-      width: "14rem",
+      width: "11rem",
       // E7-5: the inline category control stays on the mobile card (the compact
       // meta line) as a real tap target, not buried behind the expand strip.
       mobileMeta: true,
@@ -2637,7 +3811,9 @@ export function TransactionsScreen() {
           options={categoryComboOptions}
           needsReview={row.review === "needs_review"}
           disabled={pending}
-          onChange={(categoryAccountId) => updateCategory(row.id, categoryAccountId)}
+          onChange={(categoryAccountId) =>
+            updateCategory(row.id, categoryAccountId)
+          }
         />
       ),
     },
@@ -2650,7 +3826,11 @@ export function TransactionsScreen() {
       width: "10rem",
       // E7-5: secondary field — expand-only on the mobile card.
       mobileHidden: true,
-      cell: (row) => <span className="truncate text-sm text-muted-foreground">{row.contactName ?? "—"}</span>,
+      cell: (row) => (
+        <span className="truncate text-sm text-muted-foreground">
+          {row.contactName ?? "—"}
+        </span>
+      ),
     },
     {
       key: "account",
@@ -2659,7 +3839,11 @@ export function TransactionsScreen() {
       width: "10rem",
       // E7-5: secondary field — expand-only on the mobile card.
       mobileHidden: true,
-      cell: (row) => <span className="truncate text-sm text-muted-foreground">{row.bankAccountName}</span>,
+      cell: (row) => (
+        <span className="truncate text-sm text-muted-foreground">
+          {row.bankAccountName}
+        </span>
+      ),
     },
     {
       key: "amount",
@@ -2671,7 +3855,10 @@ export function TransactionsScreen() {
       sortable: true,
       sortValue: (row) => row.amountMinor,
       cell: (row) => (
-        <Amount amountMinor={row.amountMinor} tone={row.amountMinor > 0 ? "income" : "expense"} />
+        <Amount
+          amountMinor={row.amountMinor}
+          tone={row.amountMinor > 0 ? "income" : "expense"}
+        />
       ),
     },
     {
@@ -2684,7 +3871,10 @@ export function TransactionsScreen() {
       mobileHidden: true,
       cell: (row) =>
         row.receipt ? (
-          <span className="inline-flex justify-end text-primary" title="Receipt attached">
+          <span
+            className="inline-flex justify-end text-primary"
+            title="Receipt attached"
+          >
             <Paperclip className="size-4" />
           </span>
         ) : (
@@ -2725,20 +3915,56 @@ export function TransactionsScreen() {
               : "Posted";
         return (
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={cn("size-1.5 rounded-full", row.entryId ? "bg-primary" : "bg-muted-foreground/40")} />
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                row.entryId ? "bg-primary" : "bg-muted-foreground/40",
+              )}
+            />
             {label}
           </span>
         );
       },
     },
+    {
+      key: "view",
+      header: "",
+      align: "right",
+      width: "5.5rem",
+      // Explicit per-row affordance: opens the full transaction detail overlay
+      // (the complete double-entry record, recategorize, split, attachments,
+      // comments). Row click still opens the same view; this is the discoverable
+      // button. Hidden on mobile, where tapping the card opens the detail.
+      mobileHidden: true,
+      cell: (row) => (
+        <Button
+          size="sm"
+          variant="outline"
+          data-testid="tx-view"
+          aria-label={`View ${row.merchant} details`}
+          onClick={(event) => {
+            event.stopPropagation();
+            selectRow(row);
+          }}
+        >
+          <Eye data-icon="inline-start" />
+          View
+        </Button>
+      ),
+    },
   ];
 
-  const visibleColumns = columns.filter((column) => !display.hiddenColumns.includes(column.key));
+  const visibleColumns = columns.filter(
+    (column) => !display.hiddenColumns.includes(column.key),
+  );
   const sortMenuColumns = columns
     .filter((column) => column.sortable || column.sortValue)
     .map((column) => ({
       key: column.key,
-      label: typeof column.header === "string" && column.header ? column.header : column.key,
+      label:
+        typeof column.header === "string" && column.header
+          ? column.header
+          : column.key,
     }));
   const columnToggleList = columns
     .filter((column) => !["date", "merchant", "amount"].includes(column.key))
@@ -2754,15 +3980,29 @@ export function TransactionsScreen() {
 
   const bulkActions = (
     <>
-      <Button size="xs" disabled={pending} onClick={() => bulkApprove(checkedIds)}>
+      <Button
+        size="xs"
+        disabled={pending}
+        onClick={() => bulkApprove(checkedIds)}
+      >
         <Check data-icon="inline-start" />
         Approve
       </Button>
-      <Button size="xs" variant="outline" disabled={pending} onClick={() => bulkRecategorize(checkedIds)}>
+      <Button
+        size="xs"
+        variant="outline"
+        disabled={pending}
+        onClick={() => bulkRecategorize(checkedIds)}
+      >
         <Tags data-icon="inline-start" />
         Recategorize
       </Button>
-      <Button size="xs" variant="outline" disabled={pending} onClick={() => bulkExclude(checkedIds)}>
+      <Button
+        size="xs"
+        variant="outline"
+        disabled={pending}
+        onClick={() => bulkExclude(checkedIds)}
+      >
         <X data-icon="inline-start" />
         Exclude
       </Button>
@@ -2792,16 +4032,35 @@ export function TransactionsScreen() {
       .filter((column) => !display.hiddenColumns.includes(column.key))
       .map((column) => column.key),
     filterFacets,
-    groupByOptions: ["none", "category", "account", "source", "month", "contact"],
+    groupByOptions: [
+      "none",
+      "category",
+      "account",
+      "source",
+      "month",
+      "contact",
+    ],
     sortableColumns: sortMenuColumns,
     defaultSort: { key: "date", direction: "desc" },
     primaryActions: [
-      { label: "Add transaction", onClick: () => setAddOpen(true), variant: "primary" },
-      { label: "Import", onClick: () => setImportOpen(true), variant: "secondary" },
+      {
+        label: "Add transaction",
+        onClick: () => setAddOpen(true),
+        variant: "primary",
+      },
+      {
+        label: "Import",
+        onClick: () => setImportOpen(true),
+        variant: "secondary",
+      },
     ],
     bulkActions: [
       { label: "Approve", onRun: (ids) => bulkApprove(ids), disabled: pending },
-      { label: "Recategorize", onRun: (ids) => bulkRecategorize(ids), disabled: pending },
+      {
+        label: "Recategorize",
+        onRun: (ids) => bulkRecategorize(ids),
+        disabled: pending,
+      },
       { label: "Exclude", onRun: (ids) => bulkExclude(ids), disabled: pending },
     ],
     rowToDetail: (row) => ({ title: row.merchant, tabs: [] }),
@@ -2811,7 +4070,9 @@ export function TransactionsScreen() {
   // E8-T4: the page-specific insight, built purely from the read-model this
   // screen already loaded (coreViews.transactions.insights). Returns null —
   // hiding the banner — when nothing crosses the threshold.
-  const pageInsight = buildPageInsight("transactions", { insights: data.insights });
+  const pageInsight = buildPageInsight("transactions", {
+    insights: data.insights,
+  });
 
   // Stacked group view (driver-shaped) when a Group-by is active.
   const tableGroups: WorkbenchTableGroup<TransactionRow>[] | null = groupedRows
@@ -2834,6 +4095,10 @@ export function TransactionsScreen() {
   // change — that proves the WorkbenchConfig contract on the reference surface.
   return (
     <WorkbenchSurface<TransactionRow>
+      search={search}
+      onSearch={setSearch}
+      searchPlaceholder="Search transactions"
+      tableLayout="fixed"
       config={transactionsConfig}
       banner={
         <>
@@ -2850,12 +4115,20 @@ export function TransactionsScreen() {
                 if (action === "uncategorized") setReview("needs_review");
               }}
               explainSlot={
-                <InsightBannerExplain section="transactions" entityId={data.entity.id} from={bounds.from} to={bounds.to} />
+                <InsightBannerExplain
+                  section="transactions"
+                  entityId={data.entity.id}
+                  from={bounds.from}
+                  to={bounds.to}
+                />
               }
             />
           ) : null}
           {transactionMessage ? (
-            <div className="shrink-0 rounded-[14px] bg-primary/5 p-3 text-sm text-primary" data-testid="transaction-message">
+            <div
+              className="shrink-0 rounded-[14px] bg-primary/5 p-3 text-sm text-primary"
+              data-testid="transaction-message"
+            >
               {transactionMessage}
             </div>
           ) : null}
@@ -2892,21 +4165,62 @@ export function TransactionsScreen() {
       }
       trailing={
         <>
-          <GroupByMenu noun="transactions" value={groupBy} onChange={setGroupBy} />
-          <SortMenu noun="transactions" columns={sortMenuColumns} value={sort} onChange={setSort} />
-          <DisplaySettingsMenu value={display} onChange={setDisplay} columns={columnToggleList} />
+          {(() => {
+            const pendingCount = (data.rows ?? []).filter(
+              (row) => row.review === "needs_review",
+            ).length;
+            return (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void runAiOnPending()}
+                disabled={pending}
+                data-testid="run-ai-pending"
+                title="Categorize transactions still waiting in review with your configured AI"
+              >
+                <Sparkles data-icon="inline-start" />
+                Run AI{pendingCount > 0 ? ` (${pendingCount})` : ""}
+              </Button>
+            );
+          })()}
+          <GroupByMenu
+            noun="transactions"
+            value={groupBy}
+            onChange={setGroupBy}
+          />
+          <SortMenu
+            noun="transactions"
+            columns={sortMenuColumns}
+            value={sort}
+            onChange={setSort}
+          />
+          <DisplaySettingsMenu
+            value={display}
+            onChange={setDisplay}
+            columns={columnToggleList}
+          />
           <AddMenu
             onAddTransaction={() => setAddOpen(true)}
             onImport={() => setImportOpen(true)}
             exportChoices={[
               {
-                label: checkedIds.length ? `Selected (${checkedIds.length}) — CSV` : "Current filter — CSV",
+                label: checkedIds.length
+                  ? `Selected (${checkedIds.length}) — CSV`
+                  : "Current filter — CSV",
                 onSelect: () =>
                   checkedIds.length
-                    ? exportRowsCsv((data.rows ?? []).filter((row) => checkedIds.includes(row.id)), "selected")
+                    ? exportRowsCsv(
+                        (data.rows ?? []).filter((row) =>
+                          checkedIds.includes(row.id),
+                        ),
+                        "selected",
+                      )
                     : exportRowsCsv(visibleRows, "current-filter"),
               },
-              { label: "Full register — CSV", onSelect: () => exportRowsCsv(data.rows ?? [], "all") },
+              {
+                label: "Full register — CSV",
+                onSelect: () => exportRowsCsv(data.rows ?? [], "all"),
+              },
               { label: "Audit log — CSV", onSelect: exportAuditLog },
             ]}
           />
@@ -2952,77 +4266,79 @@ export function TransactionsScreen() {
       overlays={
         <>
           <TransactionDetail
-        row={selected}
-        open={selected != null}
-        onOpenChange={(open) => {
-          if (!open) setSelectedId(null);
-        }}
-        entityId={data.entity.id}
-        categoryOptions={data.categoryOptions}
-        pending={pending}
-        otherIncomeCategoryId={otherIncomeCategoryId}
-        onRecategorize={updateCategory}
-        onExclude={excludeSelected}
-        splitFirstAmount={activeSplitFirstAmount}
-        splitSecondAmount={activeSplitSecondAmount}
-        splitFirstCategoryId={activeSplitFirstCategoryId}
-        splitSecondCategoryId={activeSplitSecondCategoryId}
-        onSplitFirstAmount={setSplitFirstAmount}
-        onSplitSecondAmount={setSplitSecondAmount}
-        onSplitFirstCategory={setSplitFirstCategoryId}
-        onSplitSecondCategory={setSplitSecondCategoryId}
-        onPostSplit={postSplit}
-      />
+            row={selected}
+            open={selected != null}
+            onOpenChange={(open) => {
+              if (!open) setSelectedId(null);
+            }}
+            entityId={data.entity.id}
+            categoryOptions={data.categoryOptions}
+            pending={pending}
+            otherIncomeCategoryId={otherIncomeCategoryId}
+            onRecategorize={updateCategory}
+            onExclude={excludeSelected}
+            splitFirstAmount={activeSplitFirstAmount}
+            splitSecondAmount={activeSplitSecondAmount}
+            splitFirstCategoryId={activeSplitFirstCategoryId}
+            splitSecondCategoryId={activeSplitSecondCategoryId}
+            onSplitFirstAmount={setSplitFirstAmount}
+            onSplitSecondAmount={setSplitSecondAmount}
+            onSplitFirstCategory={setSplitFirstCategoryId}
+            onSplitSecondCategory={setSplitSecondCategoryId}
+            onPostSplit={postSplit}
+          />
 
-      <AddTransactionDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        merchant={manualMerchant}
-        amount={manualAmount}
-        date={manualDate}
-        categoryId={manualCategoryId || defaultCategoryId}
-        bankAccountId={manualBankAccountId || defaultBankAccountId}
-        categoryOptions={data.categoryOptions}
-        bankAccounts={data.bankAccounts}
-        onMerchant={setManualMerchant}
-        onAmount={setManualAmount}
-        onDate={setManualDate}
-        onCategory={setManualCategoryId}
-        onBankAccount={setManualBankAccountId}
-        canSubmit={Boolean(defaultBankAccountId && (manualCategoryId || defaultCategoryId))}
-        pending={pending}
-        onSubmit={async () => {
-          await addManualTransaction();
-          setAddOpen(false);
-        }}
-      />
-      <ImportDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        csvText={csvText}
-        onCsvText={setCsvText}
-        csvRowCount={csvRows.length}
-        duplicateCsvCount={duplicateCsvCount}
-        canImport={Boolean(defaultBankAccountId)}
-        pending={pending}
-        onImport={async () => {
-          await importCsv();
-          setImportOpen(false);
-        }}
-      />
-      <BulkRecategorizeDialog
-        open={bulkRecategorizeOpen}
-        onOpenChange={setBulkRecategorizeOpen}
-        count={checkedIds.length}
-        categoryId={bulkRecategorizeTargetId}
-        onCategory={setBulkRecategorizeTargetId}
-        categoryOptions={data.categoryOptions}
-        pending={pending}
-        onConfirm={async () => {
-          await bulkRecategorizeWith(checkedIds, bulkRecategorizeTargetId);
-          setBulkRecategorizeOpen(false);
-        }}
-      />
+          <AddTransactionDialog
+            open={addOpen}
+            onOpenChange={setAddOpen}
+            merchant={manualMerchant}
+            amount={manualAmount}
+            date={manualDate}
+            categoryId={manualCategoryId || defaultCategoryId}
+            bankAccountId={manualBankAccountId || defaultBankAccountId}
+            categoryOptions={data.categoryOptions}
+            bankAccounts={data.bankAccounts}
+            onMerchant={setManualMerchant}
+            onAmount={setManualAmount}
+            onDate={setManualDate}
+            onCategory={setManualCategoryId}
+            onBankAccount={setManualBankAccountId}
+            canSubmit={Boolean(
+              defaultBankAccountId && (manualCategoryId || defaultCategoryId),
+            )}
+            pending={pending}
+            onSubmit={async () => {
+              await addManualTransaction();
+              setAddOpen(false);
+            }}
+          />
+          <ImportDialog
+            open={importOpen}
+            onOpenChange={setImportOpen}
+            csvText={csvText}
+            onCsvText={setCsvText}
+            csvRowCount={csvRows.length}
+            duplicateCsvCount={duplicateCsvCount}
+            canImport={Boolean(defaultBankAccountId)}
+            pending={pending}
+            onImport={async () => {
+              await importCsv();
+              setImportOpen(false);
+            }}
+          />
+          <BulkRecategorizeDialog
+            open={bulkRecategorizeOpen}
+            onOpenChange={setBulkRecategorizeOpen}
+            count={checkedIds.length}
+            categoryId={bulkRecategorizeTargetId}
+            onCategory={setBulkRecategorizeTargetId}
+            categoryOptions={data.categoryOptions}
+            pending={pending}
+            onConfirm={async () => {
+              await bulkRecategorizeWith(checkedIds, bulkRecategorizeTargetId);
+              setBulkRecategorizeOpen(false);
+            }}
+          />
         </>
       }
     />
@@ -3070,9 +4386,34 @@ function TransactionDetail({
   onSplitSecondCategory: (value: string) => void;
   onPostSplit: () => void;
 }) {
+  // Contact linking — set/clear the customer or vendor right from the detail
+  // slide-in (the fallback when AI didn't attach one). Hooks run before the
+  // early return so the rules-of-hooks order stays stable.
+  const contactOptions =
+    useQuery(
+      api.contacts.listForEntity,
+      entityId ? { entityId: entityId as Id<"entities"> } : "skip",
+    ) ?? [];
+  const setTransactionContact = useMutation(api.pipeline.setTransactionContact);
+  const [contactPending, setContactPending] = useState(false);
+  async function changeContact(contactId: string | null) {
+    if (!row) return;
+    setContactPending(true);
+    try {
+      await setTransactionContact({
+        transactionId: row.id as Id<"transactions">,
+        contactId: contactId ? (contactId as Id<"contacts">) : null,
+      });
+    } finally {
+      setContactPending(false);
+    }
+  }
   if (!row) return null;
   const debitTotal = row.lines.reduce((sum, line) => sum + line.debitMinor, 0);
-  const creditTotal = row.lines.reduce((sum, line) => sum + line.creditMinor, 0);
+  const creditTotal = row.lines.reduce(
+    (sum, line) => sum + line.creditMinor,
+    0,
+  );
   const balanced = row.lines.length > 0 && debitTotal === creditTotal;
   const attentionState = rowAttention(row);
 
@@ -3080,7 +4421,11 @@ function TransactionDetail({
   // Post split is allowed — the ledger would reject an unbalanced repost, so the
   // UI pre-validates (pure helper) and shows a clear hint rather than failing
   // server-side.
-  const splitBalance = evaluateSplitBalance(splitFirstAmount, splitSecondAmount, row.amountMinor);
+  const splitBalance = evaluateSplitBalance(
+    splitFirstAmount,
+    splitSecondAmount,
+    row.amountMinor,
+  );
   const originalSplitMinor = splitBalance.originalMinor;
   const splitBalanced = splitBalance.balanced;
   const splitRemainderMinor = splitBalance.remainderMinor;
@@ -3088,240 +4433,333 @@ function TransactionDetail({
   // One scrolling stack so every section — receipt, accounting view, activity,
   // edit — stays reachable and the balanced state reads at a glance.
   const content = (
-      <div className="flex flex-col gap-4" data-testid="transaction-drawer">
-        <div className="rounded-[14px] p-3 ring-1 ring-foreground/10">
-          <div className="text-xs text-muted-foreground">Amount</div>
-          <div className="mt-1 text-2xl font-semibold">
-            <Amount amountMinor={row.amountMinor} tone={row.amountMinor > 0 ? "income" : "expense"} />
-          </div>
+    <div className="flex flex-col gap-4" data-testid="transaction-drawer">
+      <div className="rounded-[14px] p-3 ring-1 ring-foreground/10">
+        <div className="text-xs text-muted-foreground">Amount</div>
+        <div className="mt-1 text-2xl font-semibold">
+          <Amount
+            amountMinor={row.amountMinor}
+            tone={row.amountMinor > 0 ? "income" : "expense"}
+          />
         </div>
+      </div>
 
-        {/* From → to flow: which account moved money to / from which party. */}
-        <div className="rounded-[14px] p-3 ring-1 ring-foreground/10">
-          <div className="mb-2 text-xs text-muted-foreground">Flow</div>
-          {(() => {
-            const inflow = row.amountMinor > 0;
-            const fromLabel = inflow ? (row.contactName ?? row.merchant) : row.bankAccountName;
-            const fromSub = inflow ? sourceLabel(row.source) : "Paid from account";
-            const toLabel = inflow ? row.bankAccountName : (row.contactName ?? row.merchant);
-            return (
-              <div className="flex flex-col">
-                <div className="flex items-start gap-2.5">
-                  <div className="flex flex-col items-center">
-                    <span className="mt-1 size-2 rounded-full bg-muted-foreground/50" />
-                    <span className="my-0.5 h-6 w-px bg-border" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{fromLabel}</div>
-                    <div className="money-figures text-xs text-muted-foreground">{row.date} · {fromSub}</div>
-                  </div>
+      {/* From → to flow: which account moved money to / from which party. */}
+      <div className="rounded-[14px] p-3 ring-1 ring-foreground/10">
+        <div className="mb-2 text-xs text-muted-foreground">Flow</div>
+        {(() => {
+          const inflow = row.amountMinor > 0;
+          const fromLabel = inflow
+            ? (row.contactName ?? row.merchant)
+            : row.bankAccountName;
+          const fromSub = inflow
+            ? sourceLabel(row.source)
+            : "Paid from account";
+          const toLabel = inflow
+            ? row.bankAccountName
+            : (row.contactName ?? row.merchant);
+          return (
+            <div className="flex flex-col">
+              <div className="flex items-start gap-2.5">
+                <div className="flex flex-col items-center">
+                  <span className="mt-1 size-2 rounded-full bg-muted-foreground/50" />
+                  <span className="my-0.5 h-6 w-px bg-border" />
                 </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="mt-1 size-2 rounded-full bg-primary" />
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{toLabel}</div>
-                    <div className="truncate text-xs text-muted-foreground">{row.categoryName}</div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">
+                    {fromLabel}
+                  </div>
+                  <div className="money-figures text-xs text-muted-foreground">
+                    {row.date} · {fromSub}
                   </div>
                 </div>
               </div>
-            );
-          })()}
-        </div>
-
-        <dl className="grid grid-cols-2 gap-3 text-sm">
-          <DetailField label="Category" value={row.categoryName} />
-          <DetailField label="Account" value={row.bankAccountName} />
-          <DetailField label="Contact" value={row.contactName ?? "—"} />
-          <DetailField label="Source" value={row.source} />
-        </dl>
-
-        {row.decidedBy === "ai" ? (
-          <AiInsightBadge
-            variant="inline"
-            confidence={row.confidence ?? undefined}
-            reasoning={humanizeReasoning(row.reasoning) ?? "Categorized by the AI."}
-            decidedBy={row.decidedBy ?? undefined}
-          />
-        ) : null}
-
-        <AttachmentPanel transactionId={row.id} entityId={entityId} isExpense={row.amountMinor < 0} />
-
-        {/* The double-entry record this transaction posted to — the hidden books surfaced. */}
-        <div className="rounded-[14px] ring-1 ring-foreground/10">
-          <div className="flex items-center justify-between gap-2 border-b px-3 py-2 text-sm font-semibold">
-            <span>Double-entry record</span>
-            <CategoryChip active={balanced} label={balanced ? "Balanced lines" : "Unposted"} />
-          </div>
-          <div className="divide-y">
-            {row.lines.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-muted-foreground">No posted entry yet.</div>
-            ) : (
-              row.lines.map((line) => (
-                <div key={line.id} className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-2 text-sm" data-testid="accounting-line">
-                  <span className="min-w-0 truncate text-muted-foreground">{line.accountNumber} - {line.accountName}</span>
-                  <Amount amountMinor={line.debitMinor} />
-                  <Amount amountMinor={line.creditMinor} />
+              <div className="flex items-start gap-2.5">
+                <span className="mt-1 size-2 rounded-full bg-primary" />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{toLabel}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {row.categoryName}
+                  </div>
                 </div>
-              ))
-            )}
-          </div>
-          <p className="px-3 py-2 text-xs text-muted-foreground">The hidden ledger this transaction posted to — debits always equal credits.</p>
-        </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
 
-        {/* E7-7: every correction here is a reverse + repost — posted journal
+      <dl className="grid grid-cols-2 gap-3 text-sm">
+        <DetailField label="Category" value={row.categoryName} />
+        <DetailField label="Account" value={row.bankAccountName} />
+        <DetailField label="Source" value={row.source} />
+      </dl>
+
+      {/* Editable customer/vendor link — set or clear it when AI didn't attach one. */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs text-muted-foreground">Contact</span>
+        <ContactCombobox
+          value={row.contactId ?? null}
+          options={contactOptions}
+          onChange={changeContact}
+          disabled={contactPending}
+          placeholder="Link a customer or vendor"
+          testId="tx-detail-contact"
+          className="w-full"
+        />
+      </div>
+
+      {row.decidedBy === "ai" ? (
+        <AiInsightBadge
+          variant="inline"
+          confidence={row.confidence ?? undefined}
+          reasoning={
+            humanizeReasoning(row.reasoning) ?? "Categorized by the AI."
+          }
+          decidedBy={row.decidedBy ?? undefined}
+        />
+      ) : null}
+
+      {/* Revenue-stream attribution (streams redesign) — independent of the
+          category above. Single stream by default; can split across streams. */}
+      {entityId ? (
+        <div className="rounded-[14px] ring-1 ring-foreground/10 p-3">
+          <StreamSplitEditor
+            entityId={entityId as Id<"entities">}
+            transactionId={row.id as Id<"transactions">}
+            amountMinor={row.amountMinor}
+            currency={row.currency}
+            initialStreams={row.streams ?? []}
+          />
+        </div>
+      ) : null}
+
+      <AttachmentPanel
+        transactionId={row.id}
+        entityId={entityId}
+        isExpense={row.amountMinor < 0}
+      />
+
+      {/* The double-entry record this transaction posted to — the hidden books surfaced. */}
+      <div className="rounded-[14px] ring-1 ring-foreground/10">
+        <div className="flex items-center justify-between gap-2 border-b px-3 py-2 text-sm font-semibold">
+          <span>Double-entry record</span>
+          <CategoryChip
+            active={balanced}
+            label={balanced ? "Balanced lines" : "Unposted"}
+          />
+        </div>
+        <div className="divide-y">
+          {row.lines.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-muted-foreground">
+              No posted entry yet.
+            </div>
+          ) : (
+            row.lines.map((line) => (
+              <div
+                key={line.id}
+                className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-2 text-sm"
+                data-testid="accounting-line"
+              >
+                <span className="min-w-0 truncate text-muted-foreground">
+                  {line.accountNumber} - {line.accountName}
+                </span>
+                <Amount amountMinor={line.debitMinor} />
+                <Amount amountMinor={line.creditMinor} />
+              </div>
+            ))
+          )}
+        </div>
+        <p className="px-3 py-2 text-xs text-muted-foreground">
+          The hidden ledger this transaction posted to — debits always equal
+          credits.
+        </p>
+      </div>
+
+      {/* E7-7: every correction here is a reverse + repost — posted journal
             entries are immutable, so recategorize / split / exclude reverse the
             original entry and post a new one; nothing is edited in place. */}
-        <div className="rounded-[14px] ring-1 ring-foreground/10" data-testid="correct-entry-section">
-          <div className="flex items-center gap-2 border-b px-3 py-2 text-sm font-semibold">
-            <Undo2 className="size-4 text-primary" />
-            Correct this entry
-          </div>
-          <div className="flex flex-col gap-3 p-3">
-            <p className="text-xs text-muted-foreground">
-              Posted entries are immutable. Recategorizing, splitting, or excluding
-              reverses the original journal entry and posts a new one — your history
-              stays intact and auditable.
-            </p>
-
-            {/* Primary path: pick the exact category. Posts a reverse + repost. */}
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">Recategorize to</span>
-              <InlineCategoryCombobox
-                testId="drawer-category"
-                value={row.categoryAccountId}
-                options={categoryOptions.map((option) => ({
-                  id: option.id,
-                  label: `${option.number} ${option.name}`,
-                  type: option.type,
-                }))}
-                needsReview={row.review === "needs_review"}
-                disabled={pending}
-                className="w-full"
-                onChange={(categoryAccountId) => onRecategorize(row.id, categoryAccountId)}
-              />
-            </div>
-
-            {/* Kept for the one-tap quick action / e2e flow, explicitly labeled as
-                a sample target so it never reads as a silent destination. */}
-            <Button
-              data-testid="quick-recategorize"
-              variant="outline"
-              size="sm"
-              disabled={pending || !otherIncomeCategoryId}
-              onClick={() => onRecategorize(row.id, otherIncomeCategoryId)}
-            >
-              <Check data-icon="inline-start" />
-              Recategorize to sample category
-            </Button>
-          </div>
+      <div
+        className="rounded-[14px] ring-1 ring-foreground/10"
+        data-testid="correct-entry-section"
+      >
+        <div className="flex items-center gap-2 border-b px-3 py-2 text-sm font-semibold">
+          <Undo2 className="size-4 text-primary" />
+          Correct this entry
         </div>
+        <div className="flex flex-col gap-3 p-3">
+          <p className="text-xs text-muted-foreground">
+            Posted entries are immutable. Recategorizing, splitting, or
+            excluding reverses the original journal entry and posts a new one —
+            your history stays intact and auditable.
+          </p>
 
-        <Collapsible>
-          <div className="rounded-[14px] ring-1 ring-foreground/10">
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                data-testid="split-toggle"
-                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-semibold outline-none"
-              >
-                <span className="flex items-center gap-2">
-                  <SplitSquareHorizontal className="size-4 text-primary" />
-                  Split transaction
-                </span>
-                <ChevronDown className="size-4 text-muted-foreground" />
-              </button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="flex flex-col gap-3 border-t p-3">
-                <p className="text-xs text-muted-foreground">
-                  Split this charge across two categories — e.g. part office supplies, part software. Reverses the original entry and reposts the two parts.
-                </p>
-                <div className="grid gap-2 sm:grid-cols-[1fr_110px]">
-                  <Select value={splitFirstCategoryId} onValueChange={onSplitFirstCategory}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="First category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {categoryOptions.map((option) => (
-                          <SelectItem key={option.id} value={option.id}>
-                            {option.number} - {option.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                  <Input value={splitFirstAmount} onChange={(event) => onSplitFirstAmount(event.target.value)} inputMode="decimal" />
-                </div>
-                <div className="grid gap-2 sm:grid-cols-[1fr_110px]">
-                  <Select value={splitSecondCategoryId} onValueChange={onSplitSecondCategory}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Second category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {categoryOptions.map((option) => (
-                          <SelectItem key={option.id} value={option.id}>
-                            {option.number} - {option.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                  <Input value={splitSecondAmount} onChange={(event) => onSplitSecondAmount(event.target.value)} inputMode="decimal" />
-                </div>
-                {/* E7-7: pre-validate that the two parts sum to the original
+          {/* Primary path: pick the exact category. Posts a reverse + repost. */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-muted-foreground">
+              Recategorize to
+            </span>
+            <InlineCategoryCombobox
+              testId="drawer-category"
+              value={row.categoryAccountId}
+              options={categoryOptions.map((option) => ({
+                id: option.id,
+                label: `${option.number} ${option.name}`,
+                type: option.type,
+              }))}
+              needsReview={row.review === "needs_review"}
+              disabled={pending}
+              className="w-full"
+              onChange={(categoryAccountId) =>
+                onRecategorize(row.id, categoryAccountId)
+              }
+            />
+          </div>
+
+          {/* Kept for the one-tap quick action / e2e flow, explicitly labeled as
+                a sample target so it never reads as a silent destination. */}
+          <Button
+            data-testid="quick-recategorize"
+            variant="outline"
+            size="sm"
+            disabled={pending || !otherIncomeCategoryId}
+            onClick={() => onRecategorize(row.id, otherIncomeCategoryId)}
+          >
+            <Check data-icon="inline-start" />
+            Recategorize to sample category
+          </Button>
+        </div>
+      </div>
+
+      <Collapsible>
+        <div className="rounded-[14px] ring-1 ring-foreground/10">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              data-testid="split-toggle"
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-semibold outline-none"
+            >
+              <span className="flex items-center gap-2">
+                <SplitSquareHorizontal className="size-4 text-primary" />
+                Split transaction
+              </span>
+              <ChevronDown className="size-4 text-muted-foreground" />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="flex flex-col gap-3 border-t p-3">
+              <p className="text-xs text-muted-foreground">
+                Split this charge across two categories — e.g. part office
+                supplies, part software. Reverses the original entry and reposts
+                the two parts.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-[1fr_110px]">
+                <Select
+                  value={splitFirstCategoryId}
+                  onValueChange={onSplitFirstCategory}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="First category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {categoryOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.number} - {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={splitFirstAmount}
+                  onChange={(event) => onSplitFirstAmount(event.target.value)}
+                  inputMode="decimal"
+                />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[1fr_110px]">
+                <Select
+                  value={splitSecondCategoryId}
+                  onValueChange={onSplitSecondCategory}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Second category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {categoryOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.number} - {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={splitSecondAmount}
+                  onChange={(event) => onSplitSecondAmount(event.target.value)}
+                  inputMode="decimal"
+                />
+              </div>
+              {/* E7-7: pre-validate that the two parts sum to the original
                     amount before allowing Post split — the ledger rejects an
                     unbalanced repost, so surface a clear hint here instead. */}
-                {!splitBalanced ? (
-                  <p
-                    data-testid="split-balance-hint"
-                    className="text-xs text-warning"
-                  >
-                    The two parts must add up to <Amount amountMinor={originalSplitMinor} />. {" "}
-                    {Number.isNaN(splitRemainderMinor) ? null : (
-                      <>
-                        <Amount amountMinor={Math.abs(splitRemainderMinor)} />{" "}
-                        {splitRemainderMinor > 0 ? "left to allocate" : "over"}.
-                      </>
-                    )}
-                  </p>
-                ) : null}
-                <Button
-                  data-testid="split-post"
-                  onClick={onPostSplit}
-                  disabled={pending || !splitFirstCategoryId || !splitSecondCategoryId || !splitBalanced}
+              {!splitBalanced ? (
+                <p
+                  data-testid="split-balance-hint"
+                  className="text-xs text-warning"
                 >
-                  <SplitSquareHorizontal data-icon="inline-start" />
-                  Post split
-                </Button>
-              </div>
-            </CollapsibleContent>
-          </div>
-        </Collapsible>
-
-        {/* Activity / history. */}
-        <div className="rounded-[14px] ring-1 ring-foreground/10">
-          <div className="flex items-center gap-2 border-b px-3 py-2 text-sm font-semibold">
-            <History className="size-4 text-primary" />
-            Activity history
-          </div>
-          <div className="divide-y">
-            {row.activity.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-muted-foreground">No audit events linked yet.</div>
-            ) : (
-              row.activity.map((event) => (
-                <div key={event.id} className="px-3 py-2 text-sm">
-                  <div className="font-medium">{event.action}</div>
-                  <div className="text-muted-foreground">{event.summary}</div>
-                </div>
-              ))
-            )}
-          </div>
+                  The two parts must add up to{" "}
+                  <Amount amountMinor={originalSplitMinor} />.{" "}
+                  {Number.isNaN(splitRemainderMinor) ? null : (
+                    <>
+                      <Amount amountMinor={Math.abs(splitRemainderMinor)} />{" "}
+                      {splitRemainderMinor > 0 ? "left to allocate" : "over"}.
+                    </>
+                  )}
+                </p>
+              ) : null}
+              <Button
+                data-testid="split-post"
+                onClick={onPostSplit}
+                disabled={
+                  pending ||
+                  !splitFirstCategoryId ||
+                  !splitSecondCategoryId ||
+                  !splitBalanced
+                }
+              >
+                <SplitSquareHorizontal data-icon="inline-start" />
+                Post split
+              </Button>
+            </div>
+          </CollapsibleContent>
         </div>
+      </Collapsible>
 
-        <CommentsThread transactionId={row.id} />
+      {/* Activity / history. */}
+      <div className="rounded-[14px] ring-1 ring-foreground/10">
+        <div className="flex items-center gap-2 border-b px-3 py-2 text-sm font-semibold">
+          <History className="size-4 text-primary" />
+          Activity history
+        </div>
+        <div className="divide-y">
+          {row.activity.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-muted-foreground">
+              No audit events linked yet.
+            </div>
+          ) : (
+            row.activity.map((event) => (
+              <div key={event.id} className="px-3 py-2 text-sm">
+                <div className="font-medium">{event.action}</div>
+                <div className="text-muted-foreground">{event.summary}</div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
+
+      <CommentsThread transactionId={row.id} />
+    </div>
   );
 
   const footer = (
@@ -3342,7 +4780,9 @@ function TransactionDetail({
       onOpenChange={onOpenChange}
       title={row.merchant}
       subtitle={row.rawDescription}
-      attention={attentionState ? <AttentionState state={attentionState} /> : null}
+      attention={
+        attentionState ? <AttentionState state={attentionState} /> : null
+      }
       footer={footer}
     >
       {content}
@@ -3350,7 +4790,13 @@ function TransactionDetail({
   );
 }
 
-function DetailField({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailField({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -3402,23 +4848,40 @@ function AddTransactionDialog({
         <DialogHeader>
           <DialogTitle>Add transaction</DialogTitle>
           <DialogDescription>
-            Routes through the same pipeline as imports — it posts to the ledger, and lands in your Inbox if uncertain.
+            Routes through the same pipeline as imports — it posts to the
+            ledger, and lands in your Inbox if uncertain.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="manual-merchant">Merchant</FieldLabel>
-            <Input id="manual-merchant" data-testid="manual-merchant" value={merchant} onChange={(event) => onMerchant(event.target.value)} />
+            <Input
+              id="manual-merchant"
+              data-testid="manual-merchant"
+              value={merchant}
+              onChange={(event) => onMerchant(event.target.value)}
+            />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field>
               <FieldLabel htmlFor="manual-amount">Amount</FieldLabel>
-              <Input id="manual-amount" data-testid="manual-amount" value={amount} inputMode="decimal" onChange={(event) => onAmount(event.target.value)} />
+              <Input
+                id="manual-amount"
+                data-testid="manual-amount"
+                value={amount}
+                inputMode="decimal"
+                onChange={(event) => onAmount(event.target.value)}
+              />
               <FieldDescription>Negative = money out.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel htmlFor="manual-date">Date</FieldLabel>
-              <Input id="manual-date" type="date" value={date} onChange={(event) => onDate(event.target.value)} />
+              <Input
+                id="manual-date"
+                type="date"
+                value={date}
+                onChange={(event) => onDate(event.target.value)}
+              />
             </Field>
           </div>
           <Field>
@@ -3462,7 +4925,11 @@ function AddTransactionDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button data-testid="manual-add" onClick={onSubmit} disabled={pending || !canSubmit}>
+          <Button
+            data-testid="manual-add"
+            onClick={onSubmit}
+            disabled={pending || !canSubmit}
+          >
             <Plus data-icon="inline-start" />
             Add transaction
           </Button>
@@ -3493,39 +4960,104 @@ function ImportDialog({
   pending: boolean;
   onImport: () => void;
 }) {
+  // Tracks the picked file's name for feedback; cleared when the owner edits the
+  // textarea by hand so the "Loaded <file>" hint never goes stale.
+  const [fileName, setFileName] = useState<string | null>(null);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!pending) onOpenChange(next); }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Import transactions</DialogTitle>
           <DialogDescription>
-            Paste CSV / OFX rows. Everything routes through the pipeline — transfers, rules, and AI run first; uncertain items land in your Inbox.
+            Upload a CSV file or paste rows below. Everything routes through the
+            pipeline — transfers, rules, and AI run first; uncertain items land
+            in your Inbox.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild variant="outline" size="sm" type="button">
+                <label htmlFor="csv-file" className="cursor-pointer">
+                  <FileUp data-icon="inline-start" />
+                  Upload CSV file
+                </label>
+              </Button>
+              <input
+                id="csv-file"
+                data-testid="csv-file"
+                type="file"
+                accept=".csv,text/csv"
+                className="sr-only"
+                onChange={async (event) => {
+                  // Read the file into the SAME csvText state the textarea uses,
+                  // so parsing/dedupe/import stay one shared code path. The owner
+                  // can then review/edit the loaded rows before importing.
+                  const input = event.currentTarget;
+                  const file = input.files?.[0];
+                  if (!file) return;
+                  const text = await file.text();
+                  onCsvText(text);
+                  setFileName(file.name);
+                  input.value = ""; // allow re-picking the same file
+                }}
+              />
+              {fileName ? (
+                <span className="text-xs text-muted-foreground">
+                  Loaded{" "}
+                  <span className="font-medium text-foreground">
+                    {fileName}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  or paste rows below
+                </span>
+              )}
+            </div>
             <FieldLabel htmlFor="csv-text">CSV rows</FieldLabel>
             <textarea
               id="csv-text"
               data-testid="csv-text"
               className="min-h-32 w-full rounded-[10px] border bg-background p-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               value={csvText}
-              onChange={(event) => onCsvText(event.target.value)}
+              onChange={(event) => {
+                onCsvText(event.target.value);
+                setFileName(null);
+              }}
             />
             <FieldDescription>
-              Column 1: Date · Column 2: Description · Column 3: Amount.{" "}
+              First row is a header. Column 1: Date (YYYY-MM-DD) · Column 2:
+              Description · Column 3: Amount.{" "}
               <span className="money-figures">{csvRowCount}</span> rows ready ·{" "}
-              <span className="money-figures">{duplicateCsvCount}</span> duplicate-looking.
+              <span className="money-figures">{duplicateCsvCount}</span>{" "}
+              duplicate-looking.
             </FieldDescription>
           </Field>
         </FieldGroup>
+        {pending ? (
+          <div className="flex items-center gap-2.5 rounded-[10px] bg-muted/60 px-3 py-2.5 text-sm text-muted-foreground">
+            <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+            <span>
+              Importing {csvRowCount} {csvRowCount === 1 ? "row" : "rows"} — please wait…
+            </span>
+          </div>
+        ) : null}
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button data-testid="csv-import" onClick={onImport} disabled={pending || !canImport}>
-            <FileUp data-icon="inline-start" />
-            Import
+          <Button
+            data-testid="csv-import"
+            onClick={onImport}
+            disabled={pending || !canImport}
+          >
+            {pending ? (
+              <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
+            ) : (
+              <FileUp data-icon="inline-start" />
+            )}
+            {pending ? "Importing…" : "Import"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -3558,18 +5090,29 @@ function BulkRecategorizeDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" data-testid="bulk-recategorize-dialog">
+      <DialogContent
+        className="sm:max-w-md"
+        data-testid="bulk-recategorize-dialog"
+      >
         <DialogHeader>
-          <DialogTitle>Recategorize {count} transaction{count === 1 ? "" : "s"}</DialogTitle>
+          <DialogTitle>
+            Recategorize {count} transaction{count === 1 ? "" : "s"}
+          </DialogTitle>
           <DialogDescription>
-            Choose the category these move to. Each one reverses its original journal entry and reposts — nothing is edited in place.
+            Choose the category these move to. Each one reverses its original
+            journal entry and reposts — nothing is edited in place.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="bulk-recategorize-category">Category</FieldLabel>
+            <FieldLabel htmlFor="bulk-recategorize-category">
+              Category
+            </FieldLabel>
             <Select value={categoryId} onValueChange={onCategory}>
-              <SelectTrigger id="bulk-recategorize-category" data-testid="bulk-recategorize-category">
+              <SelectTrigger
+                id="bulk-recategorize-category"
+                data-testid="bulk-recategorize-category"
+              >
                 <SelectValue placeholder="Choose a category" />
               </SelectTrigger>
               <SelectContent>

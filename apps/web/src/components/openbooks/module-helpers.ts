@@ -77,6 +77,10 @@ export type ModuleOverview = {
     };
   };
   payroll: {
+    // Maker-checker: preparers (Owner + Accountant + HR) draft/edit/submit runs
+    // and manage the roster; approvers (Owner + Accountant) approve/post/settle.
+    canPrepare: boolean;
+    canApprove: boolean;
     employees: EmployeeRow[];
     runs: PayrollRunRow[];
     currencyTotals: Array<{ currency: string; localMinor: number; baseMinor: number }>;

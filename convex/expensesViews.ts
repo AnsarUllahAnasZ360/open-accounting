@@ -14,14 +14,19 @@ const TODAY = "2026-06-11";
 // Summary base total, which sums the SAME approved runs. (E10-T4)
 const PAYROLL_EXPENSE_NUMBER = "5000";
 
-// Period presets, computed against the demo "today". `this` = month-to-date
-// (Jun 1–11 2026); `last` = the full prior month (May 2026). Mirrors the
-// Expenses prototype's two-segment period control.
-const PERIODS = {
-  this: { start: "2026-06-01", end: TODAY, label: "This month" },
-  last: { start: "2026-05-01", end: "2026-05-31", label: "Last month" },
-} as const;
-type PeriodId = keyof typeof PERIODS;
+// Period identifiers. The actual window is resolved at query time from the
+// caller's real `range`/`today` (see the handler) — falling back to a
+// month-to-date / prior-month window anchored to `today`. No window is frozen
+// to a hardcoded calendar date anymore (that previously hid any transaction
+// dated after the demo "today" of 2026-06-11).
+type PeriodId = "this" | "last";
+
+// The two-segment period control's options (labels only — the real date windows
+// are resolved from `range`/`today` at query time, never hardcoded).
+const PERIOD_OPTIONS: Array<{ id: PeriodId; label: string }> = [
+  { id: "this", label: "This month" },
+  { id: "last", label: "Last month" },
+];
 
 function dateDiffDays(left: string, right: string) {
   return Math.floor((Date.parse(`${left}T00:00:00Z`) - Date.parse(`${right}T00:00:00Z`)) / 86_400_000);
@@ -188,8 +193,9 @@ function categoryTotals(
 function detectRecurring(
   transactions: Doc<"transactions">[],
   accountsById: Map<Id<"ledgerAccounts">, Doc<"ledgerAccounts">>,
+  today: string,
 ): RecurringRow[] {
-  const windowStart = shiftMonth(`${TODAY.slice(0, 7)}-01`, -6);
+  const windowStart = shiftMonth(`${today.slice(0, 7)}-01`, -6);
   const byMerchant = new Map<string, Doc<"transactions">[]>();
   for (const txn of transactions) {
     if (txn.amountMinor >= 0 || txn.date < windowStart || txn.review === "excluded") continue;
@@ -242,7 +248,7 @@ function detectRecurring(
 const EMPTY = {
   entity: null,
   period: "this" as PeriodId,
-  periods: Object.entries(PERIODS).map(([id, value]) => ({ id, label: value.label })),
+  periods: PERIOD_OPTIONS,
   kpis: {
     spentMinor: 0,
     spentLabel: "Spent",
@@ -271,6 +277,14 @@ export const overview = query({
     entityId: v.optional(v.id("entities")),
     scope: v.optional(scopeValidator),
     period: v.optional(v.union(v.literal("this"), v.literal("last"))),
+    // Real reporting window from the screen's date-range control. When provided
+    // it drives the period (and the P&L-backed totals are computed for exactly
+    // it); otherwise we fall back to a month-to-date / prior-month window
+    // anchored to `today`.
+    range: v.optional(v.object({ start: v.string(), end: v.string() })),
+    // The client's real "today" (todayIso()). Anchors the preset windows and the
+    // trailing recurring-detection window instead of a hardcoded date.
+    today: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { entities, isPortfolioScope } = await resolveExpenseEntities(ctx, args);
@@ -281,8 +295,15 @@ export const overview = query({
     const entity = orderedEntities[0]!;
     const entityIds = orderedEntities.map((scopedEntity) => scopedEntity._id);
     const periodId: PeriodId = args.period ?? "this";
-    const period = PERIODS[periodId];
-    const prevStart = shiftMonth(period.start, -1);
+    const today = args.today ?? TODAY;
+    const monthStart = `${today.slice(0, 7)}-01`;
+    // Explicit range wins; otherwise resolve the preset against the REAL today —
+    // month-to-date for "this", the full prior month for "last".
+    const windowStart =
+      args.range?.start ?? (periodId === "last" ? shiftMonth(monthStart, -1) : monthStart);
+    const windowEnd =
+      args.range?.end ?? (periodId === "last" ? monthEnd(shiftMonth(monthStart, -1)) : today);
+    const prevStart = shiftMonth(windowStart, -1);
     const prevEnd = monthEnd(prevStart);
 
     const [accountGroups, entryGroups, lineGroups, transactionGroups, contactGroups, documentGroups, bankAccountGroups, payrollRunGroups] = await Promise.all([
@@ -328,7 +349,7 @@ export const overview = query({
     // provenance-tagged expense group (E10-T4).
     const payrollAccount = accounts.find((account) => account.number === PAYROLL_EXPENSE_NUMBER) ?? null;
 
-    const current = categoryTotals(lines, entriesById, expenseAccountIds, period.start, period.end);
+    const current = categoryTotals(lines, entriesById, expenseAccountIds, windowStart, windowEnd);
     const previous = categoryTotals(lines, entriesById, expenseAccountIds, prevStart, prevEnd);
 
     const totalMinor = [...current.values()].reduce((sum, row) => sum + row.totalMinor, 0);
@@ -339,7 +360,7 @@ export const overview = query({
     const vendorByAccount = new Map<Id<"ledgerAccounts">, Map<string, { name: string; totalMinor: number }>>();
     for (const txn of transactions) {
       if (!txn.categoryAccountId || !expenseAccountIds.has(txn.categoryAccountId)) continue;
-      if (txn.date < period.start || txn.date > period.end) continue;
+      if (txn.date < windowStart || txn.date > windowEnd) continue;
       const vendors = vendorByAccount.get(txn.categoryAccountId) ?? new Map();
       const name = (txn.contactId ? contactsById.get(txn.contactId)?.name : null) ?? txn.merchant;
       const row = vendors.get(name) ?? { name, totalMinor: 0 };
@@ -384,8 +405,8 @@ export const overview = query({
     const payrollGroup: PayrollGroup | null = (() => {
       if (!payrollAccount) return null;
       const baseMinor = current.get(payrollAccount._id)?.totalMinor ?? 0;
-      const periodStartMonth = period.start.slice(0, 7);
-      const periodEndMonth = period.end.slice(0, 7);
+      const periodStartMonth = windowStart.slice(0, 7);
+      const periodEndMonth = windowEnd.slice(0, 7);
       const runIds = payrollRuns
         .filter((run) => run.period >= periodStartMonth && run.period <= periodEndMonth)
         .map((run) => run._id as string);
@@ -400,7 +421,7 @@ export const overview = query({
       };
     })();
 
-    const recurring = detectRecurring(transactions, accountsById);
+    const recurring = detectRecurring(transactions, accountsById, today);
     const recurringMonthlyMinor = recurring
       .filter((row) => row.cadence === "Monthly")
       .reduce((sum, row) => sum + row.averageMinor, 0);
@@ -430,7 +451,7 @@ export const overview = query({
     const expenseTxns = transactions.filter((txn) => {
       if (txn.review === "excluded") return false;
       if (isLikelyInternalTransfer(txn)) return false;
-      if (txn.date < period.start || txn.date > period.end) return false;
+      if (txn.date < windowStart || txn.date > windowEnd) return false;
       if (txn.amountMinor >= 0) return false;
       const tagged = txn.categoryAccountId ? expenseAccountIds.has(txn.categoryAccountId) : false;
       const uncategorizedOutflow = !txn.categoryAccountId;
@@ -508,7 +529,7 @@ export const overview = query({
 
     // Recurring trend: total monthly recurring (Monthly-cadence) outflow over the
     // trailing 6 months, so the Recurring tab can show the predictable-spend line.
-    const trendStart = shiftMonth(`${period.start.slice(0, 7)}-01`, -5);
+    const trendStart = shiftMonth(`${windowStart.slice(0, 7)}-01`, -5);
     const trendBuckets = new Map<string, number>();
     for (let i = 0; i < 6; i += 1) {
       trendBuckets.set(shiftMonth(trendStart, i).slice(0, 7), 0);
@@ -533,10 +554,10 @@ export const overview = query({
         isDemo: isPortfolioScope ? false : entity.isDemo,
       },
       period: periodId,
-      periods: Object.entries(PERIODS).map(([id, value]) => ({ id, label: value.label })),
+      periods: PERIOD_OPTIONS,
       kpis: {
         spentMinor: totalMinor,
-        spentLabel: `Spent · ${period.start.slice(0, 7)}`,
+        spentLabel: `Spent · ${windowStart.slice(0, 7)}`,
         deltaPct: spentDeltaPct,
         recurringMonthlyMinor,
         recurringSharePct: totalMinor > 0 ? Math.min(100, Math.round((recurringMonthlyMinor / totalMinor) * 100)) : 0,

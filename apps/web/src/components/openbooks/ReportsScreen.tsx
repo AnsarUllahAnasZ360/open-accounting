@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -252,7 +253,7 @@ function CloseBooksBanner({
       await setPeriodLock({ entityId, lockedThroughDate: throughDate });
       setMessage(throughDate ? `Closed ${monthLabel}. Posting before ${throughDate} is locked.` : `Reopened ${monthLabel}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not update the period lock.");
+      setMessage(getErrorMessage(error, "Could not update the period lock."));
     } finally {
       setPending(false);
     }
@@ -378,7 +379,7 @@ function ReconciliationCard({ entityId }: { entityId: Id<"entities"> | null }) {
     try {
       return await fn();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Reconciliation action failed.");
+      setMessage(getErrorMessage(error, "Reconciliation action failed."));
       return undefined;
     } finally {
       setPending(false);

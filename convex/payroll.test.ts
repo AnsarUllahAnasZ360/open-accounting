@@ -982,3 +982,66 @@ describe("E10-T7: entity-explicit statement + deterministic bank + authz", () =>
     await expect(session.mutation(api.payroll.markRunPaid, { runId })).rejects.toThrow(/bank account/i);
   });
 });
+
+describe("auto-settle: an approved run settles itself when its bank payment syncs", () => {
+  it("auto-settles a run when a KEYWORDED matching outflow is present (one cash-out)", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPayroll(t); // one USD employee, $5,000
+    const session = authed(t, ids.userId);
+    const bank = await operatingBank(t, ids.entityId);
+
+    // A clearly-labelled payroll outflow matching the run total, in the window.
+    const txnId = await addBankTxn(t, {
+      entityId: ids.entityId,
+      bankAccountId: bank.bankAccountId,
+      amountMinor: -500_000,
+      date: "2026-04-30",
+      merchant: "Gusto",
+      rawDescription: "GUSTO PAYROLL",
+    });
+
+    const { runId } = await session.mutation(api.payroll.startRun, { entityId: ids.entityId, period: "2026-04" });
+    await session.mutation(api.payroll.approveRun, { runId });
+    expect((await session.query(api.payroll.runDetail, { runId }))!.run.status).toBe("approved");
+
+    // The sync path fires this with a system actor — no human click.
+    const result = await t.mutation(internal.payroll.autoSettleApprovedRunsForEntity, {
+      entityId: ids.entityId,
+      actorUserId: ids.userId,
+    });
+    expect(result.settledRuns).toBe(1);
+
+    expect((await session.query(api.payroll.runDetail, { runId }))!.run.status).toBe("paid");
+    const txn = (await getTxn(t, txnId))!;
+    expect(txn.review).toBe("confirmed");
+    expect(txn.categoryAccountId).toBe(ids.payableId);
+    expect(txn.rawDescription).toContain("auto-settled");
+    // Exactly one cash-out: the settlement credited the bank once; the matched
+    // txn posts no entry of its own.
+    expect(await bankCashOutMinor(t, ids.entityId, bank.ledgerAccountId)).toBe(500_000);
+  });
+
+  it("does NOT auto-settle a keyword-LESS outflow — leaves it for manual Mark paid", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setupPayroll(t);
+    const session = authed(t, ids.userId);
+    const bank = await operatingBank(t, ids.entityId);
+    await addBankTxn(t, {
+      entityId: ids.entityId,
+      bankAccountId: bank.bankAccountId,
+      amountMinor: -500_000,
+      date: "2026-04-30",
+      merchant: "Mercury Checking",
+      rawDescription: "Outbound ACH",
+    });
+    const { runId } = await session.mutation(api.payroll.startRun, { entityId: ids.entityId, period: "2026-04" });
+    await session.mutation(api.payroll.approveRun, { runId });
+
+    const result = await t.mutation(internal.payroll.autoSettleApprovedRunsForEntity, {
+      entityId: ids.entityId,
+      actorUserId: ids.userId,
+    });
+    expect(result.settledRuns).toBe(0);
+    expect((await session.query(api.payroll.runDetail, { runId }))!.run.status).toBe("approved");
+  });
+});

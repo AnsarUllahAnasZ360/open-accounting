@@ -5,6 +5,7 @@ import { PayrollScreen } from "@/components/openbooks/ModuleScreens";
 import { ContactsScreen } from "@/components/openbooks/ContactsScreen";
 import { ExpensesScreen } from "@/components/openbooks/ExpensesScreen";
 import { IncomeScreen } from "@/components/openbooks/IncomeScreen";
+import { RevenueStreamsScreen } from "@/components/openbooks/RevenueStreamsScreen";
 import { EmptyState } from "@/components/openbooks/primitives";
 import { SectionInsights } from "@/components/openbooks/InsightsScreen";
 import { ReportsScreen } from "@/components/openbooks/ReportsScreen";
@@ -38,6 +39,7 @@ const KNOWN_ROUTES = [
   "/contacts",
   "/payroll",
   "/reports",
+  "/revenue-streams",
   "/settings",
 ];
 
@@ -63,6 +65,8 @@ function SectionDefaultScreen({ section, subsection }: { section: string; subsec
       return <PayrollScreen subsection={subsection} />;
     case "reports":
       return <ReportsScreen />;
+    case "revenue-streams":
+      return <RevenueStreamsScreen subsection={subsection} />;
     default:
       return null;
   }

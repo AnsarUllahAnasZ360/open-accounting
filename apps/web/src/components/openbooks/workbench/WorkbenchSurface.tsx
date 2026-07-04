@@ -1,7 +1,9 @@
 "use client";
 
+import { Search } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { Input } from "@/components/ui/input";
 import type { ActiveChip } from "./FilterBar";
 import { OpenBooksDataTable, type ColumnDef, type SortState } from "./OpenBooksDataTable";
 import { SavedViews, type SavedViewSummary } from "./SavedViews";
@@ -37,6 +39,10 @@ export function WorkbenchSurface<Row>({
   testId,
   // Status banner (above the toolbar).
   banner,
+  // Per-table search box (renders when onSearch is provided).
+  search,
+  onSearch,
+  searchPlaceholder,
   // Toolbar slots.
   savedViews,
   pills,
@@ -63,6 +69,8 @@ export function WorkbenchSurface<Row>({
   attention,
   empty,
   emptyGroups,
+  // "fixed" keeps every column on one screen (honors widths + truncates).
+  tableLayout,
   // Overlays (DetailSheet, dialogs) rendered after the table region.
   overlays,
 }: {
@@ -76,11 +84,11 @@ export function WorkbenchSurface<Row>({
   testId?: string;
   banner?: ReactNode;
   savedViews?: SavedViewSummaryProps;
-  /** @deprecated Page-local search was removed; use the app command search. */
+  /** Per-table search box value — wire to the screen's existing search state. */
   search?: string;
-  /** @deprecated Page-local search was removed; use the app command search. */
+  /** Change handler; when provided, the toolbar renders the search box. */
   onSearch?: (next: string) => void;
-  /** @deprecated Page-local search was removed; use the app command search. */
+  /** Placeholder for the search box (e.g. "Search transactions"). */
   searchPlaceholder?: string;
   pills?: ReactNode;
   trailing?: ReactNode;
@@ -108,15 +116,21 @@ export function WorkbenchSurface<Row>({
   attention?: (row: Row) => ReactNode;
   empty?: ReactNode;
   emptyGroups?: ReactNode;
+  /** "fixed" honors column widths and truncates so all columns stay on screen. */
+  tableLayout?: "auto" | "fixed";
   overlays?: ReactNode;
 }) {
   const surfaceTestId = testId ?? (config ? `${config.section}-screen` : undefined);
+  const searchNode = onSearch ? (
+    <WorkbenchSearch value={search ?? ""} onChange={onSearch} placeholder={searchPlaceholder} />
+  ) : undefined;
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden" data-testid={surfaceTestId}>
       {banner}
 
       <div className="shrink-0">
         <WorkbenchToolbar
+          search={searchNode}
           views={
             savedViews ? (
               <SavedViews
@@ -160,6 +174,7 @@ export function WorkbenchSurface<Row>({
                     onRowClick={onRowClick}
                     showToolbar={false}
                     pagination={false}
+                    tableLayout={tableLayout}
                     density={density}
                     sort={sort}
                     onSortChange={onSortChange}
@@ -191,6 +206,7 @@ export function WorkbenchSurface<Row>({
           onSortChange={onSortChange}
           tableContainerClassName="min-h-0 flex-1 overflow-auto border border-border bg-card ring-foreground/5"
           tableInnerContainerClassName="overflow-x-auto"
+          tableLayout={tableLayout}
           mobileListClassName="min-h-0 flex-1 overflow-y-auto pr-1"
           rowAttributes={rowAttributes}
           renderExpanded={renderExpanded}
@@ -201,6 +217,40 @@ export function WorkbenchSurface<Row>({
       )}
 
       {overlays}
+    </div>
+  );
+}
+
+/**
+ * The shared per-table search box. Controlled — the consuming screen owns the
+ * `search` state and already filters its rows by it (client term filter or a
+ * server search arg); this just renders the input consistently across every
+ * workbench table.
+ */
+function WorkbenchSearch({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="relative w-full min-w-0 sm:w-56">
+      <Search
+        className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+        aria-hidden="true"
+      />
+      <Input
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder ?? "Search"}
+        aria-label={placeholder ?? "Search"}
+        data-testid="workbench-search"
+        className="h-9 pl-8"
+      />
     </div>
   );
 }

@@ -65,6 +65,7 @@ export { DisplaySettingsMenu, type DisplaySettings } from "./DisplaySettingsMenu
 export { AiNarrativePanel, type InsightsSection } from "./AiNarrativePanel";
 export { AddMenu, type ExportChoice, type AddMenuExtraItem } from "./AddMenu";
 export { InlineCategoryCombobox, type CategoryOption } from "./InlineCategoryCombobox";
+export { ContactCombobox, type ContactOption } from "./ContactCombobox";
 
 // E8 — the single per-page insight banner + its pure builder registry, plus the
 // opt-in AI "Explain" affordance (E8-T8) pages pass into the banner's slot.

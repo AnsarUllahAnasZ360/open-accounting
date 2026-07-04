@@ -1,6 +1,7 @@
 "use client";
 
 import { useAction } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import { CheckCircle2 } from "lucide-react";
 import { FormEvent, useState } from "react";
 
@@ -35,7 +36,7 @@ export function RequestAccessFormClient() {
       formElement.reset();
       setState("success");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Request could not be saved.");
+      setError(getErrorMessage(caught, "Request could not be saved."));
       setState("error");
     }
   }

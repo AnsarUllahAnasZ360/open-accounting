@@ -1,8 +1,15 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsUpDown,
+} from "lucide-react";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 
+import { useDensity } from "@/components/openbooks/DensityProvider";
 import { EmptyState } from "@/components/openbooks/primitives";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -88,12 +95,18 @@ export type SortState = { key: string; direction: "asc" | "desc" } | null;
  * small window around the current page, with "ellipsis" markers for the gaps
  * (e.g. 1 … 5 6 7 … 20). Page indices are 0-based.
  */
-function getPaginationPages(current: number, total: number, window = 1): (number | "ellipsis")[] {
+function getPaginationPages(
+  current: number,
+  total: number,
+  window = 1,
+): (number | "ellipsis")[] {
   const wanted = new Set<number>([0, total - 1]);
   for (let i = current - window; i <= current + window; i++) {
     if (i >= 0 && i < total) wanted.add(i);
   }
-  const sorted = [...wanted].filter((p) => p >= 0 && p < total).sort((a, b) => a - b);
+  const sorted = [...wanted]
+    .filter((p) => p >= 0 && p < total)
+    .sort((a, b) => a - b);
   const result: (number | "ellipsis")[] = [];
   let previous = -1;
   for (const page of sorted) {
@@ -137,6 +150,7 @@ export function OpenBooksDataTable<Row>({
   tableContainerClassName,
   tableInnerContainerClassName,
   mobileListClassName,
+  tableLayout = "auto",
   className,
 }: {
   columns: ColumnDef<Row>[];
@@ -188,8 +202,15 @@ export function OpenBooksDataTable<Row>({
   tableInnerContainerClassName?: string;
   /** Optional mobile list styling for surfaces that pin chrome above the rows. */
   mobileListClassName?: string;
+  /**
+   * "fixed" makes columns honor their `width` and truncate overflowing text
+   * instead of widening the table — so dense tables (e.g. Transactions, with a
+   * long Merchant column) keep every column on one screen. Defaults to "auto".
+   */
+  tableLayout?: "auto" | "fixed";
   className?: string;
 }) {
+  const { density: globalDensity } = useDensity();
   const [internalSort, setInternalSort] = useState<SortState>(null);
   const sort = sortProp !== undefined ? sortProp : internalSort;
   function setSort(next: SortState | ((prev: SortState) => SortState)) {
@@ -251,14 +272,23 @@ export function OpenBooksDataTable<Row>({
   const clampedPageIndex = Math.min(pageIndex, pageCount - 1);
   const canPaginate = pagination && sortedRows.length > pageSize;
   const pageRows = pagination
-    ? sortedRows.slice(clampedPageIndex * pageSize, clampedPageIndex * pageSize + pageSize)
+    ? sortedRows.slice(
+        clampedPageIndex * pageSize,
+        clampedPageIndex * pageSize + pageSize,
+      )
     : sortedRows;
-  const firstRowNumber = sortedRows.length === 0 ? 0 : clampedPageIndex * pageSize + 1;
-  const lastRowNumber = Math.min(sortedRows.length, clampedPageIndex * pageSize + pageRows.length);
+  const firstRowNumber =
+    sortedRows.length === 0 ? 0 : clampedPageIndex * pageSize + 1;
+  const lastRowNumber = Math.min(
+    sortedRows.length,
+    clampedPageIndex * pageSize + pageRows.length,
+  );
 
   const allIds = pageRows.map(getRowId);
-  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
-  const someSelected = allIds.some((id) => selectedIds.includes(id)) && !allSelected;
+  const allSelected =
+    allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
+  const someSelected =
+    allIds.some((id) => selectedIds.includes(id)) && !allSelected;
 
   function toggleAll() {
     if (allSelected) {
@@ -270,13 +300,22 @@ export function OpenBooksDataTable<Row>({
   }
   function toggleRow(id: string) {
     setSelectedIds(
-      selectedIds.includes(id) ? selectedIds.filter((v) => v !== id) : [...selectedIds, id],
+      selectedIds.includes(id)
+        ? selectedIds.filter((v) => v !== id)
+        : [...selectedIds, id],
     );
   }
 
-  const rowPad = density === "compact" ? "py-1.5" : "py-2.5";
-  const stickyHeaderCell = "sticky top-0 z-20 bg-background shadow-[0_1px_0_0_var(--border)]";
-  const sortableColumns = columns.filter((column) => column.sortable || column.sortValue);
+  // Density: honor an explicit `compact` prop, otherwise follow the global
+  // density toggle (Settings topbar). Lets the whole app's tables tighten at once
+  // while still allowing a specific table to force compact.
+  const effectiveDensity = density === "compact" ? "compact" : globalDensity;
+  const rowPad = effectiveDensity === "compact" ? "py-1.5" : "py-2.5";
+  const stickyHeaderCell =
+    "sticky top-0 z-20 bg-background shadow-[0_1px_0_0_var(--border)]";
+  const sortableColumns = columns.filter(
+    (column) => column.sortable || column.sortValue,
+  );
   const sortValue = sort?.key ?? "__default__";
 
   function sortLabel(column: ColumnDef<Row>) {
@@ -290,7 +329,10 @@ export function OpenBooksDataTable<Row>({
       setSort(null);
       return;
     }
-    setSort((prev) => ({ key: value, direction: prev?.key === value ? prev.direction : "asc" }));
+    setSort((prev) => ({
+      key: value,
+      direction: prev?.key === value ? prev.direction : "asc",
+    }));
   }
 
   function toggleSortDirection() {
@@ -299,7 +341,10 @@ export function OpenBooksDataTable<Row>({
         const first = sortableColumns[0];
         return first ? { key: first.key, direction: "asc" } : null;
       }
-      return { key: prev.key, direction: prev.direction === "asc" ? "desc" : "asc" };
+      return {
+        key: prev.key,
+        direction: prev.direction === "asc" ? "desc" : "asc",
+      };
     });
     setPageIndex(0);
   }
@@ -323,11 +368,17 @@ export function OpenBooksDataTable<Row>({
   // count (incl. the optional selection + attention columns) so the strip's
   // single full-span cell aligns under the whole row.
   const expandedSet = useMemo(() => new Set(expandedIds ?? []), [expandedIds]);
-  const desktopColSpan = columns.length + (selectable ? 1 : 0) + (attention ? 1 : 0);
+  const desktopColSpan =
+    columns.length + (selectable ? 1 : 0) + (attention ? 1 : 0);
 
   if (loading) {
     return (
-      <div className={cn("rounded-[14px] ring-1 ring-foreground/10 shadow-xs", className)}>
+      <div
+        className={cn(
+          "rounded-[14px] ring-1 ring-foreground/10 shadow-xs",
+          className,
+        )}
+      >
         <div className="flex flex-col gap-3 p-4">
           {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="flex items-center gap-3">
@@ -345,7 +396,12 @@ export function OpenBooksDataTable<Row>({
   if (rows.length === 0) {
     return (
       <div className={cn(className)}>
-        {empty ?? <EmptyState title="Nothing here yet" description="Items will show up here as they arrive." />}
+        {empty ?? (
+          <EmptyState
+            title="Nothing here yet"
+            description="Items will show up here as they arrive."
+          />
+        )}
       </div>
     );
   }
@@ -361,14 +417,20 @@ export function OpenBooksDataTable<Row>({
                 : `${firstRowNumber}-${lastRowNumber} of ${sortedRows.length} rows`}
             </span>
             {selectedIds.length > 0 ? (
-              <span className="money-figures">{selectedIds.length} selected</span>
+              <span className="money-figures">
+                {selectedIds.length} selected
+              </span>
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {sortableColumns.length > 0 ? (
               <>
                 <Select value={sortValue} onValueChange={handleSortSelect}>
-                  <SelectTrigger size="sm" className="w-[150px]" aria-label="Sort rows">
+                  <SelectTrigger
+                    size="sm"
+                    className="w-[150px]"
+                    aria-label="Sort rows"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent align="end">
@@ -404,7 +466,11 @@ export function OpenBooksDataTable<Row>({
                 setPageIndex(0);
               }}
             >
-              <SelectTrigger size="sm" className="w-[112px]" aria-label="Rows per page">
+              <SelectTrigger
+                size="sm"
+                className="w-[112px]"
+                aria-label="Rows per page"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent align="end">
@@ -423,26 +489,45 @@ export function OpenBooksDataTable<Row>({
 
       {selectable && selectedIds.length > 0 ? (
         <div className="flex items-center justify-between gap-3 rounded-[14px] bg-muted px-3 py-2">
-          <span className="money-figures text-sm font-medium">{selectedIds.length} selected</span>
+          <span className="money-figures text-sm font-medium">
+            {selectedIds.length} selected
+          </span>
           <div className="flex items-center gap-2">{bulkActions}</div>
         </div>
       ) : null}
 
-      {/* Desktop: dense ledger table. It keeps a bottom horizontal scrollbar for
-          wide operational views while each surface owns sensible column widths. */}
+      {/* Desktop: dense ledger table. The table fits its container width; lower-
+          priority columns hide as the viewport narrows (see column.priority) and
+          text cells truncate, so every visible column stays on one screen instead
+          of forcing a bottom horizontal scrollbar. */}
       <div
         className={cn(
           "hidden overflow-x-auto overflow-y-auto rounded-[14px] ring-1 ring-foreground/10 shadow-xs md:block",
           tableContainerClassName,
         )}
       >
-        <Table className="min-w-[960px] table-auto" containerClassName={cn("overflow-x-auto", tableInnerContainerClassName)}>
+        <Table
+          className={cn(
+            "w-full",
+            tableLayout === "fixed" ? "table-fixed" : "table-auto",
+          )}
+          containerClassName={cn(
+            "overflow-x-auto",
+            tableInnerContainerClassName,
+          )}
+        >
           <TableHeader className="bg-background">
             <TableRow>
               {selectable ? (
                 <TableHead className={cn(stickyHeaderCell, "w-10")}>
                   <Checkbox
-                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    checked={
+                      allSelected
+                        ? true
+                        : someSelected
+                          ? "indeterminate"
+                          : false
+                    }
                     onCheckedChange={toggleAll}
                     aria-label="Select all rows"
                   />
@@ -484,7 +569,14 @@ export function OpenBooksDataTable<Row>({
                   </TableHead>
                 );
               })}
-              {attention ? <TableHead className={cn(stickyHeaderCell, "w-px whitespace-nowrap text-right")} /> : null}
+              {attention ? (
+                <TableHead
+                  className={cn(
+                    stickyHeaderCell,
+                    "w-px whitespace-nowrap text-right",
+                  )}
+                />
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -492,17 +584,25 @@ export function OpenBooksDataTable<Row>({
               const id = getRowId(row);
               const selected = selectedIds.includes(id);
               const expandedContent =
-                renderExpanded && expandedSet.has(id) ? renderExpanded(row) : null;
+                renderExpanded && expandedSet.has(id)
+                  ? renderExpanded(row)
+                  : null;
               return (
                 <Fragment key={id}>
                   <TableRow
                     {...rowAttributes?.(row)}
                     data-state={selected ? "selected" : undefined}
-                    className={cn(onRowClick && "cursor-pointer", expandedContent && "border-b-0")}
+                    className={cn(
+                      onRowClick && "cursor-pointer",
+                      expandedContent && "border-b-0",
+                    )}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                   >
                     {selectable ? (
-                      <TableCell className={rowPad} onClick={(event) => event.stopPropagation()}>
+                      <TableCell
+                        className={rowPad}
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         <Checkbox
                           checked={selected}
                           onCheckedChange={() => toggleRow(id)}
@@ -525,14 +625,14 @@ export function OpenBooksDataTable<Row>({
                         {column.cell(row)}
                       </TableCell>
                     ))}
-                    {attention ? (
+                    {/* {attention ? (
                       <TableCell
                         className={cn(rowPad, "w-px whitespace-nowrap text-right")}
                         onClick={(event) => event.stopPropagation()}
                       >
                         <span className="inline-flex items-center justify-end gap-1">{attention(row)}</span>
                       </TableCell>
-                    ) : null}
+                    ) : null} */}
                   </TableRow>
                   {expandedContent ? (
                     <TableRow
@@ -540,7 +640,10 @@ export function OpenBooksDataTable<Row>({
                       className="hover:bg-transparent"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <TableCell colSpan={desktopColSpan} className="bg-muted/30 py-3">
+                      <TableCell
+                        colSpan={desktopColSpan}
+                        className="bg-muted/30 py-3"
+                      >
                         {expandedContent}
                       </TableCell>
                     </TableRow>
@@ -559,7 +662,8 @@ export function OpenBooksDataTable<Row>({
           const selected = selectedIds.includes(id);
           const mobileAttributes = rowAttributes?.(row);
           if (mobileAttributes?.["data-testid"]) {
-            mobileAttributes["data-testid"] = `${mobileAttributes["data-testid"]}-card`;
+            mobileAttributes["data-testid"] =
+              `${mobileAttributes["data-testid"]}-card`;
           }
           return (
             <div
@@ -570,7 +674,8 @@ export function OpenBooksDataTable<Row>({
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               className={cn(
                 "rounded-[14px] bg-card p-3 ring-1 ring-foreground/10 shadow-xs outline-none",
-                onRowClick && "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",
+                onRowClick &&
+                  "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",
                 selected && "ring-primary/40",
               )}
             >
@@ -603,7 +708,10 @@ export function OpenBooksDataTable<Row>({
                   </div>
                 ) : null}
                 {attention ? (
-                  <span className="shrink-0" onClick={(event) => event.stopPropagation()}>
+                  <span
+                    className="shrink-0"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     {attention(row)}
                   </span>
                 ) : null}
@@ -616,7 +724,10 @@ export function OpenBooksDataTable<Row>({
                   {mobileMetaColumns.map((column) => (
                     <span
                       key={column.key}
-                      className={cn("min-w-0 max-w-full truncate", column.mono && "money-figures")}
+                      className={cn(
+                        "min-w-0 max-w-full truncate",
+                        column.mono && "money-figures",
+                      )}
                       onClick={(event) => event.stopPropagation()}
                     >
                       {column.cell(row)}
@@ -627,9 +738,19 @@ export function OpenBooksDataTable<Row>({
               {mobileRestColumns.length > 0 ? (
                 <dl className="mt-2 flex flex-col gap-1">
                   {mobileRestColumns.map((column) => (
-                    <div key={column.key} className="flex items-center justify-between gap-3 text-sm">
-                      <dt className="shrink-0 text-muted-foreground">{column.header}</dt>
-                      <dd className={cn("min-w-0 truncate text-right", column.mono && "money-figures")}>
+                    <div
+                      key={column.key}
+                      className="flex items-center justify-between gap-3 text-sm"
+                    >
+                      <dt className="shrink-0 text-muted-foreground">
+                        {column.header}
+                      </dt>
+                      <dd
+                        className={cn(
+                          "min-w-0 truncate text-right",
+                          column.mono && "money-figures",
+                        )}
+                      >
                         {column.cell(row)}
                       </dd>
                     </div>
@@ -666,7 +787,11 @@ export function OpenBooksDataTable<Row>({
                     setPageIndex(0);
                   }}
                 >
-                  <SelectTrigger size="sm" className="h-7 w-[78px]" aria-label="Rows per page">
+                  <SelectTrigger
+                    size="sm"
+                    className="h-7 w-[78px]"
+                    aria-label="Rows per page"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent align="start">
@@ -690,35 +815,42 @@ export function OpenBooksDataTable<Row>({
                     variant="ghost"
                     size="icon-sm"
                     aria-label="Previous page"
-                    onClick={() => setPageIndex(Math.max(0, clampedPageIndex - 1))}
+                    onClick={() =>
+                      setPageIndex(Math.max(0, clampedPageIndex - 1))
+                    }
                     disabled={clampedPageIndex === 0}
                   >
                     <ChevronLeft />
                   </Button>
                 </PaginationItem>
-                {getPaginationPages(clampedPageIndex, pageCount).map((page, index) =>
-                  page === "ellipsis" ? (
-                    <PaginationItem key={`ellipsis-${index}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        isActive={page === clampedPageIndex}
-                        onClick={() => setPageIndex(page)}
-                        className="money-figures cursor-pointer"
-                      >
-                        {page + 1}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ),
+                {getPaginationPages(clampedPageIndex, pageCount).map(
+                  (page, index) =>
+                    page === "ellipsis" ? (
+                      <PaginationItem key={`ellipsis-${index}`}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    ) : (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          isActive={page === clampedPageIndex}
+                          onClick={() => setPageIndex(page)}
+                          className="money-figures cursor-pointer"
+                        >
+                          {page + 1}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ),
                 )}
                 <PaginationItem>
                   <Button
                     variant="ghost"
                     size="icon-sm"
                     aria-label="Next page"
-                    onClick={() => setPageIndex(Math.min(pageCount - 1, clampedPageIndex + 1))}
+                    onClick={() =>
+                      setPageIndex(
+                        Math.min(pageCount - 1, clampedPageIndex + 1),
+                      )
+                    }
                     disabled={clampedPageIndex >= pageCount - 1}
                   >
                     <ChevronRight />

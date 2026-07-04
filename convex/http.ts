@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { auth } from "./auth";
 import { isDevAuthBypassEnabled } from "./authz";
+import type { PlaidApiCredential } from "./plaid";
 import { normalizePlaidWebhookEvent, verifyPlaidWebhookSignature } from "./plaidWebhook";
 import { normalizeStripeWebhookEvent, verifyStripeWebhookSignature } from "./stripeWebhook";
 
@@ -254,9 +255,53 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const payload = await request.text();
+
+    // Resolve the workspace Plaid credential so signature verification can call
+    // Plaid's verification-key endpoint. When Plaid is configured through the
+    // in-app setup form (not env vars), the process.env keys are empty and that
+    // call fails with MISSING_FIELDS. Primary: the item's own entity (from the
+    // webhook's item_id). Fallback: any active Plaid credential (the verify-key
+    // call only needs valid keys for the environment). The JWT signature is
+    // still fully verified below, so credential selection can't bypass anything.
+    let credential: PlaidApiCredential | undefined;
+    try {
+      let entityId: Id<"entities"> | undefined;
+      try {
+        const parsed = JSON.parse(payload) as { item_id?: unknown };
+        if (typeof parsed.item_id === "string") {
+          const owner = await ctx.runQuery(internal.plaid.getEntityForPlaidItem, {
+            plaidItemId: parsed.item_id,
+          });
+          entityId = owner?.entityId;
+        }
+      } catch {
+        // Malformed JSON — verification below rejects it.
+      }
+      if (!entityId) {
+        const anyCred = await ctx.runQuery(internal.connections.anyActivePlaidCredentialEntity, {});
+        entityId = anyCred?.entityId;
+      }
+      if (entityId) {
+        credential =
+          ((await ctx.runAction(internal.connections.resolvePlaidCredentialForEntity, {
+            entityId,
+          })) as PlaidApiCredential | null) ?? undefined;
+      }
+    } catch (error) {
+      console.error("plaid webhook: credential resolution failed", error);
+    }
+
+    // No saved credential AND no env keys → can't verify. Return a clear error
+    // instead of letting callPlaid throw an uncaught MISSING_FIELDS.
+    const hasEnvPlaidKeys = Boolean(process.env.PLAID_CLIENT_ID?.trim() && process.env.PLAID_SECRET?.trim());
+    if (!credential && !hasEnvPlaidKeys) {
+      return jsonResponse({ ok: false, error: "plaid_credential_unavailable" }, { status: 503 });
+    }
+
     const verified = await verifyPlaidWebhookSignature({
       payload,
       verificationHeader: request.headers.get("Plaid-Verification"),
+      credential,
     });
     if (!verified.ok) {
       return jsonResponse({ ok: false, error: verified.error }, { status: 400 });

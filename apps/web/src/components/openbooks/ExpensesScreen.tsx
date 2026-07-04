@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import type { FunctionReturnType } from "convex/server";
 import {
   ArrowUpRight,
@@ -123,7 +124,7 @@ export function ExpensesScreen({ subsection }: { subsection?: string }) {
 // Expenses (cash) surface — the unified MONEY-OUT (settled spend) table. Rows =
 // expense transactions (cash already spent). The admin-gated inline category
 // edit reverses+reposts the ledger via api.categories.recategorizeTransaction —
-// the client never posts. Expense tone is NEUTRAL, never alarm-red.
+// the client never posts. Expense (money-out) figures use the negative red tone.
 // ---------------------------------------------------------------------------
 
 type ExpensesCashFilters = {
@@ -151,6 +152,10 @@ function ExpensesCashSurface() {
   const [search, setSearch] = useState("");
 
   const serverPeriod = rangeToServerPeriod(period);
+  // Send the REAL selected window (and today) so the server scopes to it instead
+  // of a hardcoded demo month — this is what was hiding transactions dated after
+  // the old frozen "today". Works for presets and custom ranges alike.
+  const periodIso = dateRangeValueToISO(period, todayIso());
   const data = useQuery(api.expensesViews.overview, {
     ...(scope === "all"
       ? { scope: "all" as const }
@@ -158,6 +163,8 @@ function ExpensesCashSurface() {
         ? { entityId: activeEntity.id as Id<"entities"> }
         : {}),
     period: serverPeriod,
+    range: { start: periodIso.from, end: periodIso.to },
+    today: todayIso(),
   });
 
   // Mirror the preset period into the URL so sidebar subroutes preserve the
@@ -504,6 +511,9 @@ function ExpensesCashTable({
 
   return (
     <WorkbenchSurface<ExpenseRow>
+      search={search}
+      onSearch={setSearch}
+      searchPlaceholder="Search expenses"
       config={config}
       testId="expenses-screen"
       banner={
@@ -661,7 +671,7 @@ function CategorySelect({
       });
       toast.success("Recategorized — the ledger reposted automatically.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not recategorize.");
+      toast.error(getErrorMessage(error, "Could not recategorize."));
     } finally {
       setBusy(false);
     }
@@ -1087,6 +1097,9 @@ function BillsApTable({
 
   return (
     <WorkbenchSurface<BillRow>
+      search={search}
+      onSearch={setSearch}
+      searchPlaceholder="Search bills"
       config={config}
       testId="expenses-bills-screen"
       banner={
@@ -1278,7 +1291,7 @@ function AddCategoryModal({
       setName("");
       toast.success("Category created — it's ready to use in transactions and reports.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create the category.");
+      setError(getErrorMessage(err, "Could not create the category."));
     } finally {
       setBusy(false);
     }

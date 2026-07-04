@@ -3,7 +3,9 @@ import { v } from "convex/values";
 import { resolveActiveEntity } from "./activeEntity";
 import type { Doc, Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
-import { requireAnyWorkspaceRole } from "./authz";
+import { requireAnyWorkspaceRole, roleHasPermission } from "./authz";
+import { baseEquivalentMinor, formatFxRateMicros, FX_MICRO_SCALE } from "./payrollMath";
+import { resolveAccrualFxRateMicros } from "./payroll";
 
 // The server-clock "today" (ISO YYYY-MM-DD). Callers may pass an explicit
 // `today` so tests are deterministic; otherwise we read the request-time clock,
@@ -88,22 +90,20 @@ function auditActorLabel(event: Doc<"auditEvents">, entry?: Doc<"journalEntries"
   return event.actorUserId ? "user" : "system";
 }
 
-function baseMinorForEmployee(employee: Doc<"employees">, baseCurrency: string) {
+// Roster-estimate conversion. Takes the SAME fetched-then-fallback rate the run
+// engine + People roster use (resolveAccrualFxRateMicros), so every currency —
+// BDT/PKR/AED/SAR/etc. — converts correctly and identically everywhere.
+// Previously a local map only knew PKR/INR, so any other currency (e.g. BDT) was
+// silently counted 1:1.
+function baseMinorForEmployee(employee: Doc<"employees">, baseCurrency: string, rateMicros: number) {
   if (employee.currency === baseCurrency) return employee.monthlySalaryMinor;
-  const conversionDenominator: Record<string, number> = {
-    PKR: 278,
-    INR: 83,
-  };
-  return Math.round(employee.monthlySalaryMinor / (conversionDenominator[employee.currency] ?? 1));
+  return baseEquivalentMinor(employee.monthlySalaryMinor, rateMicros);
 }
 
-function fxDisplay(employee: Doc<"employees">, baseCurrency: string) {
+function fxDisplay(employee: Doc<"employees">, baseCurrency: string, rateMicros: number) {
   if (employee.currency === baseCurrency) return `1 ${baseCurrency} = 1 ${employee.currency}`;
-  const denominator: Record<string, number> = {
-    PKR: 278,
-    INR: 83,
-  };
-  return `1 ${baseCurrency} = ${denominator[employee.currency] ?? 1} ${employee.currency}`;
+  const rate = formatFxRateMicros(rateMicros, baseCurrency, employee.currency);
+  return `1 ${baseCurrency} = ${rate} ${employee.currency}`;
 }
 
 export const overview = query({
@@ -118,6 +118,11 @@ export const overview = query({
     const today = resolveToday(args.today);
     const currentYear = today.slice(0, 4);
     const { membership, entity } = await resolveActiveEntity(ctx, args.entityId);
+    // Maker-checker payroll: preparers (Owner + Accountant + HR) draft/edit/
+    // submit; approvers (Owner + Accountant) approve/post/settle. Gates the UI;
+    // the server re-checks on write.
+    const canPreparePayroll = membership ? roleHasPermission(membership.role, "payroll.prepare") : false;
+    const canApprovePayroll = membership ? roleHasPermission(membership.role, "payroll.approve") : false;
 
     if (!entity) {
       return {
@@ -131,6 +136,8 @@ export const overview = query({
           uploadPdf: { status: "available", reason: "Upload a receipt or bill PDF after creating a business.", documents: [] },
         },
         payroll: {
+          canPrepare: canPreparePayroll,
+          canApprove: canApprovePayroll,
           employees: [],
           runs: [],
           currencyTotals: [],
@@ -614,9 +621,23 @@ export const overview = query({
         }),
     );
 
+    // Resolve one FX rate per distinct employee currency (fetched-then-fallback),
+    // exactly like the People roster + run engine, so every derived figure here
+    // — roster estimate, currency totals, the payroll insight — matches them.
+    const rateByCurrency = new Map<string, number>();
+    for (const employee of employees) {
+      if (!rateByCurrency.has(employee.currency)) {
+        rateByCurrency.set(
+          employee.currency,
+          await resolveAccrualFxRateMicros(ctx, entity.currency, employee.currency),
+        );
+      }
+    }
+
     const employeeRows = employees
       .map((employee) => {
-        const baseAmountMinor = baseMinorForEmployee(employee, entity.currency);
+        const rateMicros = rateByCurrency.get(employee.currency) ?? FX_MICRO_SCALE;
+        const baseAmountMinor = baseMinorForEmployee(employee, entity.currency, rateMicros);
         return {
           id: employee._id,
           name: employee.name,
@@ -624,7 +645,7 @@ export const overview = query({
           currency: employee.currency,
           monthlySalaryMinor: employee.monthlySalaryMinor,
           baseAmountMinor,
-          fxDisplay: fxDisplay(employee, entity.currency),
+          fxDisplay: fxDisplay(employee, entity.currency, rateMicros),
           active: employee.active,
           adjustmentMinor: 0,
           finalAmountMinor: employee.monthlySalaryMinor,
@@ -847,6 +868,8 @@ export const overview = query({
         },
       },
       payroll: {
+        canPrepare: canPreparePayroll,
+        canApprove: canApprovePayroll,
         employees: employeeRows,
         runs: payrollRuns
           .sort((a, b) => b.period.localeCompare(a.period))
@@ -865,7 +888,14 @@ export const overview = query({
               // Approved-but-unsettled lines awaiting a bank match. 0 for drafts.
               unmatchedCount:
                 run.status === "approved" ? runLines.filter((line) => !line.paid).length : 0,
-              actionState: run.status === "draft" ? "ready_to_approve" : run.status === "approved" ? "ready_to_mark_paid" : "paid",
+              actionState:
+                run.status === "draft"
+                  ? "ready_to_submit"
+                  : run.status === "submitted"
+                    ? "awaiting_approval"
+                    : run.status === "approved"
+                      ? "ready_to_mark_paid"
+                      : "paid",
             };
           }),
         currencyTotals,

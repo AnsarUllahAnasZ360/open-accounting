@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type QueryCtx, query } from "./_generated/server";
+import { getActiveEntity } from "./activeEntity";
 import { requireWorkspaceRole } from "./authz";
 import { getEntityForWrite } from "./ledger";
 
@@ -14,6 +15,29 @@ import { getEntityForWrite } from "./ledger";
 // ---------------------------------------------------------------------------
 
 const ROLE = v.union(v.literal("customer"), v.literal("vendor"));
+
+/**
+ * Lightweight active-contacts list for pickers (e.g. linking a contact to a
+ * transaction in the Inbox / detail). Read-only; entity-scoped; excludes
+ * archived contacts. Returns just id/name/roles so the client can render a
+ * searchable dropdown without loading full profiles.
+ */
+export const listForEntity = query({
+  args: { entityId: v.optional(v.id("entities")) },
+  handler: async (ctx, args) => {
+    const entity = await getActiveEntity(ctx, args.entityId);
+    if (!entity) return [];
+    await requireWorkspaceRole(ctx, entity.workspaceId, "member");
+    const contacts = await ctx.db
+      .query("contacts")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .take(2000);
+    return contacts
+      .filter((contact) => !contact.archived)
+      .map((contact) => ({ id: contact._id, name: contact.name, roles: contact.roles }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
 
 /** Add a contact to the directory (customer and/or vendor). Entity-scoped. */
 export const createContact = mutation({
@@ -410,9 +434,11 @@ function buildContactReadModel(
   // Activity timeline with a RUNNING BALANCE. We track AR and AP as separate
   // running balances (never netted). An invoice issued raises AR; a payment
   // received lowers it. A bill raises AP; a settlement lowers it.
+  // "transaction" kind covers bank/Stripe/manual entries linked to this contact
+  // that are not settlement legs (not AR 1100 / AP 2100).
   type Activity = {
     id: string;
-    kind: "invoice" | "invoice-payment" | "bill" | "bill-payment";
+    kind: "invoice" | "invoice-payment" | "bill" | "bill-payment" | "transaction";
     date: string;
     label: string;
     side: "receivable" | "payable";
@@ -420,6 +446,7 @@ function buildContactReadModel(
     paymentMinor: number; // decreases it
     status: string;
     entryIds: string[];
+    categoryName?: string; // set on "transaction" kind
   };
   const activity: Activity[] = [];
   for (const i of contactInvoices) {
@@ -454,6 +481,49 @@ function buildContactReadModel(
       });
     }
   }
+  // Add posted bank/Stripe/manual transactions linked to this contact.
+  // Exclude settlement legs (AR 1100 / AP 2100) — those are already represented
+  // by invoice-payment / bill-payment entries above, and double-counting them
+  // would skew the running balance.
+  for (const txn of contactTxns) {
+    if (!txn.categoryAccountId) continue;
+    if (isSettlement(txn.categoryAccountId)) continue;
+    if (txn.status !== "posted") continue;
+    const isInflow = txn.amountMinor >= 0;
+    const account = accountsById.get(txn.categoryAccountId);
+    activity.push({
+      id: String(txn._id),
+      kind: "transaction",
+      date: txn.date,
+      label: txn.merchant,
+      side: isInflow ? "receivable" : "payable",
+      chargeMinor: isInflow ? txn.amountMinor : 0,
+      paymentMinor: isInflow ? 0 : Math.abs(txn.amountMinor),
+      status: "posted",
+      entryIds: txn.entryId ? [String(txn.entryId)] : [],
+      categoryName: account?.name ?? "Uncategorized",
+    });
+  }
+
+  // Category breakdown — how much this contact has paid/been paid per service.
+  // Keyed by account id; excludes settlement accounts and unposted transactions.
+  const byCategoryMap = new Map<string, { name: string; number: string; inMinor: number; outMinor: number; txCount: number }>();
+  for (const txn of contactTxns) {
+    if (!txn.categoryAccountId) continue;
+    if (isSettlement(txn.categoryAccountId)) continue;
+    if (txn.status !== "posted") continue;
+    const key = String(txn.categoryAccountId);
+    const account = accountsById.get(txn.categoryAccountId);
+    const entry = byCategoryMap.get(key) ?? { name: account?.name ?? "Uncategorized", number: account?.number ?? "", inMinor: 0, outMinor: 0, txCount: 0 };
+    if (txn.amountMinor >= 0) entry.inMinor += txn.amountMinor;
+    else entry.outMinor += Math.abs(txn.amountMinor);
+    entry.txCount += 1;
+    byCategoryMap.set(key, entry);
+  }
+  const categoryBreakdown = [...byCategoryMap.values()].sort(
+    (a, b) => (b.inMinor + b.outMinor) - (a.inMinor + a.outMinor),
+  );
+
   activity.sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
   let arRunning = 0;
   let apRunning = 0;
@@ -504,6 +574,7 @@ function buildContactReadModel(
     apAging,
     timeline,
     openItems,
+    categoryBreakdown,
     lastActivityDate,
     defaultCategory: defaultCategory ? { id: defaultCategory._id, name: defaultCategory.name, number: defaultCategory.number } : null,
   };

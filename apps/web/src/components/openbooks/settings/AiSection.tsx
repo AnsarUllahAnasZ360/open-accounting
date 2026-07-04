@@ -1,6 +1,7 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import { Check, ChevronDown, ExternalLink, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -39,9 +40,14 @@ const AUTONOMY_CONSEQUENCE: Record<AiAutonomyMode, string> = {
 export function AiSection({
   entityId,
   workspaceId,
+  // Onboarding embeds this same component but only wants the actionable controls
+  // (provider/key + autonomy). The spend estimate and the Diagnostics disclosure
+  // are owner-everyday Settings surfaces, so they are hidden in the wizard.
+  hideDiagnostics = false,
 }: {
   entityId: Id<"entities"> | null;
   workspaceId: Id<"workspaces"> | null;
+  hideDiagnostics?: boolean;
 }) {
   const providerStatus = useQuery(api.ai.providerStatus, workspaceId ? { workspaceId } : "skip");
   const catalog = useQuery(api.aiCatalog.list, {});
@@ -51,11 +57,11 @@ export function AiSection({
   );
   const batchRuns = useQuery(
     api.ai.latestCategorizationBatchRuns,
-    entityId ? { entityId, limit: 5 } : "skip",
+    entityId && !hideDiagnostics ? { entityId, limit: 5 } : "skip",
   );
   const evalRuns = useQuery(
     api.ai.latestCategorizationEvalRuns,
-    entityId ? { entityId, limit: 3 } : "skip",
+    entityId && !hideDiagnostics ? { entityId, limit: 3 } : "skip",
   );
   const setConfig = useMutation(api.ai.setConfig);
   const saveCredential = useMutation(api.credentials.saveCredential);
@@ -64,13 +70,14 @@ export function AiSection({
   // trigger. Refit cadence is also a weekly cron; this lets an owner refit now.
   const calibration = useQuery(
     api.ai.workspaceCalibration,
-    workspaceId ? { workspaceId, ...(entityId ? { entityId } : {}) } : "skip",
+    workspaceId && !hideDiagnostics ? { workspaceId, ...(entityId ? { entityId } : {}) } : "skip",
   );
   const recalibrate = useAction(api.ai.fitEntityCalibrationsFromHoldout);
   const [recalibrating, setRecalibrating] = useState(false);
   const [calibrationMessage, setCalibrationMessage] = useState("");
 
-  const [autonomyOverride, setAutonomyOverride] = useState<AiAutonomyMode | null>(null);
+  // Autonomy selector removed — always locked to autopilot (≥75% auto-posts).
+  // const [autonomyOverride, setAutonomyOverride] = useState<AiAutonomyMode | null>(null);
   const [testMessage, setTestMessage] = useState("");
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -88,7 +95,8 @@ export function AiSection({
   const [baseUrl, setBaseUrl] = useState("");
 
   const status = frontendAiStatus(providerStatus);
-  const autonomy: AiAutonomyMode = autonomyOverride ?? providerStatus?.autonomy ?? "balanced";
+  // Autonomy locked to autopilot — selector removed.
+  const autonomy: AiAutonomyMode = "autopilot";
 
   const selectedProviderId = providerOverride ?? providerStatus?.configuredProvider ?? "bedrock";
   const selectedEntry = useMemo(
@@ -117,21 +125,7 @@ export function AiSection({
   const isCustomModel = selectedModel === CUSTOM_MODEL;
   const effectiveModel = isCustomModel ? customModel.trim() : selectedModel;
 
-  async function pickAutonomy(value: AiAutonomyMode) {
-    if (!workspaceId) {
-      setTestMessage("Workspace settings are still loading.");
-      return;
-    }
-    setAutonomyOverride(value);
-    try {
-      // Provider omitted: setConfig preserves the saved provider, only autonomy changes.
-      await setConfig({ workspaceId, autonomy: value });
-      setTestMessage("");
-    } catch (err) {
-      setAutonomyOverride(null);
-      setTestMessage(err instanceof Error ? err.message : "Could not save AI autonomy.");
-    }
-  }
+  // pickAutonomy removed — autonomy is locked to autopilot.
 
   async function saveProviderKey() {
     if (!workspaceId) {
@@ -184,7 +178,7 @@ export function AiSection({
             : "Saved provider and model. Add a key to enable AI.",
       );
     } catch (err) {
-      setKeyMessage(err instanceof Error ? err.message : "Could not save the provider key.");
+      setKeyMessage(getErrorMessage(err, "Could not save the provider key."));
     } finally {
       setSaving(false);
     }
@@ -198,7 +192,7 @@ export function AiSection({
       const result = await testConnection({ workspaceId });
       setTestMessage(result.message);
     } catch (err) {
-      setTestMessage(err instanceof Error ? err.message : "Connection test failed.");
+      setTestMessage(getErrorMessage(err, "Connection test failed."));
     } finally {
       setTesting(false);
     }
@@ -217,7 +211,7 @@ export function AiSection({
         `Recalibrated ${result.entityCount} ${result.entityCount === 1 ? "business" : "businesses"}. The auto-post gate now compares the calibrated probability.`,
       );
     } catch (err) {
-      setCalibrationMessage(err instanceof Error ? err.message : "Could not recalibrate.");
+      setCalibrationMessage(getErrorMessage(err, "Could not recalibrate."));
     } finally {
       setRecalibrating(false);
     }
@@ -407,167 +401,150 @@ export function AiSection({
         {testMessage ? <p className="text-[12.5px] text-primary" data-testid="ai-test-message">{testMessage}</p> : null}
       </div>
 
-      {/* Autonomy radio cards */}
-      <div className="flex flex-col gap-3 rounded-[14px] border bg-card p-5 shadow-xs">
-        <div className="text-[13.5px] font-semibold">How much should AI do on its own?</div>
-        <div className="grid gap-2.5 sm:grid-cols-3" data-testid="ai-autonomy-cards" role="radiogroup" aria-label="How much should AI do on its own?">
-          {aiAutonomyOptions.map((option) => {
-            const on = autonomy === option.value;
-            const threshold = providerStatus?.thresholds?.[option.value];
-            const thresholdLabel =
-              threshold === null || threshold === undefined ? "Never auto-posts" : `Auto-posts at ${Math.round(threshold * 100)}%`;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                data-testid={`ai-autonomy-${option.value}`}
-                data-active={on ? "true" : "false"}
-                disabled={!workspaceId}
-                onClick={() => pickAutonomy(option.value)}
-                className={cn(
-                  "flex flex-col gap-1.5 rounded-[12px] border-[1.5px] p-3.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-                  on ? "border-primary bg-ob-green-50/40" : "border-border bg-card hover:border-muted-foreground/30",
-                )}
-              >
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      "size-3.5 rounded-full border-[1.5px]",
-                      on ? "border-primary bg-primary shadow-[inset_0_0_0_3px_#fff]" : "border-muted-foreground/40",
-                    )}
-                  />
-                  <span className="text-[13px] font-semibold">{option.label}</span>
+      {/* Autonomy — fixed at autopilot (≥75%). The Suggest/Balanced/Autopilot
+          selector has been removed; every workspace now uses the same rule. */}
+      <div className="flex items-center gap-3 rounded-[14px] border bg-card p-4 shadow-xs" data-testid="ai-autonomy-cards">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-ob-green-50 text-ob-green-700">
+          <Sparkles className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-semibold">Auto-categorizes at 75%+ confidence</div>
+          <div className="mt-0.5 text-[12px] text-muted-foreground">
+            Transactions the AI is confident about post automatically. Everything else goes to your Inbox for review.
+          </div>
+        </div>
+        <span className="shrink-0 rounded-full bg-ob-green-100 px-2.5 py-1 text-[11px] font-semibold text-ob-green-700">
+          Active
+        </span>
+      </div>
+
+      {/* Spend estimate + Diagnostics: owner-everyday Settings surfaces. Hidden in
+          the onboarding wizard (hideDiagnostics), which only needs the provider
+          key + autonomy controls. */}
+      {hideDiagnostics ? null : (
+        <>
+          {/* Spend estimate */}
+          <div className="rounded-[14px] border bg-card p-5 shadow-xs" data-testid="ai-spend">
+            <div className="flex items-baseline gap-2">
+              <span className="text-[13.5px] font-semibold">AI spend this month</span>
+              <span className="text-[11.5px] text-muted-foreground/80">your API bill, not ours · estimate</span>
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="money-figures text-[22px] font-semibold">${estimatedSpend.toFixed(2)}</span>
+              <span className="text-[12px] text-muted-foreground">
+                of ~${estimatedBudget.toFixed(0)} estimated · {categorizedThisMonth.toLocaleString()} transactions categorized
+              </span>
+            </div>
+            <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-primary" style={{ width: `${spendPct}%` }} />
+            </div>
+          </div>
+
+          {/* Diagnostics: batch-run + categorization-eval history, demoted into a
+              single disclosure below the owner-legible provider/autonomy/spend cards.
+              Default CLOSED (report 6.10) — diagnostics are not part of the owner's
+              everyday view; the disclosure opens on demand and the verifiable
+              batch/eval history (and its testids) stays reachable inside it. */}
+          <Collapsible className="rounded-[14px] border bg-card shadow-xs" data-testid="ai-diagnostics">
+            <CollapsibleTrigger
+              data-testid="ai-diagnostics-trigger"
+              className="group flex w-full items-center justify-between gap-2 px-5 py-3 text-left text-[13.5px] font-semibold"
+            >
+              <span className="flex items-center gap-2">
+                Diagnostics
+                <span className="text-[11.5px] font-normal text-muted-foreground/80">
+                  batch runs &amp; categorization eval
                 </span>
-                <span className="text-[11px] font-medium text-primary">{thresholdLabel}</span>
-                <span className="text-[11.5px] leading-snug text-muted-foreground">{AUTONOMY_CONSEQUENCE[option.value]}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Spend estimate */}
-      <div className="rounded-[14px] border bg-card p-5 shadow-xs" data-testid="ai-spend">
-        <div className="flex items-baseline gap-2">
-          <span className="text-[13.5px] font-semibold">AI spend this month</span>
-          <span className="text-[11.5px] text-muted-foreground/80">your API bill, not ours · estimate</span>
-        </div>
-        <div className="mt-2 flex items-baseline gap-2">
-          <span className="money-figures text-[22px] font-semibold">${estimatedSpend.toFixed(2)}</span>
-          <span className="text-[12px] text-muted-foreground">
-            of ~${estimatedBudget.toFixed(0)} estimated · {categorizedThisMonth.toLocaleString()} transactions categorized
-          </span>
-        </div>
-        <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary" style={{ width: `${spendPct}%` }} />
-        </div>
-      </div>
-
-      {/* Diagnostics: batch-run + categorization-eval history, demoted into a
-          single disclosure below the owner-legible provider/autonomy/spend cards.
-          Default CLOSED (report 6.10) — diagnostics are not part of the owner's
-          everyday view; the disclosure opens on demand and the verifiable
-          batch/eval history (and its testids) stays reachable inside it. */}
-      <Collapsible className="rounded-[14px] border bg-card shadow-xs" data-testid="ai-diagnostics">
-        <CollapsibleTrigger
-          data-testid="ai-diagnostics-trigger"
-          className="group flex w-full items-center justify-between gap-2 px-5 py-3 text-left text-[13.5px] font-semibold"
-        >
-          <span className="flex items-center gap-2">
-            Diagnostics
-            <span className="text-[11.5px] font-normal text-muted-foreground/80">
-              batch runs &amp; categorization eval
-            </span>
-          </span>
-          <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="border-t" data-testid="ai-batch-history">
-            <div className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">Batch runs</div>
-            <div className="divide-y border-t">
-              {(batchRuns ?? []).length === 0 ? (
-                <div className="px-5 py-4 text-[12.5px] text-muted-foreground">
-                  No batch runs yet. Imports schedule categorization automatically; runs appear here.
-                </div>
-              ) : (
-                (batchRuns ?? []).map((run) => (
-                  <div key={run.id} className="flex flex-wrap items-center gap-2 px-5 py-3 text-[12.5px]" data-testid="ai-batch-row">
-                    <span className="money-figures text-muted-foreground">{new Date(run.createdAt).toLocaleString("en-US")}</span>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted-foreground">{run.status}</span>
-                    <span className="text-muted-foreground">{run.summary}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="border-t" data-testid="ai-eval-history">
-            <div className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">Categorization eval</div>
-            <div className="divide-y border-t">
-              {(evalRuns ?? []).length === 0 ? (
-                <div className="px-5 py-4 text-[12.5px] text-muted-foreground">
-                  No label-safe eval runs yet. Holdout results appear here after the verification harness runs.
-                </div>
-              ) : (
-                (evalRuns ?? []).map((run) => (
-                  <div key={run.id} className="grid gap-1 px-5 py-3 text-[12.5px]" data-testid="ai-eval-row">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="money-figures text-muted-foreground">{new Date(run.createdAt).toLocaleString("en-US")}</span>
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted-foreground">{run.status.replaceAll("_", " ")}</span>
-                      <span className="font-medium">{Math.round(run.accuracy * 1000) / 10}%</span>
-                      <span className="text-muted-foreground">{run.correctCount}/{run.evaluatedCount} correct · {run.providerMode}</span>
+              </span>
+              <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="border-t" data-testid="ai-batch-history">
+                <div className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">Batch runs</div>
+                <div className="divide-y border-t">
+                  {(batchRuns ?? []).length === 0 ? (
+                    <div className="px-5 py-4 text-[12.5px] text-muted-foreground">
+                      No batch runs yet. Imports schedule categorization automatically; runs appear here.
                     </div>
-                    <div className="text-muted-foreground">{run.finding}</div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* E2-T10: confidence calibration status + recalibrate trigger. The gate
-              compares the CALIBRATED probability against the unchanged autonomy
-              thresholds; recalibrating refits per-entity from the holdout. */}
-          <div className="border-t" data-testid="ai-calibration">
-            <div className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">
-              Confidence calibration
-            </div>
-            <div className="flex flex-col gap-2 border-t px-5 py-3 text-[12.5px]">
-              {calibration?.configured ? (
-                <div className="flex flex-wrap items-center gap-2" data-testid="ai-calibration-status">
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted-foreground">
-                    {calibration.scope}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {calibration.method} · {calibration.sampleCount} samples · ECE {calibration.eceBefore.toFixed(3)} → {calibration.eceAfter.toFixed(3)}
-                  </span>
+                  ) : (
+                    (batchRuns ?? []).map((run) => (
+                      <div key={run.id} className="flex flex-wrap items-center gap-2 px-5 py-3 text-[12.5px]" data-testid="ai-batch-row">
+                        <span className="money-figures text-muted-foreground">{new Date(run.createdAt).toLocaleString("en-US")}</span>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted-foreground">{run.status}</span>
+                        <span className="text-muted-foreground">{run.summary}</span>
+                      </div>
+                    ))
+                  )}
                 </div>
-              ) : (
-                <p className="text-muted-foreground" data-testid="ai-calibration-status">
-                  Not yet calibrated — the gate compares raw confidence until a holdout is fit.
-                </p>
-              )}
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  data-testid="ai-recalibrate"
-                  disabled={!entityId || recalibrating}
-                  onClick={runRecalibrate}
-                >
-                  {recalibrating ? "Recalibrating…" : "Recalibrate"}
-                </Button>
-                {calibrationMessage ? (
-                  <span className="text-[12px] text-primary" data-testid="ai-calibration-message">
-                    {calibrationMessage}
-                  </span>
-                ) : null}
               </div>
-            </div>
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
+
+              <div className="border-t" data-testid="ai-eval-history">
+                <div className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">Categorization eval</div>
+                <div className="divide-y border-t">
+                  {(evalRuns ?? []).length === 0 ? (
+                    <div className="px-5 py-4 text-[12.5px] text-muted-foreground">
+                      No label-safe eval runs yet. Holdout results appear here after the verification harness runs.
+                    </div>
+                  ) : (
+                    (evalRuns ?? []).map((run) => (
+                      <div key={run.id} className="grid gap-1 px-5 py-3 text-[12.5px]" data-testid="ai-eval-row">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="money-figures text-muted-foreground">{new Date(run.createdAt).toLocaleString("en-US")}</span>
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted-foreground">{run.status.replaceAll("_", " ")}</span>
+                          <span className="font-medium">{Math.round(run.accuracy * 1000) / 10}%</span>
+                          <span className="text-muted-foreground">{run.correctCount}/{run.evaluatedCount} correct · {run.providerMode}</span>
+                        </div>
+                        <div className="text-muted-foreground">{run.finding}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* E2-T10: confidence calibration status + recalibrate trigger. The gate
+                  compares the CALIBRATED probability against the unchanged autonomy
+                  thresholds; recalibrating refits per-entity from the holdout. */}
+              <div className="border-t" data-testid="ai-calibration">
+                <div className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">
+                  Confidence calibration
+                </div>
+                <div className="flex flex-col gap-2 border-t px-5 py-3 text-[12.5px]">
+                  {calibration?.configured ? (
+                    <div className="flex flex-wrap items-center gap-2" data-testid="ai-calibration-status">
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted-foreground">
+                        {calibration.scope}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {calibration.method} · {calibration.sampleCount} samples · ECE {calibration.eceBefore.toFixed(3)} → {calibration.eceAfter.toFixed(3)}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground" data-testid="ai-calibration-status">
+                      Not yet calibrated — the gate compares raw confidence until a holdout is fit.
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-testid="ai-recalibrate"
+                      disabled={!entityId || recalibrating}
+                      onClick={runRecalibrate}
+                    >
+                      {recalibrating ? "Recalibrating…" : "Recalibrate"}
+                    </Button>
+                    {calibrationMessage ? (
+                      <span className="text-[12px] text-primary" data-testid="ai-calibration-message">
+                        {calibrationMessage}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </>
+      )}
     </div>
   );
 }

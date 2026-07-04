@@ -133,46 +133,6 @@ export const setArchived = mutation({
   },
 });
 
-/**
- * Set (or clear) the revenue STREAM tag on an income ledger account (Epic
- * E9-T8). Several income accounts can share one stream label so they roll up
- * into a single owner-facing stream on the dashboard revenue-by-stream widget.
- * Pass an empty/blank tag to clear it (the account then falls back to its own
- * name). Only valid on income accounts; the posting path never reads this.
- * Owner/admin only. This ships the minimal override so the widget works before
- * (or independent of) the onboarding AI-proposes/owner-approves taxonomy flow.
- */
-export const setStreamTag = mutation({
-  args: { accountId: v.id("ledgerAccounts"), streamTag: v.string() },
-  handler: async (ctx, args) => {
-    const account = await ctx.db.get(args.accountId);
-    if (!account) throw new ConvexError("Category not found.");
-    if (account.type !== "income") {
-      throw new ConvexError("Revenue streams can only be tagged on income accounts.");
-    }
-    const entity = await getEntityForWrite(ctx, account.entityId, "admin");
-    const { userId } = await requireWorkspaceRole(ctx, entity.workspaceId, "admin");
-    const streamTag = args.streamTag.trim();
-    const now = Date.now();
-    await ctx.db.patch(account._id, {
-      streamTag: streamTag.length ? streamTag : undefined,
-      updatedAt: now,
-    });
-    await ctx.db.insert("auditEvents", {
-      workspaceId: entity.workspaceId,
-      actorUserId: userId,
-      action: "ledger.category.streamTagged",
-      entityType: "ledgerAccount",
-      entityId: account._id,
-      summary: streamTag.length
-        ? `Tagged income account ${account.number} to stream "${streamTag}"`
-        : `Cleared stream tag on income account ${account.number}`,
-      createdAt: now,
-    });
-    return { accountId: account._id, streamTag: streamTag.length ? streamTag : null };
-  },
-});
-
 // Group -> (account type, number band) for new categories. Matches the
 // Expenses prototype's "Group" selector and the honest footnote ("creates
 // account 6xxx under Expenses").

@@ -27,10 +27,14 @@ export function shortMonth(monthKey: string) {
   return MONTHS[month - 1] ?? monthKey;
 }
 
-// Expenses are not money-in, so the donut deliberately avoids brand green:
-// teal/slate/amber/sand/grey — distinct but quiet, never a rainbow.
-const EXPENSE_PALETTE = ["#0e9384", "#475467", "#f79009", "#a8a29e", "#cbd2d9"];
-const OUT_COLOR = "#cbd2d9";
+// Expenses read red (money out), so the donut uses a warm red→amber family —
+// distinct slices that all signal spending, never brand green.
+const EXPENSE_PALETTE = ["#d92d20", "#f97066", "#f79009", "#912018", "#fdb022"];
+const OUT_COLOR = "#d92d20";
+
+// Income reads green (money in), so the "where money came from" donut uses a
+// brand-green family — distinct shades that all signal revenue.
+const INCOME_PALETTE = ["#2ca01c", "#6cbb43", "#1d6b12", "#9fd07a", "#248716"];
 
 // Shared tooltip: a series-colour dot, the label, and tabular money. A named
 // component (not a render-prop factory) so it keeps a display name and reads
@@ -214,6 +218,52 @@ export function ExpenseDonut({
         {data.map((slice, index) => (
           <li key={slice.name} className="flex items-center gap-2 text-xs">
             <span className="size-2 shrink-0 rounded-[3px]" style={{ background: EXPENSE_PALETTE[index % EXPENSE_PALETTE.length] }} />
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{slice.name}</span>
+            <span className="money-figures font-medium">{formatMinorMoney(slice.amountMinor, { currency, compact: true })}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Income donut — where money came from, top sources
+// ---------------------------------------------------------------------------
+
+export function IncomeDonut({
+  data,
+  currency,
+}: {
+  data: Array<{ name: string; amountMinor: number }>;
+  currency: string;
+}) {
+  const total = data.reduce((sum, slice) => sum + slice.amountMinor, 0);
+  const config: ChartConfig = Object.fromEntries(
+    data.map((slice, index) => [slice.name, { label: slice.name, color: INCOME_PALETTE[index % INCOME_PALETTE.length] }]),
+  );
+  return (
+    <div className="flex items-center gap-4">
+      <div className="relative size-[112px] shrink-0">
+        <ChartContainer config={config} className="aspect-square size-[112px]">
+          <PieChart>
+            <ChartTooltip cursor={false} content={<MoneyTooltip currency={currency} hideLabel />} />
+            <Pie data={data} dataKey="amountMinor" nameKey="name" innerRadius={34} outerRadius={52} strokeWidth={2} paddingAngle={2}>
+              {data.map((slice, index) => (
+                <Cell key={slice.name} fill={INCOME_PALETTE[index % INCOME_PALETTE.length]} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ChartContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="money-figures text-sm font-semibold">{formatMinorMoney(total, { currency, compact: true })}</span>
+          <span className="text-[10px] text-muted-foreground">received</span>
+        </div>
+      </div>
+      <ul className="flex min-w-0 flex-1 flex-col gap-1.5">
+        {data.map((slice, index) => (
+          <li key={slice.name} className="flex items-center gap-2 text-xs">
+            <span className="size-2 shrink-0 rounded-[3px]" style={{ background: INCOME_PALETTE[index % INCOME_PALETTE.length] }} />
             <span className="min-w-0 flex-1 truncate text-muted-foreground">{slice.name}</span>
             <span className="money-figures font-medium">{formatMinorMoney(slice.amountMinor, { currency, compact: true })}</span>
           </li>

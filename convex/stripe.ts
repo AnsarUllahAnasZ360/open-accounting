@@ -562,7 +562,7 @@ async function ensureStripeAccounts(ctx: MutationCtx, entity: Doc<"entities">) {
     number: "5600",
     name: "Payment Processing Fees",
     type: "expense",
-    subtype: "fees",
+    subtype: "payment_fees",
   });
   const receivableAccount = await ensureAccount(ctx, entity, {
     number: "1100",
@@ -1026,11 +1026,59 @@ async function applyProjectionCore(
       existingInvoices.find((row) => row.stripeInvoiceId === invoice.stripeInvoiceId) ??
       existingInvoices.find((row) => !row.stripeInvoiceId && row.number === invoice.number);
     if (existingInvoice) {
+      // A Stripe invoice we first saw as a draft (invoice.created) carries no
+      // number, total, or due date; those are only set at finalization. Refresh
+      // ALL of them on every later event so the invoice never stays stuck at $0
+      // with the raw id as its number. (Previously only status/paid/url updated.)
+      const receivableMinor = invoice.totalMinor - invoice.amountPaidMinor;
+      const priorEntryIds = existingInvoice.entryIds ?? [];
+      const entryIds = [...priorEntryIds];
+      // If it just became open/overdue and no receivable was posted yet (the
+      // draft had a $0 total, so the insert path skipped posting), post it now
+      // so AR and the balance sheet reflect the finalized invoice.
+      if (
+        priorEntryIds.length === 0 &&
+        (invoice.status === "open" || invoice.status === "overdue") &&
+        receivableMinor > 0
+      ) {
+        const posted = await postLedgerEntryCore(ctx, {
+          entity: args.entity,
+          userId: args.actorUserId,
+          date: invoice.issueDate,
+          memo: `${invoice.customerName} Stripe invoice ${invoice.number}`,
+          source: "invoice",
+          sourceId: invoice.stripeInvoiceId,
+          auditAction: args.auditAction,
+          lines: [
+            {
+              accountId: accounts.receivableAccount._id,
+              debitMinor: receivableMinor,
+              creditMinor: 0,
+              currency: invoice.currency,
+              contactId: existingInvoice.contactId,
+            },
+            {
+              accountId: accounts.salesAccount._id,
+              debitMinor: 0,
+              creditMinor: receivableMinor,
+              currency: invoice.currency,
+              contactId: existingInvoice.contactId,
+            },
+          ],
+        });
+        entryIds.push(posted.entryId);
+        ledgerEntriesPosted += 1;
+      }
       await ctx.db.patch(existingInvoice._id, {
+        number: invoice.number,
         status: invoice.status,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate,
+        totalMinor: invoice.totalMinor,
         amountPaidMinor: invoice.amountPaidMinor,
         hostedInvoiceUrl: invoice.hostedInvoiceUrl,
         stripeInvoiceId: invoice.stripeInvoiceId,
+        entryIds,
         source: "stripe",
         updatedAt: now,
       });

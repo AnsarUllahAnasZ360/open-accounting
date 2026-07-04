@@ -1,6 +1,7 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import type { FunctionReturnType } from "convex/server";
 import {
   ArrowUpRight,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { Amount, EmptyState, formatMinorMoney } from "@/components/openbooks/primitives";
 import {
@@ -48,6 +50,7 @@ import {
   buildPageInsight,
 } from "@/components/openbooks/workbench";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Drawer,
   DrawerContent,
@@ -56,6 +59,11 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -476,6 +484,9 @@ function IncomeCashSurface({ data, period, setPeriod, search, setSearch, banner 
 
   return (
     <WorkbenchSurface<PaymentRow>
+      search={search}
+      onSearch={setSearch}
+      searchPlaceholder="Search income"
       config={config}
       testId="income-screen"
       banner={banner}
@@ -801,6 +812,9 @@ function InvoicesArSurface({ data, search, setSearch, banner }: SurfaceProps) {
 
   return (
     <WorkbenchSurface<InvoiceRow>
+      search={search}
+      onSearch={setSearch}
+      searchPlaceholder="Search invoices"
       config={config}
       testId="income-invoices-screen"
       banner={banner}
@@ -937,6 +951,38 @@ function lineSubtotalMinor(line: ComposerLine) {
   return Math.round((Number(line.rate) || 0) * 100) * (Number(line.quantity) || 0);
 }
 
+// Net payment-term presets → number of days the invoice is owed for.
+function termDays(terms: string) {
+  return terms === "Net 15" ? 15 : terms === "Net 7" ? 7 : terms === "Due on receipt" ? 0 : 30;
+}
+
+// UTC-anchored ISO date math so the due date never drifts by a day across
+// timezones. Both helpers take/return `YYYY-MM-DD` strings.
+function addDaysIso(baseIso: string, days: number) {
+  const date = new Date(`${baseIso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+function daysBetweenIso(fromIso: string, toIso: string) {
+  return Math.round(
+    (Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / 86_400_000,
+  );
+}
+
+// Parse a `YYYY-MM-DD` string into a local Date for the calendar's `selected`,
+// and format a calendar Date back to `YYYY-MM-DD`. Local (not UTC) so the day
+// the owner taps is the day that sticks.
+function isoToLocalDate(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1);
+}
+function localDateToIso(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function InvoiceComposer({
   entityId,
   currency,
@@ -960,6 +1006,9 @@ function InvoiceComposer({
   const [customerEmail, setCustomerEmail] = useState("");
   const [lines, setLines] = useState<ComposerLine[]>([{ description: "", quantity: "1", rate: "" }]);
   const [terms, setTerms] = useState("Net 30");
+  // Due date is driven by the selected term (today + N days) but is freely
+  // editable via the calendar, so the owner can override to any date.
+  const [dueDate, setDueDate] = useState(() => addDaysIso(todayIso(), termDays("Net 30")));
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -973,12 +1022,15 @@ function InvoiceComposer({
       .map((line) => ({ description: line.description.trim(), quantity: Math.max(1, Number(line.quantity) || 1), unitAmountMinor: Math.round((Number(line.rate) || 0) * 100) }));
   }
 
-  function dueDateFromTerms() {
-    const days = terms === "Net 15" ? 15 : terms === "Net 7" ? 7 : terms === "Due on receipt" ? 0 : 30;
-    const date = new Date("2026-06-11T00:00:00Z");
-    date.setUTCDate(date.getUTCDate() + days);
-    return { dueDate: date.toISOString().slice(0, 10), days };
+  // Selecting a term recomputes the due date from TODAY (today + N days); the
+  // owner can then fine-tune the exact date with the calendar below.
+  function handleTermsChange(value: string) {
+    setTerms(value);
+    setDueDate(addDaysIso(todayIso(), termDays(value)));
   }
+  // Net days the invoice is owed for, derived from the (possibly hand-picked)
+  // due date so Stripe's daysUntilDue matches what the owner actually set.
+  const daysUntilDue = Math.max(1, daysBetweenIso(todayIso(), dueDate));
 
   async function handleSaveDraft() {
     const lineItems = lineItemsPayload();
@@ -986,13 +1038,12 @@ function InvoiceComposer({
     if (!customerName.trim()) { setError("Name the customer."); return; }
     setBusy(true); setError("");
     try {
-      const { dueDate } = dueDateFromTerms();
       const result = await saveDraft({ entityId, invoiceId: draftId ?? undefined, customerName: customerName.trim(), customerEmail: customerEmail.trim() || undefined, lineItems, terms, dueDate, memo: memo.trim() || undefined });
       setDraftId(result.invoiceId);
       onClose();
       onOpenDetail(result.invoiceId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the draft.");
+      setError(getErrorMessage(err, "Could not save the draft."));
     } finally {
       setBusy(false);
     }
@@ -1004,21 +1055,20 @@ function InvoiceComposer({
     if (!customerName.trim()) { setError("Name the customer."); return; }
     setBusy(true); setError("");
     try {
-      const { dueDate, days } = dueDateFromTerms();
       const draft = await saveDraft({ entityId, invoiceId: draftId ?? undefined, customerName: customerName.trim(), customerEmail: customerEmail.trim() || undefined, lineItems, terms, dueDate, memo: memo.trim() || undefined });
       const stripe = await sendViaStripe({
         entityId,
         customerName: customerName.trim(),
         customerEmail: customerEmail.trim() || "billing@example.com",
         memo: memo.trim() || undefined,
-        daysUntilDue: Math.max(1, days || 1),
+        daysUntilDue,
         lineItems: lineItems.map((item) => ({ description: item.description, amountMinor: item.unitAmountMinor, quantity: item.quantity })),
       });
       await recordStripeSend({ invoiceId: draft.invoiceId, hostedInvoiceUrl: stripe.hostedInvoiceUrl ?? undefined, stripeInvoiceId: stripe.stripeInvoiceId });
       onClose();
       onOpenDetail(draft.invoiceId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send via Stripe.");
+      setError(getErrorMessage(err, "Could not send via Stripe."));
     } finally {
       setBusy(false);
     }
@@ -1030,13 +1080,12 @@ function InvoiceComposer({
     if (!customerName.trim()) { setError("Name the customer."); return; }
     setBusy(true); setError("");
     try {
-      const { dueDate } = dueDateFromTerms();
       const draft = await saveDraft({ entityId, invoiceId: draftId ?? undefined, customerName: customerName.trim(), customerEmail: customerEmail.trim() || undefined, lineItems, terms, dueDate, memo: memo.trim() || undefined });
       await finalize({ invoiceId: draft.invoiceId });
       onClose();
       onOpenDetail(draft.invoiceId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not finalize the invoice.");
+      setError(getErrorMessage(err, "Could not finalize the invoice."));
     } finally {
       setBusy(false);
     }
@@ -1079,15 +1128,19 @@ function InvoiceComposer({
         <div className="space-y-2">
           <Label>Line items</Label>
           {lines.map((line, index) => (
-            <div key={index} className="grid grid-cols-[1fr_64px_96px_90px] items-center gap-2">
-              <Input data-testid="composer-line-desc" value={line.description} placeholder="Description" onChange={(e) => setLines((prev) => prev.map((l, i) => (i === index ? { ...l, description: e.target.value } : l)))} className="h-9" />
-              <Input value={line.quantity} inputMode="numeric" onChange={(e) => setLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: e.target.value } : l)))} className="h-9 text-center money-figures" />
-              <Input data-testid="composer-line-rate" value={line.rate} inputMode="decimal" placeholder="0.00" onChange={(e) => setLines((prev) => prev.map((l, i) => (i === index ? { ...l, rate: e.target.value } : l)))} className="h-9 text-right money-figures" />
-              <div className="flex items-center justify-end gap-1">
-                <span className="money-figures text-[13px]"><Amount amountMinor={lineSubtotalMinor(line)} currency={currency} /></span>
+            <div key={index} className="space-y-2 rounded-lg border bg-card p-2.5">
+              <div className="flex items-center gap-2">
+                <Input data-testid="composer-line-desc" value={line.description} placeholder="Description" onChange={(e) => setLines((prev) => prev.map((l, i) => (i === index ? { ...l, description: e.target.value } : l)))} className="h-9 flex-1" />
                 {lines.length > 1 ? (
-                  <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))} aria-label="Remove line"><Trash2 className="size-3.5" /></button>
+                  <button type="button" className="shrink-0 text-muted-foreground hover:text-foreground" onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))} aria-label="Remove line"><Trash2 className="size-4" /></button>
                 ) : null}
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Input value={line.quantity} inputMode="numeric" aria-label="Quantity" onChange={(e) => setLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: e.target.value } : l)))} className="h-9 w-14 shrink-0 text-center money-figures" />
+                <span className="text-muted-foreground">×</span>
+                <Input data-testid="composer-line-rate" value={line.rate} inputMode="decimal" placeholder="0.00" aria-label="Rate" onChange={(e) => setLines((prev) => prev.map((l, i) => (i === index ? { ...l, rate: e.target.value } : l)))} className="h-9 flex-1 text-right money-figures" />
+                <span className="text-muted-foreground">=</span>
+                <span className="min-w-[72px] text-right money-figures text-[13px] font-medium"><Amount amountMinor={lineSubtotalMinor(line)} currency={currency} /></span>
               </div>
             </div>
           ))}
@@ -1098,7 +1151,7 @@ function InvoiceComposer({
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-2">
             <Label>Terms</Label>
-            <Select value={terms} onValueChange={setTerms}>
+            <Select value={terms} onValueChange={handleTermsChange}>
               <SelectTrigger className="h-9" aria-label="Payment terms">
                 <SelectValue />
               </SelectTrigger>
@@ -1112,7 +1165,29 @@ function InvoiceComposer({
           </div>
           <div className="grid gap-2">
             <Label>Due date</Label>
-            <Input readOnly value={dueDateFromTerms().dueDate} className="bg-muted/40 money-figures" />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  data-testid="composer-due-date"
+                  className="h-9 w-full justify-between bg-muted/40 px-3 font-normal money-figures"
+                >
+                  {dueDate}
+                  <CalendarDays className="size-4 text-muted-foreground" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={isoToLocalDate(dueDate)}
+                  defaultMonth={isoToLocalDate(dueDate)}
+                  onSelect={(date) => {
+                    if (date) setDueDate(localDateToIso(date));
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
         <div className="grid gap-2">
@@ -1133,6 +1208,170 @@ function InvoiceComposer({
         <Button size="sm" data-testid="composer-send" disabled={busy} onClick={handleSend}>{busy ? "Working…" : "Send via Stripe"}</Button>
       </div>
     </ResponsiveSlideOver>
+  );
+}
+
+type InvoiceDetailData = NonNullable<FunctionReturnType<typeof api.invoices.detail>>;
+
+// ---------------------------------------------------------------------------
+// InvoicePrintDocument — a print-only, paper-style invoice. It is display:none
+// on screen (Tailwind `hidden`); the `.invoice-print` print stylesheet in
+// globals.css hides the rest of the app and shows ONLY this document when the
+// owner prints or "saves as PDF", so the output is a professional invoice
+// instead of a screenshot of the app UI.
+// ---------------------------------------------------------------------------
+
+function InvoicePrintDocument({ detail }: { detail: InvoiceDetailData }) {
+  const money = (minor: number) => formatMinorMoney(minor, { currency: detail.currency });
+  const lineTotal = (item: { unitAmountMinor: number; quantity: number }) =>
+    item.unitAmountMinor * item.quantity;
+  const subtotalMinor = detail.lineItems.reduce((sum, item) => sum + lineTotal(item), 0);
+  const amountDue = detail.balanceMinor > 0 ? detail.balanceMinor : detail.totalMinor;
+  const isPaid = detail.status === "paid" || detail.balanceMinor <= 0;
+
+  return (
+    <div className="invoice-print hidden bg-white text-[#111827]">
+      <div className="mx-auto max-w-[760px] px-12 py-10 font-sans text-[13px] leading-relaxed">
+        {/* Header: issuer + INVOICE */}
+        <div className="flex items-start justify-between gap-8 border-b border-[#111827] pb-6">
+          <div className="min-w-0">
+            {detail.businessLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={detail.businessLogoUrl}
+                alt={detail.businessName}
+                loading="eager"
+                decoding="sync"
+                className="mb-3 h-12 w-auto max-w-[220px] object-contain"
+              />
+            ) : null}
+            <div className="text-[19px] font-semibold tracking-tight text-[#111827]">
+              {detail.businessName}
+            </div>
+            {detail.businessLegalName && detail.businessLegalName !== detail.businessName ? (
+              <div className="mt-0.5 text-[12px] text-[#6b7280]">{detail.businessLegalName}</div>
+            ) : null}
+            {detail.businessEmail || detail.businessPhone || detail.businessTaxId ? (
+              <div className="mt-1.5 space-y-0.5 text-[12px] text-[#6b7280]">
+                {detail.businessEmail ? <div>{detail.businessEmail}</div> : null}
+                {detail.businessPhone ? <div>{detail.businessPhone}</div> : null}
+                {detail.businessTaxId ? <div>Tax ID: {detail.businessTaxId}</div> : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="shrink-0 text-right">
+            <div className="text-[26px] font-semibold uppercase leading-none tracking-[0.18em] text-[#111827]">
+              Invoice
+            </div>
+            <div className="mt-1.5 money-figures text-[12.5px] text-[#6b7280]">{detail.number}</div>
+            {detail.status === "draft" ? (
+              <span className="mt-2 inline-block rounded border border-[#d1d5db] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#6b7280]">
+                Draft — not yet issued
+              </span>
+            ) : isPaid ? (
+              <span className="mt-2 inline-block rounded border border-[#2ca01c] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#1d6b12]">
+                Paid
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Bill-to + dates */}
+        <div className="mt-7 flex items-start justify-between gap-8">
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9ca3af]">
+              Bill to
+            </div>
+            <div className="mt-1.5 text-[14px] font-medium text-[#111827]">{detail.customerName}</div>
+            {detail.customerEmail ? (
+              <div className="text-[12px] text-[#6b7280]">{detail.customerEmail}</div>
+            ) : null}
+          </div>
+          <table className="shrink-0 text-[12px]">
+            <tbody>
+              <tr>
+                <td className="pr-6 py-0.5 text-[#9ca3af]">Issue date</td>
+                <td className="money-figures py-0.5 text-right text-[#111827]">{detail.issueDate}</td>
+              </tr>
+              <tr>
+                <td className="pr-6 py-0.5 text-[#9ca3af]">Due date</td>
+                <td className="money-figures py-0.5 text-right text-[#111827]">{detail.dueDate}</td>
+              </tr>
+              {detail.terms ? (
+                <tr>
+                  <td className="pr-6 py-0.5 text-[#9ca3af]">Terms</td>
+                  <td className="py-0.5 text-right text-[#111827]">{detail.terms}</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Line items */}
+        <table className="mt-8 w-full border-collapse text-[12.5px]">
+          <thead>
+            <tr className="border-b-2 border-[#111827] text-[#111827]">
+              <th className="py-2 text-left font-semibold">Description</th>
+              <th className="w-16 py-2 text-right font-semibold">Qty</th>
+              <th className="w-28 py-2 text-right font-semibold">Unit price</th>
+              <th className="w-28 py-2 text-right font-semibold">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {detail.lineItems.map((item, index) => (
+              <tr key={index} className="border-b border-[#e5e7eb] align-top">
+                <td className="py-2.5 pr-4 text-[#111827]">{item.description}</td>
+                <td className="money-figures py-2.5 text-right text-[#374151]">{item.quantity}</td>
+                <td className="money-figures py-2.5 text-right text-[#374151]">{money(item.unitAmountMinor)}</td>
+                <td className="money-figures py-2.5 text-right font-medium text-[#111827]">{money(lineTotal(item))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Totals */}
+        <div className="mt-5 flex justify-end">
+          <table className="min-w-[260px] text-[13px]">
+            <tbody>
+              <tr>
+                <td className="py-1 pr-8 text-[#6b7280]">Subtotal</td>
+                <td className="money-figures py-1 text-right text-[#111827]">{money(subtotalMinor)}</td>
+              </tr>
+              {detail.amountPaidMinor > 0 ? (
+                <tr>
+                  <td className="py-1 pr-8 text-[#6b7280]">Amount paid</td>
+                  <td className="money-figures py-1 text-right text-[#111827]">−{money(detail.amountPaidMinor)}</td>
+                </tr>
+              ) : null}
+              <tr className="border-t-2 border-[#111827]">
+                <td className="py-2 pr-8 text-[15px] font-semibold text-[#111827]">
+                  {detail.balanceMinor > 0 && detail.amountPaidMinor > 0 ? "Balance due" : "Total due"}
+                </td>
+                <td className="money-figures py-2 text-right text-[16px] font-semibold text-[#111827]">
+                  {money(amountDue)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Notes */}
+        {detail.memo ? (
+          <div className="mt-9 border-t border-[#e5e7eb] pt-4">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9ca3af]">
+              Notes
+            </div>
+            <div className="mt-1.5 max-w-[60ch] text-[12.5px] text-[#374151]">{detail.memo}</div>
+          </div>
+        ) : null}
+
+        {/* Footer */}
+        <div className="mt-12 border-t border-[#e5e7eb] pt-4 text-center text-[11px] text-[#9ca3af]">
+          Thank you for your business. Payment due by {detail.dueDate}
+          {detail.terms ? ` (${detail.terms})` : ""}. · Generated by OpenBooks
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1158,7 +1397,7 @@ function InvoiceDetailSheet({ invoiceId, onClose }: { invoiceId: Id<"invoices">;
       await finalize({ invoiceId });
       setMessage("Invoice issued — it now shows as money owed.");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not finalize the invoice.");
+      setMessage(getErrorMessage(err, "Could not finalize the invoice."));
     } finally {
       setBusy(false);
     }
@@ -1170,7 +1409,7 @@ function InvoiceDetailSheet({ invoiceId, onClose }: { invoiceId: Id<"invoices">;
       const result = await recordPayment({ invoiceId });
       setMessage(`Payment of ${formatMinorMoney(result.paidMinor, { currency: detail?.currency })} recorded — posted to the ledger as money in.`);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not record the payment.");
+      setMessage(getErrorMessage(err, "Could not record the payment."));
     } finally {
       setBusy(false);
     }
@@ -1190,7 +1429,7 @@ function InvoiceDetailSheet({ invoiceId, onClose }: { invoiceId: Id<"invoices">;
         setMessage(`No email on file — copy the balance and follow up with ${result.customerName}.`);
       }
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not send the reminder.");
+      setMessage(getErrorMessage(err, "Could not send the reminder."));
     } finally {
       setBusy(false);
     }
@@ -1202,7 +1441,7 @@ function InvoiceDetailSheet({ invoiceId, onClose }: { invoiceId: Id<"invoices">;
       await voidInvoice({ invoiceId });
       setMessage("Invoice voided — the accrual was reversed.");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not void the invoice.");
+      setMessage(getErrorMessage(err, "Could not void the invoice."));
     } finally {
       setBusy(false);
     }
@@ -1223,7 +1462,18 @@ function InvoiceDetailSheet({ invoiceId, onClose }: { invoiceId: Id<"invoices">;
       setMessage("Opened the hosted invoice — use Download PDF on that page.");
       return;
     }
-    window.print();
+    // The invoice-print element is display:none until the print stylesheet kicks
+    // in, so the browser never loads the logo image from the hidden DOM node.
+    // Preload it into the cache first; once it's ready, trigger print so the
+    // image is already available when the print layout makes the element visible.
+    if (detail?.businessLogoUrl) {
+      const preload = new window.Image();
+      preload.onload = () => window.print();
+      preload.onerror = () => window.print();
+      preload.src = detail.businessLogoUrl;
+    } else {
+      window.print();
+    }
   }
 
   const title = detail ? `Invoice ${detail.number}` : "Invoice";
@@ -1251,7 +1501,14 @@ function InvoiceDetailSheet({ invoiceId, onClose }: { invoiceId: Id<"invoices">;
   ) : null;
 
   return (
-    <DetailSheet
+    <>
+      {/* Portaled to <body> so the printable invoice is a DIRECT child of body —
+          the @media print rule then hides every other body child and shows only
+          this, on a single page. */}
+      {detail && typeof document !== "undefined"
+        ? createPortal(<InvoicePrintDocument detail={detail} />, document.body)
+        : null}
+      <DetailSheet
       open
       onOpenChange={(open) => !open && onClose()}
       title={
@@ -1323,6 +1580,7 @@ function InvoiceDetailSheet({ invoiceId, onClose }: { invoiceId: Id<"invoices">;
           {message ? <p className="rounded-[10px] border bg-primary/5 p-3 text-sm text-primary" data-testid="invoice-detail-message">{message}</p> : null}
         </div>
       )}
-    </DetailSheet>
+      </DetailSheet>
+    </>
   );
 }

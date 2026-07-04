@@ -16,6 +16,7 @@ import {
 import { FormEvent, useMemo, useState } from "react";
 
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import { getErrorMessage } from "@/lib/errors";
 import { Amount } from "@/components/openbooks/primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -132,10 +133,7 @@ const stripeApi = anyApi.stripe as unknown as {
 type ActionState = "idle" | "submitting" | "success" | "error";
 
 function readableError(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) return fallback;
-  const uncaught = error.message.match(/Uncaught Error: ([\s\S]+)/);
-  if (uncaught) return uncaught[1].trim().split("\n")[0] ?? fallback;
-  return error.message;
+  return getErrorMessage(error, fallback);
 }
 
 function statusTone(status: ChecklistStatus) {

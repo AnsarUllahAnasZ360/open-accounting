@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePlaidLink, type PlaidLinkError, type PlaidLinkOnSuccessMetadata } from "react-plaid-link";
 
 import { api } from "../../../../../convex/_generated/api";
+import { getErrorMessage } from "@/lib/errors";
 import { Amount } from "@/components/openbooks/primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -102,10 +103,7 @@ type PlaidApi = {
 const plaidApi = api as unknown as PlaidApi;
 
 function readableError(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) return fallback;
-  const uncaught = error.message.match(/Uncaught Error: ([\s\S]+)/);
-  if (uncaught) return uncaught[1].trim().split("\n")[0] ?? fallback;
-  return error.message;
+  return getErrorMessage(error, fallback);
 }
 
 function PlaidOpenButton({

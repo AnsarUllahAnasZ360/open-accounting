@@ -1,13 +1,8 @@
 "use client";
 
 import { useAction, useMutation } from "convex/react";
-import { AlertTriangle, Banknote, CheckCircle2, Landmark, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import {
-  usePlaidLink,
-  type PlaidLinkError,
-  type PlaidLinkOnSuccessMetadata,
-} from "react-plaid-link";
+import { AlertTriangle, Banknote, CheckCircle2, ExternalLink, Landmark, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { api } from "../../../../../../../convex/_generated/api";
@@ -22,7 +17,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { clearPlaidOAuthSession, storePlaidOAuthSession } from "@/lib/openbooks/plaid-oauth";
+import { storePlaidOAuthSession } from "@/lib/openbooks/plaid-oauth";
+
+// Message shape sent from the /plaid/link tab back to this window.
+type PlaidLinkMessage =
+  | { type: "plaid-link-success"; accounts: PreviewAccount[]; institutionName: string | null; plaidItemId: string | null }
+  | { type: "plaid-link-error"; message: string }
+  | { type: "plaid-link-exit" };
 
 import { BusinessSelect, FieldLabel, readableError, type ConnectionBusiness } from "./shared";
 
@@ -51,55 +52,48 @@ function formatBalance(balanceMinor: number, currency: string) {
   }
 }
 
-function PlaidLinkButton({
-  token,
-  disabled,
-  onSuccess,
-  onExit,
-  onLoadError,
-}: {
-  token: string;
-  disabled?: boolean;
-  onSuccess: (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => void;
-  onExit: (error: PlaidLinkError | null) => void;
-  onLoadError: () => void;
-}) {
-  const { open, ready, error } = usePlaidLink({ token, onSuccess, onExit });
-  useEffect(() => {
-    if (error) onLoadError();
-  }, [error, onLoadError]);
-  return (
-    <Button type="button" disabled={disabled || !ready} onClick={() => open()} data-testid="plaid-open-link">
-      <Banknote className="size-4" />
-      Open Plaid Link
-    </Button>
-  );
-}
+// Minimal shape of an already-connected bank account, used to detect when a
+// business is already linked so we can skip Plaid Link (the owner asked for
+// "pick the existing connection first, only open Plaid when there's none").
+type ExistingBankAccount = {
+  entityId: string;
+  name: string;
+  mask: string;
+  kind?: string;
+  plaidItemId?: string | null;
+  itemStatus?: string | null;
+  institutionName?: string | null;
+};
 
 export function AddBankSheet({
   open,
   onOpenChange,
   businesses,
   defaultEntityId,
+  existingBankAccounts = [],
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   businesses: ConnectionBusiness[];
   defaultEntityId: string;
+  existingBankAccounts?: ExistingBankAccount[];
 }) {
   const createLinkToken = useAction(api.plaid.createLinkToken);
-  const exchangePublicToken = useAction(api.plaid.exchangePublicTokenAndPreviewAccounts);
   const assignAccounts = useMutation(api.plaid.assignPlaidAccountsToBusinesses);
 
   const [entityId, setEntityId] = useState(defaultEntityId);
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState("");
-  const [linkToken, setLinkToken] = useState<string | null>(null);
+  // Set when the owner explicitly chooses to add ANOTHER bank even though this
+  // business is already connected — reveals the normal Plaid Link flow.
+  const [connectAnother, setConnectAnother] = useState(false);
   // Preview-then-assign state (E3-T5): the accounts Plaid returned and the
   // Item we already persisted, awaiting the owner's per-account routing.
   const [previewAccounts, setPreviewAccounts] = useState<PreviewAccount[]>([]);
   const [plaidItemId, setPlaidItemId] = useState<string | null>(null);
   const [institutionName, setInstitutionName] = useState<string | null>(null);
+  // Reference to the /plaid/link tab so we can re-focus it if still open.
+  const plaidTabRef = useRef<Window | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -109,106 +103,88 @@ export function AddBankSheet({
     setEntityId(defaultEntityId);
     setPhase("idle");
     setMessage("");
-    setLinkToken(null);
     setPreviewAccounts([]);
     setPlaidItemId(null);
     setInstitutionName(null);
+    setConnectAnother(false);
+    plaidTabRef.current = null;
   }, [open, defaultEntityId]);
 
+  // Listen for messages posted from the /plaid/link tab.
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as PlaidLinkMessage;
+      if (data.type === "plaid-link-success") {
+        if (data.accounts.length === 0) {
+          setPhase("error");
+          setMessage("Plaid returned no accounts for this login.");
+          return;
+        }
+        setInstitutionName(data.institutionName);
+        setPlaidItemId(data.plaidItemId);
+        setPreviewAccounts(data.accounts);
+        setPhase("assigning");
+        setMessage("");
+      } else if (data.type === "plaid-link-error") {
+        setPhase("error");
+        setMessage(data.message || "Plaid Link failed.");
+      } else if (data.type === "plaid-link-exit") {
+        setPhase("idle");
+        setMessage("Plaid Link was closed before a bank was connected.");
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
   const businessName = businesses.find((business) => business.id === entityId)?.name ?? "this business";
+
+  // Banks already linked to the currently-selected business (active items only).
+  const existingForBusiness = existingBankAccounts.filter(
+    (account) =>
+      String(account.entityId) === entityId &&
+      account.plaidItemId &&
+      account.itemStatus !== "disconnected",
+  );
+  // Show the "already connected" view until the owner opts to add another, and
+  // only while idle (never mid-Plaid-flow or during assignment).
+  const showExisting = existingForBusiness.length > 0 && !connectAnother && phase === "idle";
+
+  function openPlaidTab() {
+    const tab = window.open("/plaid/link", "_blank");
+    plaidTabRef.current = tab;
+  }
 
   async function onPrepare() {
     if (!entityId) return;
     setPhase("preparing");
     setMessage("");
-    setLinkToken(null);
     try {
       const result = await createLinkToken({ entityId: entityId as Id<"entities">, clientName: "OpenBooks" });
       if (result.mode === "fixture") {
         setPhase("error");
-        setMessage("Plaid isn’t ready yet. Open “Bank connections” and save a valid Plaid app first.");
+        setMessage(`Plaid is not ready yet. Save a valid Plaid app in Settings > Connections first.`);
         return;
       }
+      // Store the token in localStorage so the /plaid/link tab can read it.
       storePlaidOAuthSession({ linkToken: result.linkToken, entityId });
-      setLinkToken(result.linkToken);
+      openPlaidTab();
       setPhase("ready");
-      setMessage(`Plaid is ready. Open Link to connect a bank to ${businessName}.`);
+      setMessage(`Plaid Link opened in a new tab. Complete the flow there to connect a bank to ${businessName}.`);
     } catch (error) {
       setPhase("error");
       setMessage(readableError(error, "Could not start Plaid Link."));
     }
   }
 
-  const handleSuccess = useCallback(
-    (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
-      if (!entityId) return;
-      setPhase("linking");
-      setMessage("Bank authorized. Reading accounts…");
-      // E3-T5: preview the accounts WITHOUT creating bank accounts yet, so the
-      // owner can route each one to the right business before we persist them.
-      void exchangePublicToken({
-        entityId: entityId as Id<"entities">,
-        publicToken,
-        previewOnly: true,
-      })
-        .then((result) => {
-          clearPlaidOAuthSession();
-          setLinkToken(null);
-          if (result.mode === "fixture" || !result.accessTokenPersisted) {
-            setPhase("error");
-            setMessage(
-              result.persistenceBlocker ??
-                "Plaid finished but no bank token was stored. Check the Plaid app setup.",
-            );
-            return;
-          }
-          const accounts = (result.accounts ?? []).map((account) => ({
-            plaidAccountId: account.plaidAccountId,
-            name: account.name,
-            mask: account.mask,
-            subtype: account.subtype,
-            balanceMinor: account.balanceMinor,
-            currency: account.currency,
-            plaidItemId: account.plaidItemId,
-            // Default each account to the business the owner started from
-            // (back-compat: a single-business link stays unchanged).
-            entityId,
-            include: true,
-          }));
-          if (accounts.length === 0) {
-            setPhase("error");
-            setMessage("Plaid returned no accounts for this login.");
-            return;
-          }
-          setInstitutionName(result.institutionName ?? metadata.institution?.name ?? "Your bank");
-          setPlaidItemId(("plaidItemId" in result ? result.plaidItemId : null) ?? null);
-          setPreviewAccounts(accounts);
-          setPhase("assigning");
-          setMessage("");
-        })
-        .catch((error) => {
-          setPhase("error");
-          setMessage(readableError(error, "Plaid Link completed, but reading accounts failed."));
-        });
-    },
-    [entityId, exchangePublicToken],
-  );
-
-  const handleExit = useCallback((error: PlaidLinkError | null) => {
-    setLinkToken(null);
-    if (!error) {
-      setPhase("idle");
-      setMessage("Plaid Link closed before a bank was connected.");
-      return;
+  const reopenTab = useCallback(() => {
+    if (plaidTabRef.current && !plaidTabRef.current.closed) {
+      plaidTabRef.current.focus();
+    } else {
+      openPlaidTab();
     }
-    setPhase("error");
-    setMessage(error.display_message || error.error_message || error.error_code || "Plaid Link exited with an error.");
-  }, []);
-
-  const handleLoadError = useCallback(() => {
-    setPhase("error");
-    setMessage("Plaid Link could not load in this browser session. Try again.");
-  }, []);
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateAccount(plaidAccountId: string, patch: Partial<PreviewAccount>) {
     setPreviewAccounts((accounts) =>
@@ -256,7 +232,7 @@ export function AddBankSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-md" data-testid="add-bank-sheet">
+      <SheetContent className="w-full gap-0 overflow-x-hidden overflow-y-auto sm:max-w-md" data-testid="add-bank-sheet">
         <SheetHeader className="border-b">
           <div className="flex items-center gap-2">
             <span className="flex size-7 items-center justify-center rounded-[8px] bg-ob-green-50 text-ob-green-800">
@@ -316,7 +292,7 @@ export function AddBankSheet({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-5 p-4">
+          <div className="flex min-w-0 flex-col gap-5 p-4">
             <div className="grid gap-1.5">
               <FieldLabel>Business</FieldLabel>
               <BusinessSelect
@@ -324,16 +300,49 @@ export function AddBankSheet({
                 value={entityId}
                 onChange={(value) => {
                   setEntityId(value);
-                  setLinkToken(null);
                   setPhase("idle");
                   setMessage("");
+                  setConnectAnother(false);
                 }}
                 testId="add-bank-business"
               />
-              <p className="text-[11.5px] leading-5 text-muted-foreground">
-                You’ll map each connected account to a business after Plaid returns them.
-              </p>
+              {!showExisting ? (
+                <p className="text-[11.5px] leading-5 text-muted-foreground">
+                  You'll map each connected account to a business after Plaid returns them.
+                </p>
+              ) : null}
             </div>
+
+            {showExisting ? (
+              <div
+                className="grid min-w-0 gap-2 rounded-[10px] border border-primary/20 bg-primary/5 p-3"
+                data-testid="add-bank-already-connected"
+              >
+                <div className="flex items-center gap-2 text-[12.5px] font-medium text-primary">
+                  <CheckCircle2 className="size-4 shrink-0" />
+                  {businessName} is already connected
+                </div>
+                <p className="text-[12px] leading-5 text-muted-foreground">
+                  No need to reconnect — transactions are already syncing for{" "}
+                  {existingForBusiness.length === 1 ? "this account" : "these accounts"}:
+                </p>
+                <ul className="grid gap-1">
+                  {existingForBusiness.map((account, index) => (
+                    <li
+                      key={`${account.plaidItemId}:${account.mask}:${index}`}
+                      className="truncate rounded-[8px] border bg-card px-2.5 py-1.5 text-[12px]"
+                    >
+                      <span className="font-medium">{account.institutionName ?? account.name}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        ••{account.mask}
+                        {account.kind ? ` · ${account.kind}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {message ? (
               <div
@@ -351,7 +360,7 @@ export function AddBankSheet({
           </div>
         )}
 
-        <SheetFooter className="border-t">
+        <SheetFooter className="border-t sm:flex-row sm:justify-end">
           {assigning ? (
             <Button
               type="button"
@@ -362,16 +371,33 @@ export function AddBankSheet({
               {phase === "saving" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
               {includedCount === 0 ? "Select at least one account" : `Add ${includedCount} account${includedCount === 1 ? "" : "s"}`}
             </Button>
-          ) : linkToken && phase === "ready" ? (
-            <PlaidLinkButton
-              token={linkToken}
-              onSuccess={handleSuccess}
-              onExit={handleExit}
-              onLoadError={handleLoadError}
-            />
+          ) : showExisting ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setConnectAnother(true);
+                  setMessage("");
+                }}
+                data-testid="add-bank-connect-another"
+              >
+                <Banknote className="size-4" />
+                Connect another bank
+              </Button>
+              <Button type="button" onClick={() => onOpenChange(false)} data-testid="add-bank-done">
+                <CheckCircle2 className="size-4" />
+                Done
+              </Button>
+            </>
+          ) : phase === "ready" ? (
+            <Button type="button" variant="outline" onClick={reopenTab} data-testid="plaid-open-link">
+              <ExternalLink className="size-4" />
+              Open Plaid Link tab
+            </Button>
           ) : (
-            <Button type="button" onClick={onPrepare} disabled={!entityId || phase === "preparing" || phase === "linking"}>
-              {phase === "preparing" || phase === "linking" ? (
+            <Button type="button" onClick={onPrepare} disabled={!entityId || phase === "preparing"}>
+              {phase === "preparing" ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <Banknote className="size-4" />

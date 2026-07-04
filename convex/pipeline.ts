@@ -878,6 +878,14 @@ async function routeTransactionCore(
       updatedAt: now,
     });
 
+    // Streams redesign: after this row commits, apply learned stream rules —
+    // auto-tag at/above the confidence threshold, else pre-fill the split and
+    // queue it for review. Cheap no-op when no rule matches; never overrides a
+    // human-confirmed tag. Runs post-commit so it sees the finished row.
+    await ctx.scheduler.runAfter(0, internal.streamRules.applyStreamRulesToTransaction, {
+      transactionId,
+    });
+
     if (args.transferAccountId && !args.forceReview) {
       const amount = absoluteMinor(args.amountMinor);
       const entryId = await postPipelineLedgerEntry(ctx, {
@@ -1530,5 +1538,34 @@ export const excludeTransaction = mutation({
     });
     await resolveInboxItems(ctx, transaction.entityId, transaction._id, now);
     return { status: "excluded" as const };
+  },
+});
+
+// Manually link (or clear) the customer/vendor on a transaction — the fallback
+// when AI/auto-matching didn't attach one. Sets the contact on the transaction
+// FEED only: for an unposted (needs-review/Inbox) row the contact then flows
+// into the journal line when it posts; posted entries stay immutable, so their
+// lines are never edited here (re-attributing a posted line is a reverse+repost
+// concern, not this lightweight tag). Re-checks workspace authorization and the
+// contact's entity ownership on the server.
+export const setTransactionContact = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    contactId: v.union(v.id("contacts"), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const { entity, transaction } = await requireTransactionForAdmin(ctx, args.transactionId);
+    await assertNotDemoWrite(ctx, entity.workspaceId);
+    if (args.contactId) {
+      const contact = await ctx.db.get(args.contactId);
+      if (!contact || contact.entityId !== transaction.entityId) {
+        throw new Error("That contact does not belong to this business.");
+      }
+    }
+    await ctx.db.patch(transaction._id, {
+      contactId: args.contactId ?? undefined,
+      updatedAt: Date.now(),
+    });
+    return { status: "ok" as const };
   },
 });

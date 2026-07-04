@@ -61,6 +61,11 @@ const reportPackRef = makeFunctionReference<
   },
   ReportPackForTool
 >("reportViews:reportPack");
+const streamPnlRef = makeFunctionReference<
+  "query",
+  { entityId: Id<"entities">; startDate?: string; endDate?: string },
+  unknown
+>("streamViews:streamPnl");
 
 function limitRows(value: number | undefined) {
   return Math.min(MAX_TOOL_ROWS, Math.max(1, Math.floor(value ?? 10)));
@@ -207,10 +212,11 @@ export const getBalances = query({
   },
   handler: async (ctx, args) => {
     const entity = await getEntity(ctx, args.entityId);
-    const [bankAccounts, accounts] = await Promise.all([
+    const [bankAccountsRaw, accounts] = await Promise.all([
       ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
       ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
     ]);
+    const bankAccounts = bankAccountsRaw.filter((account) => !account.archived);
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
     const rows = bankAccounts.map((bankAccount) => {
       const account = accountsById.get(bankAccount.ledgerAccountId);
@@ -292,6 +298,146 @@ export const searchContacts = query({
               : null,
           };
         }),
+    };
+  },
+});
+
+export const getStreamPnl = query({
+  args: {
+    entityId: v.optional(v.id("entities")),
+    startDate: v.optional(v.string()),
+    endDate: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const entity = await getEntity(ctx, args.entityId);
+    const result = (await ctx.runQuery(streamPnlRef, {
+      entityId: entity._id,
+      startDate: args.startDate,
+      endDate: args.endDate,
+    })) as Record<string, unknown>;
+    return { tool: "getStreamPnl" as const, ...result };
+  },
+});
+
+export const getContactInsights = query({
+  args: {
+    entityId: v.optional(v.id("entities")),
+    contactName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const entity = await getEntity(ctx, args.entityId);
+
+    const [contacts, transactions, invoices, bills, accounts] = await Promise.all([
+      ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
+      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
+      ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
+      ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
+      ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
+    ]);
+
+    const needle = args.contactName.trim().toLowerCase();
+    const contact = contacts.find(
+      (c) =>
+        c.name.toLowerCase().includes(needle) ||
+        c.aliases.some((a) => a.toLowerCase().includes(needle)),
+    );
+
+    if (!contact) {
+      return {
+        tool: "getContactInsights" as const,
+        entity: entitySummary(entity),
+        found: false,
+        contactName: args.contactName,
+      };
+    }
+
+    const accountsById = new Map(accounts.map((a) => [a._id, a]));
+    const arAccountId = accounts.find((a) => a.number === "1100")?._id ?? null;
+    const apAccountId = accounts.find((a) => a.number === "2100")?._id ?? null;
+    const isSettlement = (id?: Id<"ledgerAccounts">) =>
+      id != null && (id === arAccountId || id === apAccountId);
+
+    const contactTxns = transactions.filter((t) => t.contactId === contact._id);
+    const contactInvoices = invoices.filter((i) => i.contactId === contact._id);
+    const contactBills = bills.filter((b) => b.contactId === contact._id);
+
+    // Revenue / spend by service (ledger category account)
+    const byCategoryMap = new Map<
+      string,
+      { name: string; number: string; inMinor: number; outMinor: number; txCount: number }
+    >();
+    for (const txn of contactTxns) {
+      if (!txn.categoryAccountId) continue;
+      if (isSettlement(txn.categoryAccountId)) continue;
+      if (txn.status !== "posted") continue;
+      const key = String(txn.categoryAccountId);
+      const account = accountsById.get(txn.categoryAccountId);
+      const entry = byCategoryMap.get(key) ?? {
+        name: account?.name ?? "Uncategorized",
+        number: account?.number ?? "",
+        inMinor: 0,
+        outMinor: 0,
+        txCount: 0,
+      };
+      if (txn.amountMinor >= 0) entry.inMinor += txn.amountMinor;
+      else entry.outMinor += Math.abs(txn.amountMinor);
+      entry.txCount += 1;
+      byCategoryMap.set(key, entry);
+    }
+    const categoryBreakdown = [...byCategoryMap.values()].sort(
+      (a, b) => b.inMinor + b.outMinor - (a.inMinor + a.outMinor),
+    );
+
+    // Lifetime KPIs (mirrors contactProfile — no double-count on settlement legs)
+    const openInvoices = contactInvoices.filter((i) => i.status === "open" || i.status === "overdue");
+    const openBills = contactBills.filter((b) => b.status === "open");
+    const lifetimeInMinor =
+      contactInvoices.reduce((s, i) => s + i.amountPaidMinor, 0) +
+      contactTxns
+        .filter((t) => t.amountMinor > 0 && !isSettlement(t.categoryAccountId))
+        .reduce((s, t) => s + t.amountMinor, 0);
+    const lifetimeOutMinor =
+      contactBills.reduce((s, b) => s + b.totalMinor, 0) +
+      contactTxns
+        .filter((t) => t.amountMinor < 0 && !isSettlement(t.categoryAccountId))
+        .reduce((s, t) => s + Math.abs(t.amountMinor), 0);
+
+    // Most recent 10 posted transactions
+    const recentTransactions = contactTxns
+      .filter((t) => t.status === "posted" && !isSettlement(t.categoryAccountId))
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 10)
+      .map((t) => {
+        const account = t.categoryAccountId ? accountsById.get(t.categoryAccountId) : null;
+        return {
+          id: t._id,
+          date: t.date,
+          merchant: t.merchant,
+          amountMinor: t.amountMinor,
+          currency: t.currency,
+          category: account ? { name: account.name, number: account.number } : null,
+        };
+      });
+
+    return {
+      tool: "getContactInsights" as const,
+      entity: entitySummary(entity),
+      found: true,
+      contact: {
+        id: contact._id,
+        name: contact.name,
+        roles: contact.roles,
+        email: contact.email ?? null,
+      },
+      kpis: {
+        lifetimeInMinor,
+        lifetimeOutMinor,
+        openReceivableMinor: openInvoices.reduce((s, i) => s + (i.totalMinor - i.amountPaidMinor), 0),
+        openPayableMinor: openBills.reduce((s, b) => s + b.totalMinor, 0),
+      },
+      categoryBreakdown,
+      recentTransactions,
+      currency: entity.currency,
     };
   },
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import { ChevronDown, ChevronUp, GripVertical, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -71,7 +72,7 @@ export function RulesSection({ entityId }: { entityId: Id<"entities"> | null }) 
     try {
       await reorder({ entityId: entityId!, orderedIds: ids });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not reorder.");
+      setError(getErrorMessage(err, "Could not reorder."));
     }
   }
 
@@ -418,7 +419,7 @@ function RuleEditor({
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the rule.");
+      setError(getErrorMessage(err, "Could not save the rule."));
     } finally {
       setBusy(false);
     }

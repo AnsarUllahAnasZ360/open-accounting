@@ -35,7 +35,10 @@ export const AI_AUTONOMY_THRESHOLDS = {
 
 export type AIAutonomy = keyof typeof AI_AUTONOMY_THRESHOLDS;
 
-const DEFAULT_AI_AUTONOMY: AIAutonomy = "balanced";
+// Autonomy is locked to "autopilot" — the Suggest/Balanced selector has been
+// removed from the UI. Transactions scoring ≥75% are auto-posted; below that
+// they go to the Inbox. The constant is kept for test compatibility.
+const DEFAULT_AI_AUTONOMY: AIAutonomy = "autopilot";
 // Widened from the legacy 5 providers to all 14 catalog providers (E3-T2; Q12).
 // The aiCatalog AI_PROVIDER_IDS list is the canonical source of truth. This is
 // additive/non-breaking: every previously-stored provider id is still in the set.
@@ -1009,6 +1012,10 @@ export const categorizationBatchCandidates = internalQuery({
     entityId: v.id("entities"),
     limit: v.optional(v.number()),
     actorUserId: v.optional(v.id("users")),
+    // When provided, restrict candidates to these specific transactions (e.g. the
+    // rows the owner hand-picked in the Inbox to re-check with AI). Each must
+    // still pass the candidate filter; non-candidates are silently dropped.
+    transactionIds: v.optional(v.array(v.id("transactions"))),
   },
   handler: async (ctx, args) => {
     const entity = await ctx.db.get(args.entityId);
@@ -1016,16 +1023,19 @@ export const categorizationBatchCandidates = internalQuery({
       throw new ConvexError("OpenBooks entity not found.");
     }
     await authorizeCategorizationRead(ctx, entity.workspaceId, args.actorUserId);
-    const limit = Math.min(
-      CATEGORIZATION_BATCH_PASS_SIZE,
-      Math.max(1, Math.floor(args.limit ?? 10)),
-    );
+    const targetIds = args.transactionIds
+      ? new Set(args.transactionIds.map((id) => String(id)))
+      : null;
+    const limit = targetIds
+      ? Math.min(CATEGORIZATION_BATCH_PASS_SIZE, Math.max(1, targetIds.size))
+      : Math.min(CATEGORIZATION_BATCH_PASS_SIZE, Math.max(1, Math.floor(args.limit ?? 10)));
     const transactions = await ctx.db
       .query("transactions")
       .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
       .take(CATEGORIZATION_CANDIDATE_SCAN);
     return transactions
       .filter(isCategorizationCandidate)
+      .filter((transaction) => (targetIds ? targetIds.has(String(transaction._id)) : true))
       .slice(0, limit)
       .map((transaction) => ({
         transactionId: transaction._id,

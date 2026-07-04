@@ -109,7 +109,7 @@ export function PlaidSetupSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-md" data-testid="plaid-setup-sheet">
+      <SheetContent className="w-full gap-0 overflow-x-hidden overflow-y-auto sm:max-w-md" data-testid="plaid-setup-sheet">
         <SheetHeader className="border-b">
           <div className="flex items-center gap-2">
             <span className="flex size-7 items-center justify-center rounded-[8px] bg-ob-green-50 text-ob-green-800">
@@ -122,7 +122,7 @@ export function PlaidSetupSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex flex-col gap-5 p-4">
+        <div className="flex min-w-0 flex-col gap-5 p-4">
           {plaidApp.configured ? (
             <div className="rounded-[10px] border bg-muted/20 p-3 text-[12.5px]">
               <div className="font-medium">Plaid app saved</div>
@@ -150,7 +150,7 @@ export function PlaidSetupSheet({
             </li>
           </ol>
 
-          <div className="grid gap-3">
+          <div className="grid min-w-0 gap-3">
             <WebhookField
               label="OAuth redirect URL"
               value={redirectUri}

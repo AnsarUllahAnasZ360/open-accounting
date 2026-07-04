@@ -393,7 +393,7 @@ export const list = query({
           isDemo: entity.isDemo,
         })),
       bankAccounts: bankAccounts
-        .filter((account) => account.plaidAccountId && account.plaidItemId && account.plaidItemId !== "openbooks-sandbox-fixture")
+        .filter((account) => account.plaidAccountId && account.plaidItemId && account.plaidItemId !== "openbooks-sandbox-fixture" && !account.archived)
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .map((account) => {
           const entity = entityById.get(String(account.entityId));
@@ -413,6 +413,26 @@ export const list = query({
             institutionName: plaidItem?.institutionName ?? null,
             itemStatus: plaidItem?.status ?? null,
             lastSyncedAt: account.lastSyncedAt ?? plaidItem?.lastSyncedAt ?? null,
+            updatedAt: account.updatedAt,
+          };
+        }),
+      // Manual / imported (non-Plaid) accounts — e.g. the default "CSV"
+      // placeholder or a CSV/OFX import target. Surfaced separately so Settings
+      // can offer a "Remove" (archive) control for them. Archived ones excluded.
+      manualBankAccounts: bankAccounts
+        .filter((account) => !account.plaidItemId && !account.archived)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map((account) => {
+          const entity = entityById.get(String(account.entityId));
+          return {
+            id: account._id,
+            entityId: account.entityId,
+            entityName: entity?.name ?? "Unknown business",
+            name: account.name,
+            mask: account.mask,
+            kind: account.kind,
+            balanceMinor: account.balanceMinor,
+            currency: entity?.currency ?? "USD",
             updatedAt: account.updatedAt,
           };
         }),
@@ -1382,6 +1402,21 @@ export const listStripeWebhookCredentialCandidates = internalQuery({
   handler: async (ctx): Promise<Array<Doc<"connectionCredentials">>> => {
     const rows = await ctx.db.query("connectionCredentials").take(200);
     return rows.filter((row) => row.provider === "stripe" && row.status === "active");
+  },
+});
+
+// Fallback for the Plaid webhook: the entity of ANY active Plaid credential.
+// The verification-key call only needs valid client_id/secret for the right
+// environment (not the item's specific tenant), so when the webhook's item_id
+// can't be matched we can still verify against the workspace's saved app.
+export const anyActivePlaidCredentialEntity = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<{ entityId: Id<"entities"> } | null> => {
+    const rows = await ctx.db.query("connectionCredentials").take(200);
+    const active = rows
+      .filter((row) => row.provider === "plaid" && row.status === "active")
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    return active ? { entityId: active.entityId } : null;
   },
 });
 

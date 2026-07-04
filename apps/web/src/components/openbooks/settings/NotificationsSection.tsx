@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import Link from "next/link";
 import { Check, ExternalLink, Pencil } from "lucide-react";
 import { useState } from "react";
@@ -91,7 +92,7 @@ export function NotificationsSection() {
       setEmailSaved(true);
       setEditingEmail(false);
     } catch (err) {
-      setEmailError(err instanceof Error ? err.message : "Could not save the email.");
+      setEmailError(getErrorMessage(err, "Could not save the email."));
     } finally {
       setEmailBusy(false);
     }

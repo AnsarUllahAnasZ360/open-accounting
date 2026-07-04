@@ -4,6 +4,7 @@ import { Check, Copy, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -114,10 +115,7 @@ export function formatRelative(value?: number | null): string {
 }
 
 export function readableError(error: unknown, fallback: string): string {
-  if (!(error instanceof Error)) return fallback;
-  const uncaught = error.message.match(/Uncaught \w*Error: ([\s\S]+)/);
-  if (uncaught) return uncaught[1].trim().split("\n")[0] ?? fallback;
-  return error.message;
+  return getErrorMessage(error, fallback);
 }
 
 /** Read-only endpoint URL with a one-click copy. Used for the Stripe/Plaid
@@ -145,9 +143,9 @@ export function WebhookField({
       .catch(() => toast.error("Could not copy to clipboard."));
   }
   return (
-    <div className="grid gap-1.5">
+    <div className="grid min-w-0 gap-1.5">
       <Label className="text-[12px] text-muted-foreground">{label}</Label>
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <code
           className="min-w-0 flex-1 truncate rounded-[8px] border bg-muted/40 px-2.5 py-2 font-mono text-[12px]"
           title={value || undefined}
@@ -155,7 +153,7 @@ export function WebhookField({
         >
           {value || "Not available in this environment"}
         </code>
-        <Button type="button" variant="outline" size="sm" disabled={!value} onClick={onCopy}>
+        <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={!value} onClick={onCopy}>
           {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
           {copied ? "Copied" : "Copy"}
         </Button>

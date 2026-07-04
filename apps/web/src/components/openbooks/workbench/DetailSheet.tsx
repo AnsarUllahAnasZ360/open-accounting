@@ -51,7 +51,11 @@ export function DetailSheet({
   const isMobile = useIsMobile();
 
   const body = (
-    <ScrollArea className="min-h-0 flex-1">
+    // radix ScrollArea wraps content in a `display:table` element that sizes to
+    // its widest child, which overflows the fixed-width sheet and clips the right
+    // edge. Forcing that wrapper to `block` makes content respect the panel width
+    // and wrap instead of being cut off.
+    <ScrollArea className="min-h-0 flex-1" viewportClassName="[&>div]:!block">
       <div className="flex flex-col gap-4 px-4 pb-4">
         {attention ? <div className="flex flex-wrap gap-2">{attention}</div> : null}
         {tabs && tabs.length > 0 ? (

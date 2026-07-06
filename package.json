@@ -34,10 +34,13 @@
     "verify": "pnpm typecheck && pnpm typecheck:convex && pnpm lint && pnpm build && pnpm test:unit",
     "ci": "pnpm verify && pnpm test:e2e",
     "convex:dev": "convex dev",
-    "convex:deploy": "convex deploy"
+    "convex:deploy": "convex deploy",
+    "changeset": "changeset",
+    "changeset:version": "changeset version"
   },
   "devDependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1066.0",
+    "@changesets/cli": "^2.27.11",
     "@edge-runtime/vm": "^5.0.0",
     "@playwright/test": "^1.60.0",
     "@types/node": "^20.19.42",

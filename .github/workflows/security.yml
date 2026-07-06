@@ -1,0 +1,70 @@
+name: Security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so gitleaks can scan the whole commit range on push.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Repo-authored heuristic scan (scripts/scan-secrets.mjs).
+      - name: Scan for committed secrets
+        run: pnpm run scan:secrets
+
+      # Industry-standard scanner using this repo's .gitleaks.toml.
+      # NOTE: gitleaks-action is free for personal/public repos. For an
+      # organisation-owned private repo you must set the GITLEAKS_LICENSE secret.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  audit:
+    name: Dependency Audit & Env Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Advisory: surfaces known CVEs in production deps without blocking the
+      # merge. Drop "|| true" once the tree is clean if you want it to gate.
+      - name: Audit production dependencies
+        run: pnpm run security:audit || true
+
+      - name: Check env docs are in sync
+        run: pnpm run check:env-docs

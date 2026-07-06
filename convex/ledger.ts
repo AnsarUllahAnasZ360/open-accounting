@@ -35,50 +35,55 @@ export type ChartTemplateRow = {
 };
 
 export const chartTemplates: Array<ChartTemplateRow> = [
+  // === ASSETS (1xxx) ===
   { number: "1000", name: "Cash on Hand", type: "asset", subtype: "cash" },
   { number: "1010", name: "Operating Checking", type: "asset", subtype: "bank" },
-  { number: "1020", name: "Savings", type: "asset", subtype: "bank" },
+  { number: "1020", name: "Savings Account", type: "asset", subtype: "bank" },
   { number: "1100", name: "Accounts Receivable", type: "asset", subtype: "receivable" },
-  // Intercompany reciprocal accounts (Epic E5-T5). Balance-sheet ONLY —
-  // intercompany transfers NEVER hit P&L. The epic names these "1300/2300 Due
-  // from/to Affiliate", but 1300 (Inventory, ecommerce) and 2300 (Sales Tax
-  // Payable, base) are already taken, so we use the adjacent free numbers
-  // 1310/2310 to avoid duplicate account numbers within an entity.
-  { number: "1310", name: "Due from Affiliate", type: "asset", subtype: "due_from_affiliate", isSystem: true },
-  { number: "1150", name: "Stripe Clearing", type: "asset", subtype: "clearing" },
-  { number: "1160", name: "Payouts In-Transit", type: "asset", subtype: "in_transit" },
+  { number: "1150", name: "Stripe Clearing", type: "asset", subtype: "clearing", isSystem: true },
+  { number: "1160", name: "Payouts In-Transit", type: "asset", subtype: "in_transit", isSystem: true },
   { number: "1200", name: "Prepaid Expenses", type: "asset", subtype: "prepaid" },
+  // Intercompany reciprocal — balance-sheet only (E5-T5). 1300 taken by ecommerce Inventory.
+  { number: "1310", name: "Due from Affiliate", type: "asset", subtype: "due_from_affiliate", isSystem: true },
   { number: "1500", name: "Equipment", type: "asset", subtype: "fixed_asset" },
+
+  // === LIABILITIES (2xxx) ===
   { number: "2000", name: "Credit Card", type: "liability", subtype: "credit_card" },
   { number: "2100", name: "Accounts Payable", type: "liability", subtype: "payable" },
-  { number: "2200", name: "Payroll Payable", type: "liability", subtype: "payroll" },
-  { number: "2300", name: "Sales Tax Payable", type: "liability", subtype: "tax" },
-  // Intercompany reciprocal — balance-sheet only (Epic E5-T5). See note on 1310.
+  { number: "2200", name: "Payroll Payable", type: "liability", subtype: "payroll_payable" },
+  { number: "2300", name: "Sales Tax Payable", type: "liability", subtype: "sales_tax" },
+  // Intercompany reciprocal — balance-sheet only (E5-T5). See note on 1310.
   { number: "2310", name: "Due to Affiliate", type: "liability", subtype: "due_to_affiliate", isSystem: true },
   { number: "2500", name: "Loans Payable", type: "liability", subtype: "loan" },
+
+  // === EQUITY (3xxx) ===
   { number: "3000", name: "Owner's Equity", type: "equity", subtype: "equity" },
   { number: "3100", name: "Owner's Draw", type: "equity", subtype: "draw" },
   { number: "3200", name: "Retained Earnings", type: "equity", subtype: "retained_earnings" },
   { number: "3900", name: "Opening Balance Equity", type: "equity", subtype: "opening_balance", isSystem: true },
-  { number: "4000", name: "Sales", type: "income", subtype: "sales" },
-  { number: "4100", name: "Services", type: "income", subtype: "services" },
+
+  // === INCOME (4xxx) ===
+  { number: "4000", name: "Product Sales", type: "income", subtype: "sales" },
+  { number: "4100", name: "Service Revenue", type: "income", subtype: "services" },
   { number: "4200", name: "Other Income", type: "income", subtype: "other_income" },
-  { number: "4900", name: "Uncategorized Income", type: "income", subtype: "uncategorized", isSystem: true },
+  { number: "4900", name: "Uncategorized Income", type: "income", subtype: "uncategorized_income", isSystem: true },
+
+  // === EXPENSES (5xxx–6xxx) ===
   { number: "5000", name: "Payroll & Contractors", type: "expense", subtype: "payroll" },
-  { number: "5100", name: "Rent", type: "expense", subtype: "rent" },
+  { number: "5100", name: "Rent & Lease", type: "expense", subtype: "rent" },
   { number: "5200", name: "Software & SaaS", type: "expense", subtype: "software" },
-  { number: "5300", name: "Cloud/Infrastructure", type: "expense", subtype: "cloud" },
-  { number: "5400", name: "Marketing & Ads", type: "expense", subtype: "marketing" },
+  { number: "5300", name: "Cloud & Infrastructure", type: "expense", subtype: "cloud" },
+  { number: "5400", name: "Marketing & Advertising", type: "expense", subtype: "marketing" },
   { number: "5500", name: "Professional Services", type: "expense", subtype: "professional_services" },
-  { number: "5600", name: "Payment Processing Fees", type: "expense", subtype: "fees" },
+  { number: "5600", name: "Payment Processing Fees", type: "expense", subtype: "payment_fees" },
   { number: "5700", name: "Insurance", type: "expense", subtype: "insurance" },
-  { number: "5800", name: "Meals", type: "expense", subtype: "meals" },
+  { number: "5800", name: "Meals & Entertainment", type: "expense", subtype: "meals" },
   { number: "5900", name: "Travel", type: "expense", subtype: "travel" },
   { number: "6000", name: "Office & Supplies", type: "expense", subtype: "office" },
   { number: "6100", name: "Utilities", type: "expense", subtype: "utilities" },
-  { number: "6200", name: "Bank Fees", type: "expense", subtype: "bank_fees" },
+  { number: "6200", name: "Bank Fees & Charges", type: "expense", subtype: "bank_fees" },
   { number: "6300", name: "Taxes & Licenses", type: "expense", subtype: "taxes" },
-  { number: "6900", name: "Uncategorized Expense", type: "expense", subtype: "uncategorized", isSystem: true },
+  { number: "6900", name: "Uncategorized Expense", type: "expense", subtype: "uncategorized_expense", isSystem: true },
   { number: "6999", name: "Other Expense", type: "expense", subtype: "other_expense" },
 ];
 
@@ -114,9 +119,9 @@ export async function getEntityForWrite(
 export const chartTypeAdditions: Record<string, Array<ChartTemplateRow>> = {
   ecommerce: [
     { number: "1300", name: "Inventory", type: "asset", subtype: "inventory" },
+    { number: "4050", name: "Online Sales", type: "income", subtype: "online_sales" },
     { number: "5050", name: "Cost of Goods Sold", type: "expense", subtype: "cogs" },
     { number: "5060", name: "Shipping & Fulfillment", type: "expense", subtype: "shipping" },
-    { number: "4050", name: "Product Sales", type: "income", subtype: "product_sales" },
   ],
   software: [
     { number: "4150", name: "Subscription Revenue", type: "income", subtype: "subscription" },

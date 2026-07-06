@@ -82,9 +82,18 @@ export const SECTION_SUBTABS: ReadonlyArray<SectionSubtabConfig> = [
     section: "payroll",
     subtabs: [
       { id: "runs", label: "Runs", kind: "cash-movement", isDefault: true },
+      { id: "monthly", label: "Monthly", subtitle: "Runs by month", kind: "ledger" },
       { id: "people", label: "People", subtitle: "Team roster", kind: "ledger" },
       { id: "statements", label: "Statements", subtitle: "Payroll reports", kind: "ledger" },
       { id: "insights", label: "Insights", kind: "insights" },
+    ],
+  },
+  {
+    section: "revenue-streams",
+    subtabs: [
+      { id: "revenue-streams", label: "Insights", kind: "cash-movement", isDefault: true },
+      { id: "needs-review", label: "Needs Review", subtitle: "AI suggestions", kind: "ledger" },
+      { id: "manage", label: "Manage", subtitle: "Streams & rules", kind: "ledger" },
     ],
   },
 ];

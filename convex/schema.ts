@@ -135,6 +135,14 @@ export default defineSchema({
     entityType: v.optional(v.string()), // LLC, S-Corporation, ...
     taxId: v.optional(v.string()),
     homeState: v.optional(v.string()),
+    // Business identity used on the invoice "From" block. All optional so legacy
+    // rows read as unset. The logo is an uploaded file in Convex storage; the
+    // contact email/phone print on the invoice; showTaxIdOnInvoice surfaces the
+    // already-stored taxId on the document (default: shown when a taxId exists).
+    logoStorageId: v.optional(v.id("_storage")),
+    contactEmail: v.optional(v.string()),
+    contactPhone: v.optional(v.string()),
+    showTaxIdOnInvoice: v.optional(v.boolean()),
     // Approved revenue-stream taxonomy for this business. Defined ONCE here and
     // SHARED across epics: onboarding's AI-proposes/owner-approves flow (E4)
     // WRITES it, the categorizer prompt (E2-T9) and the weekly digest/dashboard
@@ -175,6 +183,21 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
     .index("by_user_and_workspace", ["userId", "workspaceId"]),
+  // In-app notifications (one row per recipient). Fanned out to the users who
+  // should act — e.g. a submitted payroll run notifies every approver. Each row
+  // carries its own read state and an in-app link to open the related record.
+  notifications: defineTable({
+    workspaceId: v.id("workspaces"),
+    userId: v.id("users"), // recipient
+    kind: v.string(), // e.g. "payroll.run.submitted"
+    title: v.string(),
+    body: v.optional(v.string()),
+    link: v.optional(v.string()), // in-app route, e.g. "/payroll/runs/<id>"
+    actorUserId: v.optional(v.id("users")), // who triggered it
+    entityId: v.optional(v.id("entities")),
+    readAt: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"]),
   userProfiles: defineTable({
     userId: v.id("users"),
     displayName: v.string(),
@@ -347,6 +370,11 @@ export default defineSchema({
     plaidItemId: v.optional(v.string()),
     lastSyncCursor: v.optional(v.string()),
     lastSyncedAt: v.optional(v.number()),
+    // Soft-hide flag. Archived accounts stay in the DB (ledger history is
+    // immutable) but are filtered out of the dashboard, AI, and connection
+    // lists. Used to auto-hide the empty default "CSV" placeholder once a real
+    // bank links, and for the manual "Remove" control in Settings.
+    archived: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_entity", ["entityId"]),
@@ -635,13 +663,23 @@ export default defineSchema({
     // Additive/optional — existing rows read as never-cleared.
     reconciliationId: v.optional(v.id("bankReconciliations")),
     clearedAt: v.optional(v.number()),
+    // Revenue-stream attribution (streams redesign). Splits the transaction
+    // amount across one or more streams; the amounts sum to amountMinor
+    // (validated on write via normalizeStreamSplit). INDEPENDENT of
+    // categoryAccountId — category and stream are two separate fields.
+    streams: v.optional(v.array(v.object({ streamLabel: v.string(), amountMinor: v.number() }))),
+    // Rule that produced/confirmed this stream tag, and whether AI auto-applied
+    // it (for the Needs Review queue + confidence learning).
+    streamRuleId: v.optional(v.id("streamRules")),
+    streamReview: v.optional(v.union(v.literal("auto"), v.literal("confirmed"), v.literal("needs_review"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_entity", ["entityId"])
     .index("by_external_id", ["externalId"])
     .index("by_entry", ["entryId"])
-    .index("by_reconciliation", ["reconciliationId"]),
+    .index("by_reconciliation", ["reconciliationId"])
+    .index("by_entity_and_stream_review", ["entityId", "streamReview"]),
   // Intercompany transfer links (Epic E5-T5). Detected money moving between two
   // entities in the SAME workspace (Zikra↔Z360): an outflow on one entity whose
   // matched counter-leg is an inflow on a different same-workspace entity. Pure
@@ -711,7 +749,17 @@ export default defineSchema({
   }).index("by_entity", ["entityId"]),
   documents: defineTable({
     entityId: v.id("entities"),
-    kind: v.union(v.literal("receipt"), v.literal("bill"), v.literal("statement"), v.literal("attachment")),
+    kind: v.union(
+      v.literal("receipt"),
+      v.literal("bill"),
+      v.literal("statement"),
+      v.literal("attachment"),
+      // Payroll extension: a file attached to an employee record (contract, ID
+      // copy, etc.). Scoped to an employee via `employeeId` below.
+      v.literal("employee-doc"),
+    ),
+    // Set only for kind "employee-doc" — links the file to an employee record.
+    employeeId: v.optional(v.id("employees")),
     storageId: v.optional(v.id("_storage")),
     fileName: v.optional(v.string()),
     mimeType: v.optional(v.string()),
@@ -734,7 +782,9 @@ export default defineSchema({
     status: v.union(v.literal("pending"), v.literal("matched"), v.literal("unmatched")),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_entity", ["entityId"]),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_employee", ["employeeId"]),
   receiptEmbeddings: defineTable({
     entityId: v.id("entities"),
     documentId: v.id("documents"),
@@ -819,6 +869,9 @@ export default defineSchema({
     // stable id instead of the human-facing `number` (which can repeat across
     // accounts). Optional so legacy/manual invoices read as none on file.
     stripeInvoiceId: v.optional(v.string()),
+    // Revenue-stream attribution (streams redesign). Splits invoice revenue
+    // across streams; amounts sum to totalMinor (validated on write).
+    streams: v.optional(v.array(v.object({ streamLabel: v.string(), amountMinor: v.number() }))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -834,6 +887,9 @@ export default defineSchema({
     totalMinor: v.number(),
     currency: v.string(),
     entryIds: v.array(v.id("journalEntries")),
+    // Revenue-stream attribution (streams redesign). Splits bill cost across
+    // streams; amounts sum to totalMinor (validated on write).
+    streams: v.optional(v.array(v.object({ streamLabel: v.string(), amountMinor: v.number() }))),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_entity", ["entityId"]),
@@ -861,7 +917,47 @@ export default defineSchema({
     payTo: v.optional(v.any()),
     exitDate: v.optional(v.string()),
     exitReason: v.optional(v.string()),
-  }).index("by_entity", ["entityId"]),
+    email: v.optional(v.string()),
+    department: v.optional(v.string()),
+    // Rich employee profile (payroll extension). All additive-optional so
+    // existing/parallel-branch rows keep validating. Personal + employment +
+    // payment + emergency-contact detail surfaced on the employee detail view.
+    // `payTo` (above, intentionally loose) carries structured bank details
+    // { bankName, accountTitle, ibanOrAccountNumber } and is returned only to
+    // payroll.manage holders — never logged or seeded.
+    phone: v.optional(v.string()),
+    city: v.optional(v.string()),
+    photoStorageId: v.optional(v.id("_storage")),
+    employmentType: v.optional(
+      v.union(v.literal("full_time"), v.literal("part_time"), v.literal("contractor")),
+    ),
+    startDate: v.optional(v.string()),
+    // How often this employee is paid (metadata; the run still accrues the
+    // stored monthly amount). Distinct from the entity-level auto-draft cadence
+    // in `paySchedules`.
+    payFrequency: v.optional(
+      v.union(v.literal("hourly"), v.literal("weekly"), v.literal("semimonthly"), v.literal("monthly")),
+    ),
+    paymentMethod: v.optional(v.string()),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_entity_and_active", ["entityId", "active"]),
+  // Salary-history log (payroll extension). A child table (not an array on
+  // employees) so the history never grows the parent doc unbounded (Convex
+  // guideline) and each change is individually queryable. Appended — never
+  // overwritten — every time an employee's monthly salary is edited.
+  employeeCompensationEvents: defineTable({
+    entityId: v.id("entities"),
+    employeeId: v.id("employees"),
+    // previous is absent for the very first (hire) event.
+    previousAmountMinor: v.optional(v.number()),
+    newAmountMinor: v.number(),
+    currency: v.string(),
+    effectiveDate: v.string(),
+    changedBy: v.id("users"),
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_employee", ["employeeId"]),
   // Per-entity pay cadence. Additive + optional: an entity with no row (or an
   // `enabled: false` row) is never auto-drafted, so demo data — which never
   // gets an enabled schedule — is untouched by the auto-draft cron. Runs are
@@ -876,7 +972,18 @@ export default defineSchema({
   payrollRuns: defineTable({
     entityId: v.id("entities"),
     period: v.string(),
-    status: v.union(v.literal("draft"), v.literal("approved"), v.literal("paid")),
+    // Maker-checker lifecycle: draft (HR prepares) → submitted (handed off for
+    // approval) → approved (posted to the ledger) → paid (settled). "submitted"
+    // is additive; legacy runs never carry it.
+    status: v.union(
+      v.literal("draft"),
+      v.literal("submitted"),
+      v.literal("approved"),
+      v.literal("paid"),
+    ),
+    // Who submitted the run for approval, and when (audit trail for the hand-off).
+    submittedAt: v.optional(v.number()),
+    submittedBy: v.optional(v.id("users")),
     // How this run was created. Absent/"manual" = an owner started it; an
     // "auto-draft" run was drafted by the scheduled function and still requires
     // a manual approval before anything posts to the ledger.
@@ -907,9 +1014,26 @@ export default defineSchema({
     // Snapshot of employee identity at run time (employees can change later).
     employeeName: v.string(),
     country: v.string(),
+    // City snapshot for country→city grouping/subtotals in the run sheet.
+    // Additive optional: legacy/seeded lines read back with no city.
+    city: v.optional(v.string()),
     currency: v.string(),
-    baseSalaryMinor: v.number(), // local minor units, before adjustment
-    adjustmentMinor: v.number(), // local minor units, signed (+ bonus / − deduction)
+    baseSalaryMinor: v.number(), // local minor units, before bonus/deduction
+    // LEGACY signed adjustment (+add / −deduct). Superseded by the explicit
+    // bonusMinor / deductionMinor pair; no longer written. Optional so new lines
+    // omit it while old rows still validate; its value is folded into
+    // bonus/deduction on read + on first edit so totals never change.
+    adjustmentMinor: v.optional(v.number()),
+    // One-time bonus (+) and deduction (−) for this run only. Both non-negative
+    // local minor units, folded into finalLocalMinor so they flow through to the
+    // base equivalent and the ledger posting, but NEVER touch the employee's
+    // monthly salary. Additive optional → absent reads as 0. Draft-only edit.
+    bonusMinor: v.optional(v.number()),
+    deductionMinor: v.optional(v.number()),
+    // Unguessable capability token for the payslip link emailed to employees
+    // (who have no login). The token IS the authorization — same pattern as
+    // team invites. Set lazily when a payslip is first emailed. Additive optional.
+    payslipToken: v.optional(v.string()),
     // FX expressed as integer micro-units of local currency per 1 base unit
     // (e.g. 278 PKR/USD -> 278_000_000). Avoids storing a float rate.
     fxRateMicros: v.number(),
@@ -930,7 +1054,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_run", ["runId"])
-    .index("by_entity", ["entityId"]),
+    .index("by_entity", ["entityId"])
+    .index("by_employee", ["employeeId"]),
   // E10-T3: persisted day-of-pay FX rates so the settle/read path never depends on
   // a live network fetch. A Convex action fetches the rate (no provider
   // preference; decisions.md Q51) and writes a row here as integer micro-units of
@@ -1317,4 +1442,39 @@ export default defineSchema({
   })
     .index("by_workspace", ["workspaceId"])
     .index("by_workspace_and_week", ["workspaceId", "weekKey"]),
+  // Canonical revenue-stream registry per business (streams redesign). Streams
+  // are labels; transactions/invoices/bills carry `streams[].streamLabel`
+  // referencing these. A table (not just distinct labels) so Manage Streams
+  // supports rename/delete with cascade and a stable list even before any
+  // record is tagged.
+  revenueStreams: defineTable({
+    entityId: v.id("entities"),
+    label: v.string(),
+    archived: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_entity_and_label", ["entityId", "label"]),
+  // Learned stream-tagging rules (streams redesign). Match on merchant + amount
+  // range (±10%) + memo keywords; confidence rises on each confirm, falls on
+  // correction. At/above the auto-tag threshold the rule applies without review;
+  // below it, the transaction lands in the Needs Review queue.
+  streamRules: defineTable({
+    entityId: v.id("entities"),
+    merchantContains: v.string(),
+    amountMinMinor: v.optional(v.number()),
+    amountMaxMinor: v.optional(v.number()),
+    memoKeywords: v.optional(v.array(v.string())),
+    direction: v.optional(v.union(v.literal("inflow"), v.literal("outflow"))),
+    // The split to apply, in basis points (sum 10000) so it scales to any
+    // matched amount. A single-stream rule is [{ streamLabel, bps: 10000 }].
+    split: v.array(v.object({ streamLabel: v.string(), bps: v.number() })),
+    confidence: v.number(), // 0..1
+    timesConfirmed: v.number(),
+    timesCorrected: v.number(),
+    active: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_entity", ["entityId"]),
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useAction } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import { RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
@@ -56,7 +57,7 @@ export function AiNarrativePanel({
       })) as InsightsResult;
       setResult(next);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not generate insights.");
+      setError(getErrorMessage(caught, "Could not generate insights."));
     } finally {
       setLoading(false);
     }

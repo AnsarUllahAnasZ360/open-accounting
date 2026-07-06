@@ -106,7 +106,7 @@ export function StripeConnectSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-md" data-testid="stripe-connect-sheet">
+      <SheetContent className="w-full gap-0 overflow-x-hidden overflow-y-auto sm:max-w-md" data-testid="stripe-connect-sheet">
         <SheetHeader className="border-b">
           <div className="flex items-center gap-2">
             <span className="flex size-7 items-center justify-center rounded-[8px] bg-ob-green-50 text-ob-green-800">
@@ -119,7 +119,7 @@ export function StripeConnectSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex flex-col gap-5 p-4">
+        <div className="flex min-w-0 flex-col gap-5 p-4">
           <div className="grid gap-1.5">
             <FieldLabel>Business</FieldLabel>
             <BusinessSelect
@@ -185,7 +185,7 @@ export function StripeConnectSheet({
             </div>
           </div>
 
-          <div className="grid gap-3 border-t pt-4">
+          <div className="grid min-w-0 gap-3 border-t pt-4">
             <div className="text-[12.5px] font-medium">Real-time updates (required)</div>
             <WebhookField
               label="Webhook URL"

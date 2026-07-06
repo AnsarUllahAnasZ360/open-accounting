@@ -190,6 +190,8 @@ async function createBusinessForWorkspace(
     userId: Id<"users">;
     businessName: string;
     businessType: "services" | "software" | "ecommerce" | "agency";
+    logoStorageId?: Id<"_storage">;
+    entityType?: string;
   },
 ) {
   const now = Date.now();
@@ -206,6 +208,8 @@ async function createBusinessForWorkspace(
     fiscalYearStartMonth: 1,
     accountingBasis: "accrual",
     legalName: args.businessName,
+    ...(args.logoStorageId ? { logoStorageId: args.logoStorageId } : {}),
+    ...(args.entityType ? { entityType: args.entityType } : {}),
     createdAt: now,
     updatedAt: now,
   });
@@ -308,6 +312,22 @@ const onboardingBusinessInput = v.object({
   name: v.string(),
   businessType: businessTypeValidator,
   currency: v.optional(v.string()),
+  // Optional business logo (uploaded to storage before bootstrap); attached to
+  // the created entity so it shows on invoices from day one.
+  logoStorageId: v.optional(v.id("_storage")),
+  // Optional legal structure chosen during onboarding (e.g. "LLC", "S-Corp").
+  entityType: v.optional(v.string()),
+});
+
+// Auth-only upload URL for the onboarding logo. The entity does not exist yet at
+// this point, so this only requires an authenticated user; the resulting
+// storageId is passed into bootstrapWorkspace and attached to the new business.
+export const generateLogoUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireUserId(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
 });
 
 /**
@@ -317,11 +337,11 @@ const onboardingBusinessInput = v.object({
  * is USD-only (Epic E5-T4) regardless of the submitted currency.
  */
 function resolveOnboardingBusinesses(args: {
-  businesses?: Array<{ name: string; businessType: "services" | "software" | "ecommerce" | "agency"; currency?: string }>;
+  businesses?: Array<{ name: string; businessType: "services" | "software" | "ecommerce" | "agency"; currency?: string; logoStorageId?: Id<"_storage">; entityType?: string }>;
   businessName?: string;
   businessType?: "services" | "software" | "ecommerce" | "agency";
   currency?: string;
-}): Array<{ name: string; businessType: "services" | "software" | "ecommerce" | "agency" }> {
+}): Array<{ name: string; businessType: "services" | "software" | "ecommerce" | "agency"; logoStorageId?: Id<"_storage">; entityType?: string }> {
   const raw =
     args.businesses && args.businesses.length > 0
       ? args.businesses
@@ -346,7 +366,7 @@ function resolveOnboardingBusinesses(args: {
         throw new ConvexError("Base currency must be a 3-letter code like USD.");
       }
     }
-    return { name, businessType: business.businessType };
+    return { name, businessType: business.businessType, logoStorageId: business.logoStorageId, entityType: business.entityType };
   });
 }
 
@@ -354,6 +374,9 @@ export const bootstrapWorkspace = mutation({
   args: {
     // New multi-business path (Epic E4-T2).
     businesses: v.optional(v.array(onboardingBusinessInput)),
+    // Owner-chosen display name for the whole workspace/account. Optional for
+    // back-compat; falls back to a name derived from the first business.
+    workspaceName: v.optional(v.string()),
     // Legacy single-business path (kept for back-compat with the prior wizard).
     businessName: v.optional(v.string()),
     businessType: v.optional(businessTypeValidator),
@@ -369,9 +392,18 @@ export const bootstrapWorkspace = mutation({
     const skippedBank = args.skippedBank ?? false;
     const skippedStripe = args.skippedStripe ?? false;
 
+    const desiredWorkspaceName = args.workspaceName?.trim();
     const existingMembership = await activeMembershipForUser(ctx, userId);
     if (existingMembership) {
       await ensureChecklist(ctx, existingMembership.workspaceId);
+      // Apply the owner's chosen workspace name to the workspace that sign-in
+      // already created (the owner path — see auth.ensureWorkspaceForUser).
+      if (desiredWorkspaceName) {
+        await ctx.db.patch(existingMembership.workspaceId, {
+          name: desiredWorkspaceName,
+          updatedAt: Date.now(),
+        });
+      }
       // Existing-workspace idempotency: never duplicate entities on re-run.
       if ((await activeBusinessCount(ctx, existingMembership.workspaceId)) > 0) {
         return {
@@ -401,7 +433,7 @@ export const bootstrapWorkspace = mutation({
 
     const now = Date.now();
     const workspaceSlug = await uniqueWorkspaceSlug(ctx, slugify(businesses[0].name));
-    const workspaceName = `${businesses[0].name} workspace`;
+    const workspaceName = desiredWorkspaceName || `${businesses[0].name} workspace`;
     const workspaceId = await ctx.db.insert("workspaces", {
       name: workspaceName,
       slug: workspaceSlug,
@@ -466,7 +498,7 @@ async function createBusinessesAndComplete(
   args: {
     workspaceId: Id<"workspaces">;
     userId: Id<"users">;
-    businesses: Array<{ name: string; businessType: "services" | "software" | "ecommerce" | "agency" }>;
+    businesses: Array<{ name: string; businessType: "services" | "software" | "ecommerce" | "agency"; logoStorageId?: Id<"_storage">; entityType?: string }>;
     skippedAi: boolean;
     skippedBank: boolean;
     skippedStripe: boolean;
@@ -480,6 +512,8 @@ async function createBusinessesAndComplete(
       userId: args.userId,
       businessName: business.name,
       businessType: business.businessType,
+      logoStorageId: business.logoStorageId,
+      entityType: business.entityType,
     });
     entityIds.push(created.entityId);
     accountsCreated += created.accountsCreated;
@@ -525,6 +559,8 @@ export const addBusinessDuringOnboarding = mutation({
       userId,
       businessName: normalized.name,
       businessType: normalized.businessType,
+      logoStorageId: normalized.logoStorageId,
+      entityType: normalized.entityType,
     });
     return { entityId: created.entityId, accountsCreated: created.accountsCreated };
   },

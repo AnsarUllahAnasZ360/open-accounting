@@ -919,6 +919,9 @@ export const categorizePendingTransactions = action({
   args: {
     entityId: v.id("entities"),
     limit: v.optional(v.number()),
+    // Optional: re-check only these specific transactions (the Inbox lets the
+    // owner select un-reviewed rows and run AI on just them).
+    transactionIds: v.optional(v.array(v.id("transactions"))),
   },
   handler: async (ctx, args): Promise<CategorizationBatchResult> => {
     return await runCategorizationBatch(ctx, args);
@@ -942,12 +945,14 @@ async function runCategorizationBatch(
     entityId: Id<"entities">;
     actorUserId?: Id<"users">;
     limit?: number;
+    transactionIds?: Id<"transactions">[];
   },
 ): Promise<CategorizationBatchResult> {
     const candidates: BatchCandidate[] = await ctx.runQuery(internal.ai.categorizationBatchCandidates, {
       entityId: args.entityId,
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
       ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
+      ...(args.transactionIds ? { transactionIds: args.transactionIds } : {}),
     });
     const results: BatchItemResult[] = [];
     for (const candidate of candidates) {

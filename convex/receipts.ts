@@ -41,7 +41,7 @@ type ReceiptExtractionContext = {
   document: {
     id: Id<"documents">;
     storageId: Id<"_storage"> | null;
-    kind: "receipt" | "bill" | "statement" | "attachment";
+    kind: "receipt" | "bill" | "statement" | "attachment" | "employee-doc";
     fileName: string | null;
     mimeType: string | null;
   };

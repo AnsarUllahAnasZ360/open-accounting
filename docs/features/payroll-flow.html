@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Payroll — how a run flows from HR to Paid</title>
+    <style>
+      :root {
+        --green: #2ca01c;
+        --green-800: #1c6b12;
+        --green-50: #eaf6e8;
+        --ink: #1b1f1a;
+        --muted: #6b7280;
+        --line: #e3e6e1;
+        --card: #ffffff;
+        --bg: #f6f7f5;
+        --warn: #9a6a00;
+        --warn-bg: #fbf3e2;
+        --blue: #1f5fae;
+        --blue-bg: #e8f0fb;
+        --grey: #5b6157;
+        --grey-bg: #eef0ed;
+        --radius: 12px;
+      }
+      * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        margin: 0; background: var(--bg); color: var(--ink);
+        font-family: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+          Roboto, Helvetica, Arial, sans-serif;
+        line-height: 1.55; letter-spacing: 0;
+      }
+      .wrap { max-width: 940px; margin: 0 auto; padding: 40px 20px 80px; }
+      .eyebrow { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 600; color: var(--green-800); }
+      h1 { font-size: 30px; line-height: 1.15; margin: 6px 0 10px; }
+      h2 { font-size: 20px; margin: 44px 0 14px; }
+      p.lead { color: #3f4a3c; font-size: 17px; max-width: 70ch; margin: 0; }
+      p.sub { color: var(--muted); font-size: 13.5px; margin: 8px 0 0; }
+      strong { font-weight: 650; }
+
+      .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      @media (max-width: 780px) { .cols { grid-template-columns: 1fr; } }
+
+      .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+      .panel .role { display:inline-flex; align-items:center; gap:8px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; margin-bottom: 10px; }
+      .role.prep { background: var(--green-50); color: var(--green-800); }
+      .role.appr { background: var(--blue-bg); color: var(--blue); }
+      .panel h3 { margin: 2px 0 8px; font-size: 16px; }
+      ul.plain { margin: 6px 0 0; padding-left: 18px; }
+      ul.plain li { font-size: 14.5px; margin: 7px 0; }
+      ul.plain li::marker { color: var(--green); }
+      ul.no li { list-style: none; position: relative; padding-left: 20px; }
+      ul.no li::before { content: "✕"; position: absolute; left: 0; color: #b23b3b; font-size: 12px; top: 2px; }
+
+      /* Status pill */
+      .pill { display:inline-flex; align-items:center; gap:6px; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.03em; }
+      .pill.draft { background: var(--grey-bg); color: var(--grey); }
+      .pill.sub   { background: var(--warn-bg); color: var(--warn); }
+      .pill.appr  { background: var(--blue-bg); color: var(--blue); }
+      .pill.paid  { background: var(--green-50); color: var(--green-800); }
+
+      /* Lifecycle stages */
+      .flow { display: grid; gap: 0; }
+      .stage { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; grid-template-columns: 34px 1fr; gap: 14px; }
+      .stage .n { width: 30px; height: 30px; border-radius: 999px; background: var(--green-50); color: var(--green-800); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+      .stage.sub .n { background: var(--warn-bg); color: var(--warn); }
+      .stage.appr .n { background: var(--blue-bg); color: var(--blue); }
+      .stage.paid .n { background: var(--green-50); color: var(--green-800); }
+      .stage .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .stage .title { font-size: 16px; font-weight: 650; }
+      .stage .who { font-size: 12px; color: var(--muted); }
+      .stage .body { font-size: 14.5px; color: #3f4a3c; margin-top: 6px; }
+      .stage .ledger { margin-top: 10px; }
+      .down { text-align: center; color: #b9bdb5; font-size: 18px; margin: 6px 0; }
+
+      /* Ledger mini-entry */
+      .entry { border: 1px dashed var(--line); border-radius: 10px; overflow: hidden; background: #fbfcfb; }
+      .entry .er { display: grid; grid-template-columns: 1fr 92px 92px; gap: 8px; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid var(--line); }
+      .entry .er.h { background: #f2f4f1; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--grey); }
+      .entry .er:last-child { border-bottom: none; }
+      .entry .acct { font-weight: 550; }
+      .entry .dr, .entry .cr { text-align: right; font-variant-numeric: tabular-nums; }
+      .entry .muted { color: var(--muted); }
+
+      /* Example grid */
+      .example { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+      .example .row { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr 1.1fr; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+      .example .row.head { background: #f2f4f1; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--grey); }
+      .example .row.total { background: #fafbf9; font-weight: 700; }
+      .example .row:last-child { border-bottom: none; }
+      .example .name { font-weight: 600; }
+      .example .m { text-align: right; font-variant-numeric: tabular-nums; }
+      .example .usd { color: var(--muted); font-size: 12.5px; }
+      @media (max-width: 620px) { .example .row { grid-template-columns: 1.3fr 1fr 1fr; } .example .hide-sm { display:none; } }
+
+      table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+      th, td { text-align: left; padding: 11px 14px; font-size: 14px; vertical-align: top; border-bottom: 1px solid var(--line); }
+      thead th { background: #f2f4f1; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--grey); }
+      tbody tr:last-child td { border-bottom: none; }
+      td.yes { color: var(--green-800); font-weight: 550; }
+      td.no { color: var(--muted); }
+
+      .callout { background: var(--green-50); border: 1px solid #cdeac6; border-radius: var(--radius); padding: 16px 18px; font-size: 15px; color: #274b20; }
+      .callout.blue { background: var(--blue-bg); border-color: #cfe0f5; color: #1b3f6b; }
+      .callout.warn { background: var(--warn-bg); border-color: #ecdcb4; color: #6b4b00; }
+      footer { margin-top: 44px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 14px; }
+      .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 0; }
+      .legend span { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="eyebrow">OpenBooks · Payroll guide</div>
+      <h1>How a payroll run flows — HR to “Paid”</h1>
+      <p class="lead">
+        OpenBooks payroll is a <strong>register, not a processor</strong> — you pay people your own way, and the
+        books stay correct. It uses <strong>maker-checker</strong>: <strong>HR prepares</strong> the run, and an
+        <strong>Owner or Accountant approves</strong> it and marks it paid. Nothing hits your ledger until it’s approved.
+      </p>
+
+      <h2>Who does what</h2>
+      <div class="cols">
+        <section class="panel">
+          <span class="role prep">HR · the Preparer</span>
+          <h3>Prepares the payroll</h3>
+          <ul class="plain">
+            <li>Manages the <strong>employee roster</strong> (add, edit, terminate, bulk-import).</li>
+            <li>Generates each <strong>month’s run</strong> from active salaries.</li>
+            <li>Adds a one-time <strong>Bonus</strong> or <strong>Deduction</strong> per person.</li>
+            <li>Clicks <strong>Submit for approval</strong> to hand it off.</li>
+          </ul>
+          <ul class="no" style="margin-top:10px;padding-left:0">
+            <li>Cannot approve, post to the ledger, or mark paid.</li>
+          </ul>
+        </section>
+        <section class="panel">
+          <span class="role appr">Owner / Accountant · the Approver</span>
+          <h3>Approves &amp; pays</h3>
+          <ul class="plain">
+            <li>Reviews the submitted run and <strong>Approves &amp; posts</strong> it to the ledger.</li>
+            <li>Or <strong>Sends it back</strong> with a required reason for HR to fix.</li>
+            <li><strong>Marks it paid</strong> once the money leaves the bank.</li>
+            <li>Has full preparer rights too (can do everything HR can).</li>
+          </ul>
+          <p class="sub">HR is never pinged about their own action; approvers are notified when a run is submitted.</p>
+        </section>
+      </div>
+
+      <h2>The lifecycle</h2>
+      <div class="legend">
+        <span><span class="pill draft">Draft</span> being prepared</span>
+        <span><span class="pill sub">Submitted</span> awaiting approval</span>
+        <span><span class="pill appr">Approved</span> posted to ledger</span>
+        <span><span class="pill paid">Paid</span> settled from bank</span>
+      </div>
+
+      <div class="flow" style="margin-top:14px">
+        <!-- 1 Draft -->
+        <div class="stage">
+          <div class="n">1</div>
+          <div>
+            <div class="top">
+              <span class="title">HR generates the run</span>
+              <span class="pill draft">Draft</span>
+              <span class="who">· HR</span>
+            </div>
+            <div class="body">
+              HR picks the month and OpenBooks drafts a line for every active employee at their current salary. HR tweaks
+              <strong>Bonus (+)</strong> and <strong>Deduction (−)</strong> per person and can adjust the FX rate.
+              <strong>Nothing is posted</strong> — it’s just a working draft.
+            </div>
+          </div>
+        </div>
+        <div class="down">↓</div>
+
+        <!-- 2 Submitted -->
+        <div class="stage sub">
+          <div class="n">2</div>
+          <div>
+            <div class="top">
+              <span class="title">HR submits for approval</span>
+              <span class="pill sub">Submitted</span>
+              <span class="who">· HR</span>
+            </div>
+            <div class="body">
+              The run <strong>locks from edits</strong> and the approvers get a notification: <em>“July 2026 payroll needs
+              approval.”</em> Still nothing on the ledger.
+            </div>
+          </div>
+        </div>
+        <div class="down">↓</div>
+
+        <!-- 3 Approved -->
+        <div class="stage appr">
+          <div class="n">3</div>
+          <div>
+            <div class="top">
+              <span class="title">Owner / Accountant approves &amp; posts</span>
+              <span class="pill appr">Approved</span>
+              <span class="who">· Approver</span>
+            </div>
+            <div class="body">
+              The approver cross-checks the grid and clicks <strong>Approve &amp; post</strong>. This books
+              <strong>one balanced ledger entry</strong> — the cost hits your P&amp;L and a liability records what you owe
+              staff. (Or they <strong>Send back</strong> with a reason → the run returns to <span class="pill draft">Draft</span>
+              and HR is notified.)
+            </div>
+            <div class="ledger">
+              <div class="entry">
+                <div class="er h"><div>Approval entry · base currency</div><div class="dr">Debit</div><div class="cr">Credit</div></div>
+                <div class="er"><div class="acct">Payroll Expense <span class="muted">(5000)</span></div><div class="dr">$4,350</div><div class="cr muted">—</div></div>
+                <div class="er"><div class="acct">Payroll Payable <span class="muted">(2200)</span></div><div class="dr muted">—</div><div class="cr">$4,350</div></div>
+              </div>
+              <p class="sub">The expense is recognised now (accrual). No cash has moved yet — it sits as “we owe employees $4,350.”</p>
+            </div>
+          </div>
+        </div>
+        <div class="down">↓</div>
+
+        <!-- 4 Paid -->
+        <div class="stage paid">
+          <div class="n">4</div>
+          <div>
+            <div class="top">
+              <span class="title">Pay staff → the run settles</span>
+              <span class="pill paid">Paid</span>
+              <span class="who">· Approver / automatic</span>
+            </div>
+            <div class="body">
+              You send the money from your bank (transfer, Gusto, Wise…). When that payment is matched, OpenBooks posts the
+              <strong>settlement</strong> — clearing the payable and reducing cash — plus a tiny FX gain/loss line if the pay-day
+              rate differs from the accrual rate. The <strong>Payroll Payable clears to $0</strong> and the run flips to
+              <span class="pill paid">Paid</span>.
+            </div>
+            <div class="ledger">
+              <div class="entry">
+                <div class="er h"><div>Settlement entry</div><div class="dr">Debit</div><div class="cr">Credit</div></div>
+                <div class="er"><div class="acct">Payroll Payable <span class="muted">(2200)</span></div><div class="dr">$4,350</div><div class="cr muted">—</div></div>
+                <div class="er"><div class="acct">Bank / Cash</div><div class="dr muted">—</div><div class="cr">$4,350</div></div>
+              </div>
+              <p class="sub">There is exactly <strong>one cash-out</strong>: the matched bank payment is reconciled to the payable (not counted again as a separate expense).</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h2>Two ways it gets marked paid</h2>
+      <div class="cols">
+        <section class="panel">
+          <span class="role appr">Manual</span>
+          <h3>“Mark all paid”</h3>
+          <p style="margin:0;font-size:14.5px;color:#3f4a3c">
+            The approver clicks <strong>Mark all paid</strong>. OpenBooks settles every line and, if a matching bank
+            outflow exists, links it — so the same money is never double-counted. Works even without a connected bank.
+          </p>
+        </section>
+        <section class="panel">
+          <span class="role prep">Automatic</span>
+          <h3>Auto-settle on bank sync</h3>
+          <p style="margin:0;font-size:14.5px;color:#3f4a3c">
+            When a bank payment that clearly matches an approved run syncs in — <strong>exact amount</strong>, unique, within
+            <strong>±5 days</strong>, and labelled payroll (Gusto/Wise/ADP…) — the run <strong>settles itself</strong>, no click.
+            Approvers get a “payroll auto-settled” notification.
+          </p>
+        </section>
+      </div>
+
+      <h2>How you verify it’s actually paid</h2>
+      <div class="callout">
+        Three signals, all pointing at the same fact:
+        <strong>①</strong> the <strong>Payroll Payable account clears to $0</strong> (a leftover balance = someone’s still unpaid) ·
+        <strong>②</strong> a <strong>real bank transaction is matched</strong> to the run (money genuinely left your account) ·
+        <strong>③</strong> the run status shows <span class="pill paid">Paid</span> and the “unmatched” count drops to zero.
+      </div>
+
+      <h2>How each line is calculated</h2>
+      <p class="lead" style="font-size:15px;margin-bottom:12px">
+        Each line is <strong>Base + Bonus − Deduction</strong>. Salaries are stored and paid in the employee’s
+        <strong>own currency</strong>, and OpenBooks also shows the USD equivalent for reporting.
+      </p>
+      <div class="example">
+        <div class="row head">
+          <div>Employee</div>
+          <div class="m">Base</div>
+          <div class="m hide-sm">Bonus</div>
+          <div class="m hide-sm">Deduction</div>
+          <div class="m">Total</div>
+        </div>
+        <div class="row">
+          <div class="name">Ahmed Ali <span class="usd">· Pakistan</span></div>
+          <div class="m">PKR 100,000</div>
+          <div class="m hide-sm">+50,000</div>
+          <div class="m hide-sm">−10,000</div>
+          <div class="m">PKR 140,000<div class="usd">≈ $503</div></div>
+        </div>
+        <div class="row">
+          <div class="name">John Smith <span class="usd">· USA</span></div>
+          <div class="m">$2,000</div>
+          <div class="m hide-sm">—</div>
+          <div class="m hide-sm">—</div>
+          <div class="m">$2,000<div class="usd">native</div></div>
+        </div>
+        <div class="row total">
+          <div class="name">Run total (base)</div>
+          <div class="m"></div>
+          <div class="m hide-sm"></div>
+          <div class="m hide-sm"></div>
+          <div class="m">≈ $2,503</div>
+        </div>
+      </div>
+      <p class="sub">Bonuses and deductions are one-off for that run only — they never change the employee’s saved monthly salary.</p>
+
+      <h2>Who can do what</h2>
+      <table>
+        <thead>
+          <tr><th style="width:52%">Action</th><th>HR</th><th>Owner / Accountant</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Manage the employee roster</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><td>Generate a run · add bonus/deduction</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><td>Submit for approval</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><td>Approve &amp; post to the ledger</td><td class="no">No</td><td class="yes">Yes</td></tr>
+          <tr><td>Send back with a reason</td><td class="no">No</td><td class="yes">Yes</td></tr>
+          <tr><td>Mark paid / settle</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        </tbody>
+      </table>
+
+      <h2>The short version</h2>
+      <div class="callout blue">
+        HR <strong>drafts</strong> the month and hits <strong>Submit</strong> → the Owner/Accountant
+        <strong>Approves &amp; posts</strong> (books the expense + a payable) → the bank payment is
+        <strong>matched</strong> (manually or automatically) → the payable <strong>clears to $0</strong> and the run is
+        <span class="pill paid">Paid</span>. Every dollar is counted once, and nothing posts without an approver.
+      </div>
+
+      <footer>
+        Employees don’t log in — they receive payslips by email or a secure download link.
+        Roles: <em>owner / accountant / hr</em>. Ledger accounts: <em>5000 Payroll Expense</em>, <em>2200 Payroll Payable</em>,
+        <em>4200 / 6999</em> for FX gain / loss.
+      </footer>
+    </div>
+  </body>
+</html>

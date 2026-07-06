@@ -1,18 +1,24 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import type { FunctionReturnType } from "convex/server";
 import {
   Archive,
+  ArrowLeft,
   ArrowUpRight,
+  Briefcase,
   Building2,
   CalendarClock,
   Check,
   CheckCircle2,
   Clock,
+  CreditCard,
   Download,
   FileUp,
+  Globe,
   History,
+  MapPin,
   Paperclip,
   Pencil,
   Play,
@@ -23,18 +29,21 @@ import {
   SlidersHorizontal,
   Sparkles,
   ToggleLeft,
+  User,
   Users,
+  UserMinus,
   UserPlus,
+  Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Amount, AgingMiniBar, BarChart, CategoryChip, EmptyState, formatMinorMoney } from "@/components/openbooks/primitives";
 import { ContactsScreen } from "@/components/openbooks/ContactsScreen";
 import {
   type BillRow,
-  type EmployeeRow,
   type InvoiceRow,
   type ModuleOverview,
   statusLabel,
@@ -47,6 +56,7 @@ import {
   DetailSheet,
   EvidenceUpload,
   ExportMenu,
+  type ExportFormat,
   FilterBar,
   type FacetValue,
   type DateRangeValue,
@@ -58,6 +68,7 @@ import {
   InsightBannerExplain,
   buildPageInsight,
 } from "@/components/openbooks/workbench";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
@@ -92,6 +103,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -100,6 +112,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlaidConnectionPanel } from "@/components/openbooks/PlaidConnectionPanel";
 import { StripeConnectionPanel } from "@/components/openbooks/StripeConnectionPanel";
 import { useActiveEntity } from "@/lib/openbooks/active-entity";
@@ -879,7 +892,7 @@ export function BillMatchPicker({
       onSettled?.();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not settle the bill.");
+      setError(getErrorMessage(err, "Could not settle the bill."));
     } finally {
       setBusy(false);
       setConfirmTxnId(null);
@@ -1031,7 +1044,7 @@ export function UploadBillModal({
       toast.success(`Read ${vendor} from ${file.name}. Review and confirm the bill.`);
       setOpen(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not read that file.");
+      toast.error(getErrorMessage(error, "Could not read that file."));
     } finally {
       setUploading(false);
     }
@@ -1143,7 +1156,7 @@ export function AddBillModal({
       toast.success(`Added ${trimmedVendorName} — it posts to Accounts Payable until you mark it paid.`);
       onCreated?.(trimmedVendorName);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add the bill.");
+      setError(getErrorMessage(err, "Could not add the bill."));
     } finally {
       setBusy(false);
     }
@@ -1248,14 +1261,14 @@ type PayrollScope = "all" | string; // "all" or a "YYYY-Qn" quarter key
 
 export function PayrollScreen({ subsection = "runs" }: { subsection?: string }) {
   const data = useModuleOverview();
-  const [openRunId, setOpenRunId] = useState<Id<"payrollRuns"> | null>(null);
+  const router = useRouter();
   const [scope, setScope] = useState<PayrollScope>("all");
   const [range, setRange] = useState<DateRangeValue>({ preset: "last-3-months" });
   const [search, setSearch] = useState("");
   const [facets, setFacets] = useState<FacetValue>({});
-  const startRun = useMutation(api.payroll.startRun);
-  const [starting, setStarting] = useState(false);
-  const [message, setMessage] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [generateDefault, setGenerateDefault] = useState<string | null>(null);
 
   if (data === undefined) return <LoadingBlock label="payroll" />;
   if (!data.entity) return <NoEntityState />;
@@ -1263,6 +1276,10 @@ export function PayrollScreen({ subsection = "runs" }: { subsection?: string }) 
   const baseCurrency = data.entity.currency;
   const entityId = data.entity.id as Id<"entities">;
   const runs = data.payroll.runs;
+  // Preparers (Owner + Accountant + HR) can generate/edit/submit runs and manage
+  // the roster. Approving/posting is a separate capability handled in the run
+  // detail. The server re-checks every write.
+  const canPrepare = data.payroll.canPrepare;
 
   // E10-T6 / E8-T5: the single Payroll page-insight — monthly run-rate (from
   // approved-run base totals) / active headcount / FX-exposure note / unmatched —
@@ -1283,9 +1300,15 @@ export function PayrollScreen({ subsection = "runs" }: { subsection?: string }) 
   });
 
   const draftPeriod = currentPayrollPeriod();
-  const hasDraftPeriodRun = runs.some((run) => run.period === draftPeriod);
-  const activePayrollView: "people" | "runs" | "statements" =
-    subsection === "people" ? "people" : subsection === "statements" ? "statements" : "runs";
+  const existingPeriods = runs.map((run) => run.period);
+  const activePayrollView: "people" | "runs" | "statements" | "monthly" =
+    subsection === "people"
+      ? "people"
+      : subsection === "statements"
+        ? "statements"
+        : subsection === "monthly"
+          ? "monthly"
+          : "runs";
 
   // Quarters present in the data, newest first, for the scope selector.
   const quarters = [...new Set(runs.map((run) => periodQuarter(run.period)))].sort((a, b) =>
@@ -1309,17 +1332,6 @@ export function PayrollScreen({ subsection = "runs" }: { subsection?: string }) 
       ...run.currencyTotals.map((total) => total.currency),
     ].join(" ").toLowerCase();
     return searchable.includes(payrollTerm);
-  });
-  const filteredEmployees = data.payroll.employees.filter((employee) => {
-    if (facets.currency && employee.currency !== facets.currency) return false;
-    if (!payrollTerm) return true;
-    return [
-      employee.name,
-      employee.country,
-      employee.currency,
-      employee.fxDisplay,
-      employee.active ? "active" : "inactive",
-    ].join(" ").toLowerCase().includes(payrollTerm);
   });
   const filteredStatementRows = data.payroll.statementRows.filter((row) => {
     if (facets.currency && row.currency !== facets.currency) return false;
@@ -1367,19 +1379,6 @@ export function PayrollScreen({ subsection = "runs" }: { subsection?: string }) 
     },
   ];
 
-  async function runDraft() {
-    setStarting(true);
-    setMessage("");
-    try {
-      const result = await startRun({ entityId, period: draftPeriod });
-      setOpenRunId(result.runId);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not start the run.");
-    } finally {
-      setStarting(false);
-    }
-  }
-
   const scopeControl = (
     <Select value={scope} onValueChange={(value) => setScope(value)}>
       <SelectTrigger size="sm" className="w-[160px]">
@@ -1409,11 +1408,17 @@ export function PayrollScreen({ subsection = "runs" }: { subsection?: string }) 
       actions={
         <PageActionBar
           primary={
-            !hasDraftPeriodRun
-              ? { label: `Run payroll · ${payrollPeriodLabel(draftPeriod).split(" ")[0]}`, icon: Play, onClick: () => void runDraft(), disabled: starting }
+            canPrepare
+              ? { label: "Run payroll", icon: Play, onClick: () => setGenerateOpen(true) }
               : undefined
           }
         >
+          {canPrepare ? (
+            <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+              <FileUp data-icon="inline-start" />
+              Import CSV
+            </Button>
+          ) : null}
         </PageActionBar>
       }
     >
@@ -1424,48 +1429,607 @@ export function PayrollScreen({ subsection = "runs" }: { subsection?: string }) 
           explainSlot={<InsightBannerExplain section="payroll" entityId={entityId} />}
         />
       ) : null}
-      {message ? <p className="text-sm text-negative" data-testid="payroll-error">{message}</p> : null}
 
-      <FilterBar
-        facets={payrollFacets}
-        value={facets}
-        onChange={setFacets}
-        onClearAll={() => {
-          setSearch("");
-          setFacets({});
-          setRange({ preset: "last-3-months" });
-          setScope("all");
-        }}
-      >
-        <DateRangeControl value={range} onChange={setRange} compact />
-        {scopeControl}
-      </FilterBar>
+      {activePayrollView !== "monthly" ? (
+        <FilterBar
+          facets={payrollFacets}
+          value={facets}
+          onChange={setFacets}
+          onClearAll={() => {
+            setSearch("");
+            setFacets({});
+            setRange({ preset: "last-3-months" });
+            setScope("all");
+          }}
+        >
+          <DateRangeControl value={range} onChange={setRange} compact />
+          {scopeControl}
+        </FilterBar>
+      ) : null}
 
-      {activePayrollView === "people" ? <PayrollEmployees data={data} rows={filteredEmployees} /> : null}
+      {activePayrollView === "people" ? (
+        <PayrollEmployees entityId={entityId} baseCurrency={baseCurrency} canPrepare={canPrepare} searchTerm={payrollTerm} />
+      ) : null}
       {activePayrollView === "runs" ? (
         <PayrollRuns
           data={data}
           runs={scopedRuns}
-          onOpenRun={setOpenRunId}
+          onOpenRun={(id) => router.push(`/payroll/runs/${id}`)}
         />
       ) : null}
       {activePayrollView === "statements" ? (
         <PayrollStatement data={data} runs={scopedRuns} rows={filteredStatementRows} />
       ) : null}
+      {activePayrollView === "monthly" ? (
+        <PayrollMonthly
+          runs={runs}
+          baseCurrency={baseCurrency}
+          canPrepare={canPrepare}
+          currentPeriod={draftPeriod}
+          onOpenRun={(id) => router.push(`/payroll/runs/${id}`)}
+          onGenerate={(period) => {
+            setGenerateDefault(period);
+            setGenerateOpen(true);
+          }}
+        />
+      ) : null}
 
-      <PayrollRunDetailSheet
-        runId={openRunId}
+      <PayrollImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        entityId={entityId}
         baseCurrency={baseCurrency}
+      />
+      <GeneratePayrollDialog
+        key={generateDefault ?? draftPeriod}
+        open={generateOpen}
         onOpenChange={(open) => {
-          if (!open) setOpenRunId(null);
+          setGenerateOpen(open);
+          if (!open) setGenerateDefault(null);
         }}
+        entityId={entityId}
+        defaultPeriod={generateDefault ?? draftPeriod}
+        existingPeriods={existingPeriods}
+        onGenerated={(runId) => router.push(`/payroll/runs/${runId}`)}
       />
     </WorkbenchPage>
     </div>
   );
 }
 
-/** Semantic payroll status chip: Draft neutral, Approved info-blue, Paid green. */
+// ─── Generate a monthly payroll run (HR preparer entry point) ─────────────────
+
+/** Options for the month picker: current month + previous 5 + next 1. */
+function monthOptions(currentPeriod: string): { value: string; label: string }[] {
+  const [y, m] = currentPeriod.split("-").map(Number);
+  const opts: { value: string; label: string }[] = [];
+  for (let offset = -5; offset <= 1; offset++) {
+    // Build a YYYY-MM without Date arithmetic pitfalls.
+    let year = y;
+    let month = m + offset;
+    while (month < 1) { month += 12; year -= 1; }
+    while (month > 12) { month -= 12; year += 1; }
+    const value = `${year}-${String(month).padStart(2, "0")}`;
+    opts.push({ value, label: payrollPeriodLabel(value) });
+  }
+  return opts.reverse(); // newest first
+}
+
+function GeneratePayrollDialog({
+  open,
+  onOpenChange,
+  entityId,
+  defaultPeriod,
+  existingPeriods,
+  onGenerated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  entityId: Id<"entities">;
+  defaultPeriod: string;
+  existingPeriods: string[];
+  onGenerated: (runId: string) => void;
+}) {
+  const startRun = useMutation(api.payroll.startRun);
+  const [period, setPeriod] = useState(defaultPeriod);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const options = monthOptions(defaultPeriod);
+  const alreadyExists = existingPeriods.includes(period);
+
+  async function submit() {
+    if (alreadyExists) {
+      setError(`A run already exists for ${payrollPeriodLabel(period)}. Open it from the Runs tab.`);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const result = await startRun({ entityId, period });
+      toast.success(`Draft payroll run created for ${payrollPeriodLabel(period)}.`);
+      onOpenChange(false);
+      onGenerated(result.runId);
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not generate the run."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="generate-payroll-dialog">
+        <DialogHeader>
+          <DialogTitle>Generate payroll run</DialogTitle>
+          <DialogDescription>
+            Pick the month to run. OpenBooks drafts a line for every active employee from their current salary — you then
+            add bonuses/deductions and submit it for approval. Nothing posts to the ledger until it&apos;s approved.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid gap-2">
+            <Label>Month</Label>
+            <Select value={period} onValueChange={setPeriod}>
+              <SelectTrigger data-testid="generate-payroll-month"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {options.map((o) => (
+                  <SelectItem key={o.value} value={o.value} disabled={existingPeriods.includes(o.value)}>
+                    {o.label}{existingPeriods.includes(o.value) ? " · exists" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" disabled={busy || alreadyExists} onClick={() => void submit()} data-testid="generate-payroll-submit">
+            {busy ? "Generating…" : "Generate draft"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Payroll CSV import ───────────────────────────────────────────────────────
+
+type ImportRow = {
+  name: string;
+  email: string;
+  department: string;
+  currency: string;
+  basePayMinor: number;
+  deductionsMinor: number;
+  bonusesMinor: number;
+  fxRateMicros: number;
+  finalMinor: number;
+  baseEquivMinor: number;
+};
+
+function parseCsvLine(line: string): string[] {
+  const cols: string[] = [];
+  let current = "";
+  let inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      inQuote = !inQuote;
+    } else if (c === "," && !inQuote) {
+      cols.push(current.trim());
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+  cols.push(current.trim());
+  return cols;
+}
+
+function parseCsvImportMoney(value: string): number | null {
+  const cleaned = value.replace(/[$,\s]/g, "");
+  if (!cleaned) return 0;
+  const n = parseFloat(cleaned);
+  if (!isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+
+function parseCsvPayroll(text: string): { rows: ImportRow[]; errors: string[] } {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+  if (lines.length < 2) {
+    return { rows: [], errors: ["File has no data rows. Download the template and fill it in."] };
+  }
+
+  const header = parseCsvLine(lines[0]).map((h) => h.toLowerCase().replace(/\s+/g, " "));
+  const idx = {
+    name: header.findIndex((h) => h === "name" || h === "employee name"),
+    email: header.findIndex((h) => h === "email"),
+    department: header.findIndex((h) => h === "department" || h === "dept"),
+    currency: header.findIndex((h) => h === "currency" || h === "cur"),
+    basePay: header.findIndex((h) => h === "base pay" || h === "base salary" || h === "salary"),
+    deductions: header.findIndex((h) => h === "deductions" || h === "deduction"),
+    bonuses: header.findIndex((h) => h === "bonuses" || h === "bonus"),
+  };
+
+  if (idx.name === -1) {
+    return { rows: [], errors: ['Missing required column "Name". Download the template for the correct format.'] };
+  }
+  if (idx.basePay === -1) {
+    return { rows: [], errors: ['Missing required column "Base Pay". Download the template for the correct format.'] };
+  }
+
+  const rows: ImportRow[] = [];
+  const errors: string[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i]);
+    const name = idx.name >= 0 ? (cols[idx.name] ?? "") : "";
+    if (!name || name.length < 2) continue;
+
+    const currencyRaw = idx.currency >= 0 ? (cols[idx.currency] ?? "USD") : "USD";
+    const currency = (currencyRaw || "USD").toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      errors.push(`Row ${i + 1} (${name}): invalid currency "${currencyRaw}" — use 3-letter code like USD, EUR, GBP.`);
+      continue;
+    }
+
+    const basePay = parseCsvImportMoney(idx.basePay >= 0 ? (cols[idx.basePay] ?? "0") : "0");
+    const deductions = parseCsvImportMoney(idx.deductions >= 0 ? (cols[idx.deductions] ?? "0") : "0");
+    const bonuses = parseCsvImportMoney(idx.bonuses >= 0 ? (cols[idx.bonuses] ?? "0") : "0");
+
+    if (basePay === null || basePay <= 0) {
+      errors.push(`Row ${i + 1} (${name}): Base Pay must be a positive number.`);
+      continue;
+    }
+    if (deductions === null || bonuses === null) {
+      errors.push(`Row ${i + 1} (${name}): Deductions and Bonuses must be non-negative numbers.`);
+      continue;
+    }
+
+    const finalMinor = basePay - deductions + bonuses;
+    rows.push({
+      name,
+      email: idx.email >= 0 ? (cols[idx.email] ?? "") : "",
+      department: idx.department >= 0 ? (cols[idx.department] ?? "") : "",
+      currency,
+      basePayMinor: basePay,
+      deductionsMinor: deductions,
+      bonusesMinor: bonuses,
+      fxRateMicros: 1_000_000,
+      finalMinor,
+      baseEquivMinor: finalMinor,
+    });
+  }
+
+  return { rows, errors };
+}
+
+function PayrollImportDialog({
+  open,
+  onOpenChange,
+  entityId,
+  baseCurrency,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  entityId: Id<"entities">;
+  baseCurrency: string;
+}) {
+  const importRowsMutation = useMutation(api.payroll.importPayrollRows);
+  const fetchFxRates = useAction(api.payroll.fetchDayOfPayRates);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const now = new Date();
+  const defaultPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
+  const [period, setPeriod] = useState(defaultPeriod);
+  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [fxRates, setFxRates] = useState<Record<string, number>>({});
+  const [fxFetching, setFxFetching] = useState(false);
+  const [fxError, setFxError] = useState("");
+  const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [result, setResult] = useState<{ runId: Id<"payrollRuns">; linesCreated: number; employeesCreated: number; employeesUpdated: number } | null>(null);
+
+  function reset() {
+    setStep("upload");
+    setRows([]);
+    setFxRates({});
+    setFxError("");
+    setParseErrors([]);
+    setImporting(false);
+    setImportError("");
+    setResult(null);
+    setPeriod(defaultPeriod);
+  }
+
+  function handleFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (!text) return;
+      const { rows: parsed, errors } = parseCsvPayroll(text);
+      setParseErrors(errors);
+      if (parsed.length === 0) return;
+      setRows(parsed);
+      setStep("preview");
+
+      const foreign = [...new Set(parsed.map((r) => r.currency).filter((c) => c !== baseCurrency))];
+      if (foreign.length > 0) {
+        setFxFetching(true);
+        setFxError("");
+        void fetchFxRates({ baseCurrency, localCurrencies: foreign })
+          .then((res) => {
+            const rates: Record<string, number> = {};
+            for (const row of res.persisted) rates[row.currency] = row.rateMicros;
+            setFxRates(rates);
+          })
+          .catch(() => {
+            setFxError("Could not fetch live exchange rates. Import will use a 1:1 fallback — adjust amounts manually if needed.");
+          })
+          .finally(() => setFxFetching(false));
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // Resolve rows with live FX rates applied.
+  const FX_SCALE = 1_000_000;
+  const resolvedRows: ImportRow[] = rows.map((row) => {
+    const fxRateMicros = row.currency === baseCurrency ? FX_SCALE : (fxRates[row.currency] ?? FX_SCALE);
+    const baseEquivMinor = fxRateMicros > 0 ? Math.round((row.finalMinor * FX_SCALE) / fxRateMicros) : row.finalMinor;
+    return { ...row, fxRateMicros, baseEquivMinor };
+  });
+  const totalBase = resolvedRows.reduce((sum, r) => sum + r.baseEquivMinor, 0);
+  const nonBaseCurrencies = [...new Set(rows.map((r) => r.currency).filter((c) => c !== baseCurrency))];
+
+  async function submit() {
+    if (importing || resolvedRows.length === 0) return;
+    setImporting(true);
+    setImportError("");
+    try {
+      const res = await importRowsMutation({
+        entityId,
+        period,
+        rows: resolvedRows.map((r) => ({
+          name: r.name,
+          ...(r.email ? { email: r.email } : {}),
+          ...(r.department ? { department: r.department } : {}),
+          currency: r.currency,
+          basePayMinor: r.basePayMinor,
+          deductionsMinor: r.deductionsMinor,
+          bonusesMinor: r.bonusesMinor,
+          fxRateMicros: r.fxRateMicros,
+        })),
+      });
+      setResult(res);
+      setStep("done");
+    } catch (err) {
+      setImportError(getErrorMessage(err, "Import failed. Please try again."));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function downloadTemplate() {
+    const csv = [
+      "Name,Email,Department,Currency,Base Pay,Deductions,Bonuses,Total Pay",
+      "John Smith,john@acme.com,Engineering,USD,5000.00,200.00,500.00,5300.00",
+      "Jane Doe,jane@acme.com,Marketing,USD,4500.00,150.00,0.00,4350.00",
+      "# Total Pay is for reference only — OpenBooks computes it automatically.",
+      "# For non-USD employees add the correct 3-letter currency code (EUR, GBP, PKR).",
+      "# Exchange rates are fetched from ECB at today's rate on upload.",
+    ].join("\n");
+    downloadCsv("payroll-template.csv", csv);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset(); }}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Import payroll from CSV</DialogTitle>
+          <DialogDescription>
+            {step === "upload" && "Download the template, fill in your payroll data, then upload the file."}
+            {step === "preview" && `${resolvedRows.length} row${resolvedRows.length !== 1 ? "s" : ""} parsed — review before importing.`}
+            {step === "done" && "Payroll draft created successfully."}
+          </DialogDescription>
+        </DialogHeader>
+
+        {step === "upload" && (
+          <div className="grid gap-4 py-1">
+            <div className="grid gap-1.5">
+              <Label htmlFor="import-period">Payroll period</Label>
+              <Input
+                id="import-period"
+                type="month"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                className="sm:max-w-[200px]"
+              />
+            </div>
+
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <p className="text-sm font-medium">1 — Download the template</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Fill in Name, Email, Department, Currency, Base Pay, Deductions, and Bonuses for each employee.
+                Use 3-letter currency codes (USD, EUR, GBP, PKR). Total Pay is auto-computed.
+              </p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={downloadTemplate}>
+                <Download data-icon="inline-start" />
+                Download CSV template
+              </Button>
+            </div>
+
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <p className="text-sm font-medium">2 — Upload your file</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                CSV files only (.csv). Excel users: save as CSV first via File → Save As → CSV.
+              </p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => fileInputRef.current?.click()}>
+                <FileUp data-icon="inline-start" />
+                Choose CSV file
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) handleFile(file);
+                }}
+              />
+            </div>
+
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Currency: </span>
+              All totals are stored in {baseCurrency}. Non-{baseCurrency} amounts are auto-converted
+              at today&apos;s ECB rate when you upload. You can review and verify the rates before confirming.
+            </div>
+
+            {parseErrors.length > 0 && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                {parseErrors.map((err, i) => (
+                  <p key={i} className="text-xs text-destructive">{err}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === "preview" && (
+          <div className="grid gap-4 py-1">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+              <span><span className="text-muted-foreground">Period:</span> <span className="font-medium">{period}</span></span>
+              {nonBaseCurrencies.length > 0 && (
+                <span className="text-muted-foreground">
+                  Currencies: {[baseCurrency, ...nonBaseCurrencies].join(", ")}
+                  {fxFetching && " — fetching rates…"}
+                </span>
+              )}
+            </div>
+
+            {nonBaseCurrencies.length > 0 && Object.keys(fxRates).length > 0 && !fxFetching && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                <span className="font-medium">Exchange rates (ECB, today):</span>
+                <span className="ml-2 text-muted-foreground">
+                  {nonBaseCurrencies.map((c) => {
+                    const r = fxRates[c];
+                    return r ? `1 ${baseCurrency} = ${(r / FX_SCALE).toFixed(4)} ${c}` : null;
+                  }).filter(Boolean).join(" · ")}
+                </span>
+              </div>
+            )}
+
+            {fxError && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                {fxError}
+              </div>
+            )}
+
+            <div className="max-h-60 overflow-y-auto rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Dept</TableHead>
+                    <TableHead>Cur</TableHead>
+                    <TableHead className="text-right">Base Pay</TableHead>
+                    <TableHead className="text-right">Deductions</TableHead>
+                    <TableHead className="text-right">Bonuses</TableHead>
+                    <TableHead className="text-right">{baseCurrency} equiv.</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {resolvedRows.map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium">{row.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.department || "—"}</TableCell>
+                      <TableCell>{row.currency}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatMinorMoney(row.basePayMinor, { currency: row.currency })}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {row.deductionsMinor > 0 ? <span className="text-destructive">−{formatMinorMoney(row.deductionsMinor, { currency: row.currency })}</span> : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {row.bonusesMinor > 0 ? <span className="text-primary">+{formatMinorMoney(row.bonusesMinor, { currency: row.currency })}</span> : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-medium">{formatMinorMoney(row.baseEquivMinor, { currency: baseCurrency })}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-4 py-2.5 text-sm">
+              <span className="text-muted-foreground">{resolvedRows.length} employee{resolvedRows.length !== 1 ? "s" : ""} · {period}</span>
+              <span className="font-semibold">Total: {formatMinorMoney(totalBase, { currency: baseCurrency })}</span>
+            </div>
+
+            {parseErrors.length > 0 && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                {parseErrors.map((err, i) => (
+                  <p key={i} className="text-xs text-destructive">{err}</p>
+                ))}
+              </div>
+            )}
+            {importError && (
+              <p className="text-xs text-destructive">{importError}</p>
+            )}
+          </div>
+        )}
+
+        {step === "done" && result && (
+          <div className="py-2">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <CheckCircle2 className="size-5" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">
+                  {result.linesCreated} employee{result.linesCreated !== 1 ? "s" : ""} imported for {period}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {[
+                    result.employeesCreated > 0 && `${result.employeesCreated} new`,
+                    result.employeesUpdated > 0 && `${result.employeesUpdated} updated`,
+                  ].filter(Boolean).join(" · ")}
+                  {(result.employeesCreated > 0 || result.employeesUpdated > 0) && " · "}
+                  Draft run created — open it in Payroll → Runs to review and approve.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          {step === "upload" && (
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          )}
+          {step === "preview" && (
+            <>
+              <Button variant="outline" onClick={() => { setStep("upload"); setImportError(""); }}>Back</Button>
+              <Button
+                disabled={importing || fxFetching || resolvedRows.length === 0}
+                onClick={() => void submit()}
+              >
+                {importing ? "Importing…" : `Import ${resolvedRows.length} row${resolvedRows.length !== 1 ? "s" : ""}`}
+              </Button>
+            </>
+          )}
+          {step === "done" && (
+            <Button onClick={() => { onOpenChange(false); reset(); }}>Done</Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Semantic payroll status chip: Draft neutral, Submitted amber, Approved info-blue, Paid green. */
 function PayrollStatusChip({ status }: { status: string }) {
   if (status === "paid") {
     return (
@@ -1479,6 +2043,14 @@ function PayrollStatusChip({ status }: { status: string }) {
     return (
       <Badge variant="secondary" className="bg-info-surface text-info">
         Approved
+      </Badge>
+    );
+  }
+  if (status === "submitted") {
+    return (
+      <Badge variant="secondary" className="bg-warning-surface text-warning">
+        <Clock data-icon="inline-start" aria-hidden="true" />
+        Submitted
       </Badge>
     );
   }
@@ -1585,56 +2157,1404 @@ function PayScheduleControl({ entityId }: { entityId: Id<"entities"> }) {
   );
 }
 
-function PayrollEmployees({ data, rows }: { data: ModuleOverview; rows: EmployeeRow[] }) {
-  const baseCurrency = data.entity?.currency;
-  const entityId = data.entity?.id as Id<"entities"> | undefined;
-  const columns: ColumnDef<EmployeeRow>[] = [
+type RosterEmployee = FunctionReturnType<typeof api.employees.listEmployees>["employees"][number];
+type FullEmployee = NonNullable<FunctionReturnType<typeof api.employees.getEmployee>>;
+
+/** Two-letter initials from a name, for the avatar fallback. */
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+/** Employee avatar: photo when available, brand-tinted initials otherwise. */
+function EmployeeAvatar({
+  name,
+  photoUrl,
+  size = "default",
+}: {
+  name: string;
+  photoUrl?: string | null;
+  size?: "default" | "sm" | "lg";
+}) {
+  return (
+    <Avatar size={size}>
+      {photoUrl ? <AvatarImage src={photoUrl} alt={name} /> : null}
+      <AvatarFallback className="bg-primary/10 font-medium text-primary">{initials(name)}</AvatarFallback>
+    </Avatar>
+  );
+}
+
+/** A small labelled location pill with a map-pin, or an em dash when unknown. */
+function LocationChip({ country, city }: { country: string; city?: string | null }) {
+  const loc = [country && country !== "—" ? country : null, city].filter(Boolean).join(" · ");
+  if (!loc) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+      <MapPin className="size-3 shrink-0" aria-hidden="true" />
+      {loc}
+    </span>
+  );
+}
+
+/** A single mini-stat inside the People overview strip. */
+function PeopleStat({ icon: Icon, label, value, detail }: { icon: LucideIcon; label: string; value: React.ReactNode; detail?: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="truncate text-lg font-semibold leading-tight tabular-nums">{value}</div>
+        {detail ? <div className="truncate text-xs text-muted-foreground">{detail}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function PayrollEmployees({
+  entityId,
+  baseCurrency,
+  canPrepare,
+  searchTerm,
+}: {
+  entityId: Id<"entities">;
+  baseCurrency: string;
+  canPrepare: boolean;
+  searchTerm: string;
+}) {
+  const roster = useQuery(api.employees.listEmployees, { entityId });
+  const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [detailId, setDetailId] = useState<Id<"employees"> | null>(null);
+  const [tab, setTab] = useState<"active" | "former">("active");
+
+  const columns: ColumnDef<RosterEmployee>[] = [
     {
       key: "name",
       header: "Name",
       mobilePrimary: true,
       cell: (row) => (
-        <div className="min-w-0">
-          <div className="truncate font-medium">{row.name}</div>
-          <div className="text-xs text-muted-foreground">{row.active ? "Active" : "Inactive"}</div>
+        <div className="flex min-w-0 items-center gap-3">
+          <EmployeeAvatar name={row.name} />
+          <div className="min-w-0">
+            <div className="truncate font-medium">{row.name}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {[row.title, row.department].filter(Boolean).join(" · ") || (row.active ? "Active" : "Former")}
+            </div>
+          </div>
         </div>
       ),
     },
-    { key: "country", header: "Country", priority: 1, cell: (row) => row.country },
-    { key: "fx", header: "FX", priority: 2, cell: (row) => <span className="text-muted-foreground">{row.fxDisplay}</span> },
     {
-      key: "local",
-      header: "Local salary",
-      align: "right",
-      mono: true,
-      sortValue: (row) => row.monthlySalaryMinor,
-      cell: (row) => <Amount amountMinor={row.monthlySalaryMinor} currency={row.currency} />,
+      key: "location",
+      header: "Location",
+      priority: 1,
+      cell: (row) => <LocationChip country={row.country} city={row.city} />,
     },
     {
-      key: "base",
-      header: `${baseCurrency} base`,
+      key: "salary",
+      header: "Monthly salary",
       align: "right",
       mono: true,
       mobileTrailing: true,
-      sortValue: (row) => row.baseAmountMinor,
-      cell: (row) => <Amount amountMinor={row.baseAmountMinor} currency={baseCurrency} />,
+      sortValue: (row) => row.monthlyBaseEquivalentMinor,
+      cell: (row) => (
+        <div className="text-right">
+          <div><Amount amountMinor={row.monthlySalaryMinor} currency={row.currency} /></div>
+          {row.currency !== row.baseCurrency ? (
+            <div className="text-xs text-muted-foreground">
+              ≈ <Amount amountMinor={row.monthlyBaseEquivalentMinor} currency={row.baseCurrency} />
+            </div>
+          ) : null}
+        </div>
+      ),
     },
   ];
+
+  if (roster === undefined) return <LoadingBlock label="employees" />;
+
+  const term = searchTerm.trim().toLowerCase();
+  const matches = (row: RosterEmployee) =>
+    !term ||
+    [row.name, row.country, row.city, row.currency, row.title, row.department]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(term);
+  const activeRows = roster.employees.filter((e) => e.active && matches(e));
+  const formerRows = roster.employees.filter((e) => !e.active && matches(e));
+  const rows = tab === "active" ? activeRows : formerRows;
+
+  // Roster-at-a-glance stats (active employees only).
+  const activeAll = roster.employees.filter((e) => e.active);
+  const monthlyCostMinor = activeAll.reduce((sum, e) => sum + e.monthlyBaseEquivalentMinor, 0);
+  const currencies = [...new Set(activeAll.map((e) => e.currency))].sort();
+
   return (
     <div className="flex flex-col gap-3">
-      {entityId ? <PayScheduleControl entityId={entityId} /> : null}
-      <div className="flex items-center justify-end">
-        <Button size="sm" variant="outline" disabled>
-          <UserPlus data-icon="inline-start" />
-          Add employee
-        </Button>
+      <Card className="shadow-xs">
+        <CardContent className="grid grid-cols-2 gap-x-4 gap-y-5 py-5 md:grid-cols-4">
+          <PeopleStat icon={Users} label="Active headcount" value={activeAll.length} />
+          <PeopleStat
+            icon={Wallet}
+            label={`Monthly cost (${baseCurrency})`}
+            value={formatMinorMoney(monthlyCostMinor, { currency: baseCurrency })}
+            detail="across the active roster"
+          />
+          <PeopleStat
+            icon={Globe}
+            label="Currencies"
+            value={currencies.length}
+            detail={currencies.join(" · ") || "—"}
+          />
+          <PeopleStat icon={UserMinus} label="Former employees" value={roster.employees.filter((e) => !e.active).length} />
+        </CardContent>
+      </Card>
+      <PayScheduleControl entityId={entityId} />
+      <div className="flex items-center justify-between gap-2">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as "active" | "former")}>
+          <TabsList>
+            <TabsTrigger value="active" data-testid="payroll-people-active">
+              People{activeRows.length ? ` · ${activeRows.length}` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="former" data-testid="payroll-people-former">
+              Former{formerRows.length ? ` · ${formerRows.length}` : ""}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {canPrepare ? (
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setImporting(true)} data-testid="payroll-import-employees">
+              <FileUp data-icon="inline-start" />
+              Import
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setAdding(true)} data-testid="payroll-add-employee">
+              <UserPlus data-icon="inline-start" />
+              Add employee
+            </Button>
+          </div>
+        ) : null}
       </div>
       <OpenBooksDataTable
         columns={columns}
         rows={rows}
-        getRowId={(row) => row.id}
-        empty={<EmptyState icon={Users} title="No employees yet" description="Add your team to draft payroll runs from their salaries." />}
+        getRowId={(row) => row._id}
+        onRowClick={(row) => setDetailId(row._id as Id<"employees">)}
+        empty={
+          <EmptyState
+            icon={Users}
+            title={tab === "active" ? "No employees yet" : "No former employees"}
+            description={
+              tab === "active"
+                ? "Add your team to draft payroll runs from their salaries."
+                : "Terminated employees appear here — never deleted."
+            }
+          />
+        }
       />
+      <EmployeeDetailSheet
+        employeeId={detailId}
+        entityId={entityId}
+        baseCurrency={baseCurrency}
+        canPrepare={canPrepare}
+        onOpenChange={(open) => {
+          if (!open) setDetailId(null);
+        }}
+      />
+      <EmployeeFormDialog
+        entityId={entityId}
+        baseCurrency={baseCurrency}
+        employee={null}
+        open={adding}
+        onOpenChange={setAdding}
+      />
+      <BulkEmployeeImportDialog
+        entityId={entityId}
+        baseCurrency={baseCurrency}
+        open={importing}
+        onOpenChange={setImporting}
+      />
+    </div>
+  );
+}
+
+// ─── Bulk employee import (CSV upload or paste from Excel/Sheets) ──────────────
+
+type ParsedEmployeeRow = {
+  name: string;
+  email?: string;
+  title?: string;
+  department?: string;
+  country?: string;
+  city?: string;
+  currency: string;
+  monthlySalaryMinor: number;
+  phone?: string;
+  employmentType?: "full_time" | "part_time" | "contractor";
+  startDate?: string;
+  payFrequency?: "hourly" | "weekly" | "semimonthly" | "monthly";
+  paymentMethod?: string;
+};
+
+const BULK_TEMPLATE =
+  "name,email,title,department,country,currency,salary,phone,employmentType,startDate,payFrequency,paymentMethod\n" +
+  "Ahmed Ali,ahmed@acme.com,Engineer,Engineering,Pakistan,PKR,500000,+92...,full_time,2026-01-15,monthly,Bank transfer\n";
+
+/** Split one delimited line honoring simple double-quote quoting. */
+function splitDelimited(line: string, delim: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === delim && !inQuotes) {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out.map((s) => s.trim());
+}
+
+function normHeader(h: string) {
+  return h.toLowerCase().replace(/[\s_-]/g, "");
+}
+
+const HEADER_ALIASES: Record<string, keyof ParsedEmployeeRow | "salary"> = {
+  name: "name",
+  fullname: "name",
+  email: "email",
+  title: "title",
+  jobtitle: "title",
+  department: "department",
+  dept: "department",
+  country: "country",
+  city: "city",
+  currency: "currency",
+  salary: "salary",
+  monthlysalary: "salary",
+  monthlypay: "salary",
+  pay: "salary",
+  phone: "phone",
+  mobile: "phone",
+  employmenttype: "employmentType",
+  type: "employmentType",
+  startdate: "startDate",
+  payfrequency: "payFrequency",
+  frequency: "payFrequency",
+  paymentmethod: "paymentMethod",
+};
+
+function normalizeEmploymentType(v: string): "full_time" | "part_time" | "contractor" | undefined {
+  const k = v.toLowerCase().replace(/[\s_-]/g, "");
+  if (k === "fulltime") return "full_time";
+  if (k === "parttime") return "part_time";
+  if (k === "contractor" || k === "contract") return "contractor";
+  return undefined;
+}
+
+function normalizePayFrequency(v: string): "hourly" | "weekly" | "semimonthly" | "monthly" | undefined {
+  const k = v.toLowerCase().replace(/[\s_-]/g, "");
+  if (k === "hourly") return "hourly";
+  if (k === "weekly") return "weekly";
+  if (k === "monthly") return "monthly";
+  if (k === "semimonthly" || k === "biweekly" || k === "twicemonthly") return "semimonthly";
+  return undefined;
+}
+
+/** Parse pasted/upload text (CSV or tab-separated from Excel) into rows + errors. */
+function parseBulkEmployees(text: string): { rows: ParsedEmployeeRow[]; errors: string[] } {
+  const errors: string[] = [];
+  const lines = text.replace(/\r\n?/g, "\n").split("\n").filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return { rows: [], errors: ["Add a header row plus at least one employee row."] };
+  const delim = lines[0].includes("\t") ? "\t" : ",";
+  const headers = splitDelimited(lines[0], delim).map(normHeader);
+  const colIndex: Partial<Record<string, number>> = {};
+  headers.forEach((h, i) => {
+    const key = HEADER_ALIASES[h];
+    if (key) colIndex[key] = i;
+  });
+  if (colIndex.name === undefined || colIndex.currency === undefined || colIndex.salary === undefined) {
+    return { rows: [], errors: ["Header row must include at least: name, currency, salary."] };
+  }
+
+  const rows: ParsedEmployeeRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitDelimited(lines[i], delim);
+    const get = (key: string) => {
+      const idx = colIndex[key];
+      return idx === undefined ? "" : (cells[idx] ?? "").trim();
+    };
+    const name = get("name");
+    if (name.length < 2) {
+      errors.push(`Row ${i + 1}: missing name — skipped.`);
+      continue;
+    }
+    const currencyRaw = get("currency").toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currencyRaw)) {
+      errors.push(`Row ${i + 1} (${name}): currency must be a 3-letter code — skipped.`);
+      continue;
+    }
+    const salaryNum = Number(get("salary").replace(/[,$]/g, ""));
+    const monthlySalaryMinor = Math.round((salaryNum || 0) * 100);
+    if (!Number.isFinite(salaryNum) || monthlySalaryMinor <= 0) {
+      errors.push(`Row ${i + 1} (${name}): salary must be a positive number — skipped.`);
+      continue;
+    }
+    const row: ParsedEmployeeRow = { name, currency: currencyRaw, monthlySalaryMinor };
+    const email = get("email");
+    if (email) row.email = email;
+    const title = get("title");
+    if (title) row.title = title;
+    const department = get("department");
+    if (department) row.department = department;
+    const country = get("country");
+    if (country) row.country = country;
+    const city = get("city");
+    if (city) row.city = city;
+    const phone = get("phone");
+    if (phone) row.phone = phone;
+    const startDate = get("startDate");
+    if (startDate) row.startDate = startDate;
+    const paymentMethod = get("paymentMethod");
+    if (paymentMethod) row.paymentMethod = paymentMethod;
+    const et = get("employmentType");
+    if (et) row.employmentType = normalizeEmploymentType(et);
+    const pf = get("payFrequency");
+    if (pf) row.payFrequency = normalizePayFrequency(pf);
+    rows.push(row);
+  }
+  return { rows, errors };
+}
+
+function BulkEmployeeImportDialog({
+  entityId,
+  baseCurrency,
+  open,
+  onOpenChange,
+}: {
+  entityId: Id<"entities">;
+  baseCurrency: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const bulkImport = useMutation(api.employees.bulkImportEmployees);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const { rows, errors } = text.trim() ? parseBulkEmployees(text) : { rows: [], errors: [] };
+
+  async function onFile(file: File) {
+    const content = await file.text();
+    setText(content);
+  }
+
+  function downloadTemplate() {
+    const blob = new Blob([BULK_TEMPLATE], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "employees-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function submit() {
+    if (rows.length === 0) return;
+    setBusy(true);
+    try {
+      const result = await bulkImport({ entityId, rows });
+      toast.success(`Imported ${result.created} new and updated ${result.updated} employee${result.created + result.updated === 1 ? "" : "s"}.`);
+      setText("");
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not import employees."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="bulk-employee-import" className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Import employees</DialogTitle>
+          <DialogDescription>
+            Upload a CSV, or paste rows straight from Excel / Google Sheets. Salaries are in each row&apos;s own
+            currency (a 3-letter code) — converted to {baseCurrency} for reporting, but stored and paid natively.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,.tsv,.txt,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void onFile(file);
+                if (fileRef.current) fileRef.current.value = "";
+              }}
+            />
+            <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} data-testid="bulk-import-file">
+              <FileUp data-icon="inline-start" />
+              Upload CSV
+            </Button>
+            <Button size="sm" variant="ghost" onClick={downloadTemplate}>
+              <Download data-icon="inline-start" />
+              Template
+            </Button>
+          </div>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            data-testid="bulk-import-textarea"
+            placeholder={"Paste rows here (with a header row):\nname, currency, salary, country, title, …"}
+            className="h-40 w-full rounded-lg border p-2 font-mono text-xs"
+          />
+          {text.trim() ? (
+            <div className="rounded-lg border bg-muted/20 p-2 text-xs" data-testid="bulk-import-preview">
+              <span className="font-medium">{rows.length}</span> employee{rows.length === 1 ? "" : "s"} ready
+              {errors.length > 0 ? (
+                <ul className="mt-1 list-disc pl-4 text-muted-foreground">
+                  {errors.slice(0, 6).map((err, i) => (
+                    <li key={i}>{err}</li>
+                  ))}
+                  {errors.length > 6 ? <li>…and {errors.length - 6} more.</li> : null}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" disabled={busy || rows.length === 0} onClick={() => void submit()} data-testid="bulk-import-submit">
+            {busy ? "Importing…" : `Import ${rows.length || ""}`.trim()}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Employee detail (Overview / Salary History / Payroll History / Documents) ──
+
+function EmployeeDetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  if (value === null || value === undefined || value === "" || value === "—") return null;
+  return (
+    <div className="flex justify-between gap-4 py-1.5 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-medium">{value}</span>
+    </div>
+  );
+}
+
+const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
+  full_time: "Full-time",
+  part_time: "Part-time",
+  contractor: "Contractor",
+};
+
+const PAY_FREQUENCY_LABEL: Record<string, string> = {
+  hourly: "Hourly",
+  weekly: "Weekly",
+  semimonthly: "Semi-monthly",
+  monthly: "Monthly",
+};
+
+function EmployeeDetailSheet({
+  employeeId,
+  entityId,
+  baseCurrency,
+  canPrepare,
+  onOpenChange,
+}: {
+  employeeId: Id<"employees"> | null;
+  entityId: Id<"entities">;
+  baseCurrency: string;
+  canPrepare: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const open = employeeId !== null;
+  const employee = useQuery(api.employees.getEmployee, employeeId ? { employeeId } : "skip");
+  const [editing, setEditing] = useState(false);
+  const [terminating, setTerminating] = useState(false);
+  const updateEmployee = useMutation(api.employees.updateEmployee);
+  const [busy, setBusy] = useState(false);
+
+  if (!open) return <DetailSheet open={false} onOpenChange={onOpenChange} title="Employee" />;
+  if (employee === undefined) {
+    return (
+      <DetailSheet open onOpenChange={onOpenChange} title="Employee">
+        <LoadingBlock label="employee" />
+      </DetailSheet>
+    );
+  }
+  if (employee === null) {
+    return (
+      <DetailSheet open onOpenChange={onOpenChange} title="Employee">
+        <EmptyState title="Employee not found" />
+      </DetailSheet>
+    );
+  }
+
+  const bank = employee.payTo as { bankName?: string; accountTitle?: string; ibanOrAccountNumber?: string } | null;
+  const payFrequencyLabel = employee.payFrequency ? PAY_FREQUENCY_LABEL[employee.payFrequency] : null;
+  const overview = (
+    <div className="flex flex-col gap-4" data-testid="employee-overview">
+      {/* Salary highlight */}
+      <div className="rounded-xl border bg-primary/[0.04] p-4">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Wallet className="size-3.5" aria-hidden="true" /> Monthly salary
+        </div>
+        <div className="mt-1 text-2xl font-semibold tabular-nums">
+          <Amount amountMinor={employee.monthlySalaryMinor} currency={employee.currency} />
+        </div>
+        {employee.currency !== employee.baseCurrency ? (
+          <div className="text-sm text-muted-foreground tabular-nums">
+            ≈ <Amount amountMinor={employee.monthlyBaseEquivalentMinor} currency={employee.baseCurrency} /> {employee.baseCurrency}
+          </div>
+        ) : null}
+        {payFrequencyLabel ? (
+          <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">
+            <Clock className="size-3" aria-hidden="true" /> Paid {payFrequencyLabel.toLowerCase()}
+          </div>
+        ) : null}
+      </div>
+
+      <section>
+        <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <User className="size-3.5" aria-hidden="true" /> Personal
+        </h4>
+        <EmployeeDetailRow label="Email" value={employee.email} />
+        <EmployeeDetailRow label="Phone" value={employee.phone} />
+        {!employee.email && !employee.phone ? <p className="text-sm text-muted-foreground">No contact details on file.</p> : null}
+      </section>
+      <section>
+        <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <Briefcase className="size-3.5" aria-hidden="true" /> Employment
+        </h4>
+        <EmployeeDetailRow label="Job title" value={employee.title} />
+        <EmployeeDetailRow label="Department" value={employee.department} />
+        <EmployeeDetailRow label="Type" value={employee.employmentType ? EMPLOYMENT_TYPE_LABEL[employee.employmentType] : null} />
+        <EmployeeDetailRow label="Start date" value={employee.startDate} />
+        <EmployeeDetailRow label="Status" value={employee.active ? "Active" : `Terminated (${employee.exitReason ?? "—"})`} />
+        {!employee.active ? <EmployeeDetailRow label="Termination date" value={employee.exitDate} /> : null}
+      </section>
+      <section>
+        <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <MapPin className="size-3.5" aria-hidden="true" /> Location
+        </h4>
+        <EmployeeDetailRow label="Country" value={employee.country !== "—" ? employee.country : null} />
+        <EmployeeDetailRow label="City" value={employee.city} />
+      </section>
+      {canPrepare && (bank?.bankName || bank?.accountTitle || bank?.ibanOrAccountNumber || employee.paymentMethod) ? (
+        <section>
+          <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <CreditCard className="size-3.5" aria-hidden="true" /> Payment details
+          </h4>
+          <EmployeeDetailRow label="Method" value={employee.paymentMethod} />
+          <EmployeeDetailRow label="Bank" value={bank?.bankName} />
+          <EmployeeDetailRow label="Account title" value={bank?.accountTitle} />
+          <EmployeeDetailRow label="IBAN / Account #" value={bank?.ibanOrAccountNumber} />
+        </section>
+      ) : null}
+    </div>
+  );
+
+  const footer = canPrepare ? (
+    <>
+      {employee.active ? (
+        <Button size="sm" variant="outline" onClick={() => setTerminating(true)} data-testid="employee-terminate">
+          Terminate
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          data-testid="employee-reactivate"
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await updateEmployee({ employeeId: employee._id, active: true });
+              toast.success(`${employee.name} reactivated.`);
+            } catch (err) {
+              toast.error(getErrorMessage(err, "Could not reactivate."));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Reactivate
+        </Button>
+      )}
+      <Button size="sm" onClick={() => setEditing(true)} data-testid="employee-edit">
+        <Pencil data-icon="inline-start" />
+        Edit
+      </Button>
+    </>
+  ) : null;
+
+  return (
+    <>
+      <DetailSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title={
+          <span className="flex items-center gap-3">
+            <EmployeeAvatar name={employee.name} photoUrl={employee.photoUrl} size="lg" />
+            <span className="flex items-center gap-2">
+              {employee.name}
+              {!employee.active ? <Badge variant="outline">Former</Badge> : null}
+            </span>
+          </span>
+        }
+        subtitle={[employee.title, employee.country !== "—" ? employee.country : null].filter(Boolean).join(" · ")}
+        tabs={[
+          { value: "overview", label: "Overview", content: overview },
+          { value: "salary", label: "Salary History", content: <EmployeeSalaryHistory employeeId={employee._id} /> },
+          { value: "payroll", label: "Payroll History", content: <EmployeePayrollHistory employeeId={employee._id} baseCurrency={baseCurrency} canPrepare={canPrepare} /> },
+          { value: "documents", label: "Documents", content: <EmployeeDocumentsTab employeeId={employee._id} entityId={entityId} canPrepare={canPrepare} /> },
+        ]}
+        footer={footer}
+      />
+      <EmployeeFormDialog
+        entityId={entityId}
+        baseCurrency={baseCurrency}
+        employee={employee}
+        open={editing}
+        onOpenChange={setEditing}
+      />
+      <TerminateEmployeeDialog
+        employee={employee}
+        open={terminating}
+        onOpenChange={setTerminating}
+      />
+    </>
+  );
+}
+
+function EmployeeSalaryHistory({ employeeId }: { employeeId: Id<"employees"> }) {
+  const history = useQuery(api.employees.salaryHistory, { employeeId });
+  if (history === undefined) return <LoadingBlock label="history" />;
+  if (history.length === 0) {
+    return <EmptyState icon={History} title="No salary changes" description="Salary edits are logged here automatically." />;
+  }
+  return (
+    <ol className="flex flex-col gap-3" data-testid="employee-salary-history">
+      {history.map((event) => (
+        <li key={event.id} className="rounded-lg border p-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium tabular-nums">
+              {event.previousAmountMinor !== null ? (
+                <>
+                  <Amount amountMinor={event.previousAmountMinor} currency={event.currency} /> →{" "}
+                </>
+              ) : null}
+              <Amount amountMinor={event.newAmountMinor} currency={event.currency} />
+            </span>
+            <span className="text-xs text-muted-foreground">{event.effectiveDate}</span>
+          </div>
+          {event.note ? <p className="mt-1 text-xs text-muted-foreground">{event.note}</p> : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function EmployeePayrollHistory({
+  employeeId,
+  baseCurrency,
+  canPrepare,
+}: {
+  employeeId: Id<"employees">;
+  baseCurrency: string;
+  canPrepare: boolean;
+}) {
+  const history = useQuery(api.employees.employeePayrollHistory, { employeeId });
+  const sendPayslip = useAction(api.payrollEmail.sendPayslip);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+
+  async function emailPayslip(lineId: string) {
+    setSendingId(lineId);
+    try {
+      const result = await sendPayslip({ lineId: lineId as Id<"payrollRunLines">, appOrigin: window.location.origin });
+      toast.success(`Payslip emailed to ${result.to}.`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not email the payslip."));
+    } finally {
+      setSendingId(null);
+    }
+  }
+
+  if (history === undefined) return <LoadingBlock label="history" />;
+  if (history.length === 0) {
+    return <EmptyState icon={CalendarClock} title="No payroll runs yet" description="Runs this person appears in will show here." />;
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border" data-testid="employee-payroll-history">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/30 hover:bg-muted/30">
+            <TableHead className="h-8 text-xs">Period</TableHead>
+            <TableHead className="h-8 text-right text-xs">Local</TableHead>
+            <TableHead className="h-8 text-right text-xs">{baseCurrency} equiv</TableHead>
+            <TableHead className="h-8 text-xs">Status</TableHead>
+            <TableHead className="h-8 text-right text-xs">Payslip</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {history.map((row) => (
+            <TableRow key={row.lineId}>
+              <TableCell className="py-2 text-sm">{row.periodLabel || row.period}</TableCell>
+              <TableCell className="py-2 text-right tabular-nums">
+                <Amount amountMinor={row.finalLocalMinor} currency={row.currency} />
+              </TableCell>
+              <TableCell className="py-2 text-right tabular-nums">
+                <Amount amountMinor={row.baseEquivalentMinor} currency={baseCurrency} />
+              </TableCell>
+              <TableCell className="py-2"><PayrollStatusChip status={row.status} /></TableCell>
+              <TableCell className="py-2 text-right">
+                <div className="flex items-center justify-end gap-1">
+                  <a
+                    href={`/payroll/payslip/${row.lineId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary hover:underline"
+                    data-testid="employee-payslip-view"
+                  >
+                    View
+                  </a>
+                  {canPrepare ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs text-muted-foreground"
+                      disabled={sendingId === row.lineId}
+                      onClick={() => void emailPayslip(row.lineId)}
+                      data-testid="employee-payslip-email"
+                    >
+                      {sendingId === row.lineId ? "Sending…" : "Email"}
+                    </Button>
+                  ) : null}
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function EmployeeDocumentsTab({
+  employeeId,
+  entityId,
+  canPrepare,
+}: {
+  employeeId: Id<"employees">;
+  entityId: Id<"entities">;
+  canPrepare: boolean;
+}) {
+  const docs = useQuery(api.employees.employeeDocuments, { employeeId });
+  const generateUrl = useMutation(api.employees.generateEmployeeDocUploadUrl);
+  const attach = useMutation(api.employees.attachEmployeeDocument);
+  const removeDoc = useMutation(api.employees.removeEmployeeDocument);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function onFile(file: File) {
+    setUploading(true);
+    try {
+      const uploadUrl = await generateUrl({ entityId });
+      const res = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": file.type }, body: file });
+      const { storageId } = await res.json();
+      await attach({ employeeId, storageId, fileName: file.name, mimeType: file.type });
+      toast.success(`${file.name} attached.`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not upload the file."));
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="employee-documents">
+      {canPrepare ? (
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void onFile(file);
+            }}
+          />
+          <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()} data-testid="employee-doc-upload">
+            <Paperclip data-icon="inline-start" />
+            {uploading ? "Uploading…" : "Attach document"}
+          </Button>
+        </div>
+      ) : null}
+      {docs === undefined ? (
+        <LoadingBlock label="documents" />
+      ) : docs.length === 0 ? (
+        <EmptyState icon={Paperclip} title="No documents" description="Attach a contract, ID copy, or other file." />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {docs.map((doc) => (
+            <li key={doc.id} className="flex items-center justify-between gap-2 rounded-lg border p-2.5">
+              <a href={doc.url ?? "#"} target="_blank" rel="noopener noreferrer" className="truncate text-sm font-medium hover:underline">
+                {doc.fileName}
+              </a>
+              {canPrepare ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-muted-foreground"
+                  onClick={async () => {
+                    try {
+                      await removeDoc({ documentId: doc.id as Id<"documents"> });
+                    } catch (err) {
+                      toast.error(getErrorMessage(err, "Could not remove."));
+                    }
+                  }}
+                >
+                  Remove
+                </Button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function TerminateEmployeeDialog({
+  employee,
+  open,
+  onOpenChange,
+}: {
+  employee: FullEmployee;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const markExited = useMutation(api.employees.markExited);
+  const [exitDate, setExitDate] = useState(todayIso());
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit() {
+    if (!reason.trim()) {
+      setError("Enter a termination reason.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await markExited({ employeeId: employee._id, exitDate, exitReason: reason.trim() });
+      toast.success(`${employee.name} moved to Former Employees.`);
+      onOpenChange(false);
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not terminate."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="employee-terminate-form">
+        <DialogHeader>
+          <DialogTitle>Terminate {employee.name}</DialogTitle>
+          <DialogDescription>
+            They move to Former Employees and are skipped in future runs. Nothing is deleted — you can reactivate later.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid gap-2">
+            <Label htmlFor="term-date">Termination date</Label>
+            <Input id="term-date" type="date" value={exitDate} onChange={(e) => setExitDate(e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="term-reason">Reason</Label>
+            <Input
+              id="term-reason"
+              data-testid="employee-terminate-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Resigned, end of contract, …"
+            />
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" disabled={busy} onClick={() => void submit()} data-testid="employee-terminate-submit">
+            {busy ? "Saving…" : "Terminate"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Add / edit an employee. Salaries draft into each period's payroll run; this
+ * dialog never posts to the ledger (only approving a run does). The inner form
+ * remounts on each open (DialogContent unmounts on close), so its state
+ * initializes cleanly from the employee being edited without an effect.
+ */
+function EmployeeFormDialog({
+  entityId,
+  baseCurrency,
+  employee,
+  open,
+  onOpenChange,
+}: {
+  entityId: Id<"entities">;
+  baseCurrency: string;
+  employee: FullEmployee | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="employee-form" className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <EmployeeForm
+          entityId={entityId}
+          baseCurrency={baseCurrency}
+          employee={employee}
+          onDone={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EmployeeForm({
+  entityId,
+  baseCurrency,
+  employee,
+  onDone,
+}: {
+  entityId: Id<"entities">;
+  baseCurrency: string;
+  employee: FullEmployee | null;
+  onDone: () => void;
+}) {
+  const createEmployee = useMutation(api.employees.createEmployee);
+  const updateEmployee = useMutation(api.employees.updateEmployee);
+  const isEdit = employee !== null;
+  const bank = (employee?.payTo ?? null) as { bankName?: string; accountTitle?: string; ibanOrAccountNumber?: string } | null;
+
+  const [f, setF] = useState({
+    name: employee?.name ?? "",
+    email: employee?.email ?? "",
+    phone: employee?.phone ?? "",
+    title: employee?.title ?? "",
+    department: employee?.department ?? "",
+    employmentType: employee?.employmentType ?? "",
+    startDate: employee?.startDate ?? "",
+    country: employee && employee.country !== "—" ? employee.country : "",
+    currency: employee?.currency ?? baseCurrency,
+    salary: employee ? (employee.monthlySalaryMinor / 100).toString() : "",
+    payFrequency: employee?.payFrequency ?? "",
+    salaryNote: "",
+    paymentMethod: employee?.paymentMethod ?? "",
+    bankName: bank?.bankName ?? "",
+    accountTitle: bank?.accountTitle ?? "",
+    ibanOrAccountNumber: bank?.ibanOrAccountNumber ?? "",
+  });
+  const set = (key: keyof typeof f) => (value: string) => setF((prev) => ({ ...prev, [key]: value }));
+  const [active, setActive] = useState(employee?.active ?? true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  // Salaries are stored/entered in the employee's native currency. When that's
+  // not the base currency, fetch the live rate the payroll engine would use and
+  // show a read-only converted preview so the user sees the USD-equivalent.
+  const isForeign = f.currency.trim().toUpperCase() !== baseCurrency.toUpperCase();
+  const fx = useQuery(
+    api.payroll.currentFxRate,
+    isForeign && f.currency.trim().length === 3
+      ? { entityId, localCurrency: f.currency.trim().toUpperCase() }
+      : "skip",
+  );
+  const salaryPreviewMinor = Math.round((Number(f.salary.replace(/[,$]/g, "")) || 0) * 100);
+  const convertedBaseMinor = !isForeign
+    ? salaryPreviewMinor
+    : fx?.rateMicros
+      ? Math.round((salaryPreviewMinor * 1_000_000) / fx.rateMicros)
+      : null;
+  const currencyOptions = [...new Set([baseCurrency, "USD", "PKR", "INR", "EUR", "GBP", "AED", "CAD", "AUD", "SAR", f.currency].filter(Boolean))];
+
+  async function submit() {
+    const trimmedName = f.name.trim();
+    const salaryMinor = Math.round((Number(f.salary) || 0) * 100);
+    if (trimmedName.length < 2) {
+      setError("Enter the employee's name.");
+      return;
+    }
+    if (salaryMinor <= 0) {
+      setError("Enter a positive monthly salary.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+
+    const payTo =
+      f.bankName || f.accountTitle || f.ibanOrAccountNumber
+        ? { bankName: f.bankName.trim(), accountTitle: f.accountTitle.trim(), ibanOrAccountNumber: f.ibanOrAccountNumber.trim() }
+        : undefined;
+    const profile = {
+      email: f.email.trim(),
+      phone: f.phone.trim(),
+      title: f.title.trim(),
+      department: f.department.trim(),
+      ...(f.employmentType ? { employmentType: f.employmentType as "full_time" | "part_time" | "contractor" } : {}),
+      startDate: f.startDate.trim(),
+      ...(f.payFrequency ? { payFrequency: f.payFrequency as "hourly" | "weekly" | "semimonthly" | "monthly" } : {}),
+      paymentMethod: f.paymentMethod.trim(),
+      ...(payTo ? { payTo } : {}),
+    };
+
+    try {
+      if (employee) {
+        await updateEmployee({
+          employeeId: employee._id,
+          name: trimmedName,
+          country: f.country.trim(),
+          currency: f.currency.trim().toUpperCase(),
+          monthlySalaryMinor: salaryMinor,
+          active,
+          ...(f.salaryNote.trim() ? { salaryNote: f.salaryNote.trim() } : {}),
+          ...profile,
+        });
+        toast.success(`${trimmedName} updated.`);
+      } else {
+        await createEmployee({
+          entityId,
+          name: trimmedName,
+          country: f.country.trim(),
+          currency: f.currency.trim().toUpperCase(),
+          monthlySalaryMinor: salaryMinor,
+          ...profile,
+        });
+        toast.success(`${trimmedName} added to payroll.`);
+      }
+      onDone();
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not save the employee."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{isEdit ? "Edit employee" : "Add employee"}</DialogTitle>
+        <DialogDescription>
+          Salaries draft into each period&apos;s payroll run. Saving here
+          doesn&apos;t post to the ledger — only approving a run does.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4">
+        <section className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Personal</h4>
+          <div className="grid gap-2">
+            <Label htmlFor="emp-name">Name</Label>
+            <Input id="emp-name" data-testid="employee-name" value={f.name} onChange={(e) => set("name")(e.target.value)} placeholder="Jane Doe" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="emp-email">Email</Label>
+              <Input id="emp-email" type="email" value={f.email} onChange={(e) => set("email")(e.target.value)} placeholder="jane@company.com" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="emp-phone">Phone</Label>
+              <Input id="emp-phone" value={f.phone} onChange={(e) => set("phone")(e.target.value)} />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Employment</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="emp-title">Job title</Label>
+              <Input id="emp-title" value={f.title} onChange={(e) => set("title")(e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="emp-dept">Department</Label>
+              <Input id="emp-dept" value={f.department} onChange={(e) => set("department")(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Employment type</Label>
+              <Select value={f.employmentType || undefined} onValueChange={(v) => set("employmentType")(v)}>
+                <SelectTrigger size="sm"><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full_time">Full-time</SelectItem>
+                  <SelectItem value="part_time">Part-time</SelectItem>
+                  <SelectItem value="contractor">Contractor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="emp-start">Start date</Label>
+              <Input id="emp-start" type="date" value={f.startDate} onChange={(e) => set("startDate")(e.target.value)} />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Salary</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Currency</Label>
+              <Select value={f.currency} onValueChange={(v) => set("currency")(v)}>
+                <SelectTrigger size="sm" data-testid="employee-currency"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {currencyOptions.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="emp-salary">Monthly salary ({f.currency})</Label>
+              <Input id="emp-salary" data-testid="employee-salary" value={f.salary} inputMode="decimal" onChange={(e) => set("salary")(e.target.value)} placeholder="0.00" className="money-figures" />
+            </div>
+          </div>
+          {isForeign ? (
+            <div className="grid gap-2">
+              <Label htmlFor="emp-salary-converted">Converted ({baseCurrency})</Label>
+              <Input
+                id="emp-salary-converted"
+                data-testid="employee-salary-converted"
+                readOnly
+                tabIndex={-1}
+                value={convertedBaseMinor === null ? "Fetching rate…" : `≈ ${formatMinorMoney(convertedBaseMinor, { currency: baseCurrency })}`}
+                className="money-figures bg-muted/40 text-muted-foreground"
+              />
+              <p className="text-xs text-muted-foreground">
+                {fx?.rateMicros
+                  ? `Auto-converted at 1 ${baseCurrency} = ${Number((fx.rateMicros / 1_000_000).toFixed(4))} ${f.currency}. Stored & paid in ${f.currency}.`
+                  : `The salary is stored & paid in ${f.currency}; the ${baseCurrency} figure is an estimate.`}
+              </p>
+            </div>
+          ) : null}
+          <div className="grid gap-2">
+            <Label>Pay frequency</Label>
+            <Select value={f.payFrequency || undefined} onValueChange={(v) => set("payFrequency")(v)}>
+              <SelectTrigger size="sm"><SelectValue placeholder="Select…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="hourly">Hourly</SelectItem>
+                <SelectItem value="weekly">Weekly</SelectItem>
+                <SelectItem value="semimonthly">Semi-monthly</SelectItem>
+                <SelectItem value="monthly">Monthly</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {isEdit ? (
+            <div className="grid gap-2">
+              <Label htmlFor="emp-salary-note">Salary change note (optional)</Label>
+              <Input id="emp-salary-note" value={f.salaryNote} onChange={(e) => set("salaryNote")(e.target.value)} placeholder="e.g. Annual increment" />
+              <p className="text-xs text-muted-foreground">Changing the salary appends to the salary history — the old amount is never lost.</p>
+            </div>
+          ) : null}
+        </section>
+
+        <section className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Location</h4>
+          <div className="grid gap-2">
+            <Label htmlFor="emp-country">Country</Label>
+            <Input id="emp-country" value={f.country} onChange={(e) => set("country")(e.target.value)} placeholder="Pakistan" />
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payment details</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="emp-method">Method</Label>
+              <Input id="emp-method" value={f.paymentMethod} onChange={(e) => set("paymentMethod")(e.target.value)} placeholder="Bank transfer" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="emp-bank">Bank name</Label>
+              <Input id="emp-bank" value={f.bankName} onChange={(e) => set("bankName")(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="emp-acct-title">Account title</Label>
+              <Input id="emp-acct-title" value={f.accountTitle} onChange={(e) => set("accountTitle")(e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="emp-iban">IBAN / Account #</Label>
+              <Input id="emp-iban" value={f.ibanOrAccountNumber} onChange={(e) => set("ibanOrAccountNumber")(e.target.value)} />
+            </div>
+          </div>
+        </section>
+
+        {isEdit ? (
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <div className="text-sm font-medium">Active</div>
+              <p className="text-xs text-muted-foreground">Inactive employees are skipped when drafting new runs.</p>
+            </div>
+            <Switch checked={active} onCheckedChange={setActive} />
+          </div>
+        ) : null}
+        {error ? <p className="text-sm text-destructive" data-testid="employee-error">{error}</p> : null}
+      </div>
+      <DialogFooter>
+        <Button variant="outline" size="sm" onClick={onDone}>Cancel</Button>
+        <Button size="sm" disabled={busy} onClick={() => void submit()} data-testid="employee-submit">
+          {busy ? "Saving…" : isEdit ? "Save changes" : "Add employee"}
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+// ─── Monthly view: every month's payroll run and its phase ────────────────────
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** The set of periods to show: the last 12 months + any month that has a run. */
+function monthlyPeriods(currentPeriod: string, runPeriods: string[]): string[] {
+  const [y, m] = currentPeriod.split("-").map(Number);
+  const set = new Set<string>(runPeriods);
+  for (let i = 0; i < 12; i++) {
+    let year = y;
+    let month = m - i;
+    while (month < 1) { month += 12; year -= 1; }
+    set.add(`${year}-${String(month).padStart(2, "0")}`);
+  }
+  return [...set].sort((a, b) => b.localeCompare(a)); // newest first
+}
+
+function PayrollMonthly({
+  runs,
+  baseCurrency,
+  canPrepare,
+  currentPeriod,
+  onOpenRun,
+  onGenerate,
+}: {
+  runs: ModuleOverview["payroll"]["runs"];
+  baseCurrency: string;
+  canPrepare: boolean;
+  currentPeriod: string;
+  onOpenRun: (id: Id<"payrollRuns">) => void;
+  onGenerate: (period: string) => void;
+}) {
+  const runByPeriod = new Map(runs.map((run) => [run.period, run]));
+  const periods = monthlyPeriods(currentPeriod, [...runByPeriod.keys()]);
+  // Group periods by year for section headers.
+  const byYear = new Map<string, string[]>();
+  for (const period of periods) {
+    const year = period.slice(0, 4);
+    (byYear.get(year) ?? byYear.set(year, []).get(year)!).push(period);
+  }
+
+  return (
+    <div className="flex flex-col gap-4" data-testid="payroll-monthly">
+      {[...byYear.entries()].map(([year, yearPeriods]) => (
+        <div key={year} className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <CalendarClock className="size-3.5" aria-hidden="true" /> {year}
+          </div>
+          <div className="overflow-hidden rounded-xl border">
+            {yearPeriods.map((period, i) => {
+              const run = runByPeriod.get(period);
+              const monthName = MONTH_NAMES[Number(period.slice(5, 7)) - 1] ?? period;
+              const isCurrent = period === currentPeriod;
+              return (
+                <div
+                  key={period}
+                  role={run ? "button" : undefined}
+                  tabIndex={run ? 0 : undefined}
+                  onClick={run ? () => onOpenRun(run.id as Id<"payrollRuns">) : undefined}
+                  data-testid="payroll-monthly-row"
+                  className={cn(
+                    "flex items-center justify-between gap-3 px-4 py-3",
+                    i > 0 && "border-t",
+                    run && "cursor-pointer hover:bg-muted/40",
+                  )}
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span
+                      className={cn(
+                        "flex size-9 shrink-0 flex-col items-center justify-center rounded-lg text-[10px] font-medium leading-none",
+                        run ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      <span className="text-[13px]">{period.slice(5, 7)}</span>
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 font-medium">
+                        {monthName}
+                        {isCurrent ? <span className="text-xs font-normal text-muted-foreground">· current</span> : null}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {run ? `${run.headcount} ${run.headcount === 1 ? "person" : "people"}` : "Not generated yet"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    {run ? (
+                      <>
+                        <span className="hidden tabular-nums text-sm sm:inline">
+                          <Amount amountMinor={run.totalBaseMinor} currency={baseCurrency} />
+                        </span>
+                        <PayrollStatusChip status={run.status} />
+                      </>
+                    ) : canPrepare ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => { e.stopPropagation(); onGenerate(period); }}
+                        data-testid="payroll-monthly-generate"
+                      >
+                        <Play data-icon="inline-start" />
+                        Generate
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1711,11 +3631,13 @@ type RunLineView = RunDetail["lines"][number];
 /** Review -> Approve -> Mark paid stepper. lucide Check on completed steps. */
 function PayrollStepper({ status }: { status: string }) {
   const steps = [
-    { key: "review", label: "Review" },
-    { key: "approve", label: "Approve" },
+    { key: "draft", label: "Draft" },
+    { key: "submitted", label: "Submitted" },
+    { key: "approved", label: "Approve" },
     { key: "paid", label: "Mark paid" },
   ];
-  const activeIndex = status === "draft" ? 0 : status === "approved" ? 1 : 2;
+  const activeIndex =
+    status === "draft" ? 0 : status === "submitted" ? 1 : status === "approved" ? 2 : 3;
   return (
     <ol className="flex items-center gap-2 text-xs">
       {steps.map((step, index) => {
@@ -1742,171 +3664,431 @@ function PayrollStepper({ status }: { status: string }) {
   );
 }
 
-/**
- * Run detail — CLOSED by default. Opens as a right Sheet (lg+) / bottom Drawer
- * (mobile) WITHOUT destroying the runs list or KPI strip. Holds the stepper, the
- * editable grid (card-per-row, never a horizontal-scroll table), and the
- * approve/mark-paid lifecycle. Approve is wrapped in an AlertDialog and posts the
- * single ledger entry through the EXISTING approveRun — never client-side.
- */
-function PayrollRunDetailSheet({
-  runId,
+type RunLineGroup = {
+  key: string;
+  country: string;
+  city: string | null;
+  lines: RunLineView[];
+  baseSubtotalMinor: number;
+};
+
+/** Group run lines by country then city, with a base-equivalent subtotal each. */
+function groupRunLines(lines: RunLineView[]): RunLineGroup[] {
+  const map = new Map<string, RunLineGroup>();
+  for (const line of lines) {
+    const city = line.city && line.city.trim() ? line.city.trim() : null;
+    const key = `${line.country}|${city ?? ""}`;
+    const group =
+      map.get(key) ?? { key, country: line.country, city, lines: [], baseSubtotalMinor: 0 };
+    group.lines.push(line);
+    group.baseSubtotalMinor += line.baseEquivalentMinor;
+    map.set(key, group);
+  }
+  return [...map.values()].sort(
+    (a, b) => a.country.localeCompare(b.country) || (a.city ?? "").localeCompare(b.city ?? ""),
+  );
+}
+
+function PayrollRunGrid({
+  lines,
   baseCurrency,
-  onOpenChange,
+  isMultiCurrency,
+  editable,
+  onSave,
 }: {
-  runId: Id<"payrollRuns"> | null;
+  lines: RunLineView[];
   baseCurrency: string;
-  onOpenChange: (open: boolean) => void;
+  isMultiCurrency: boolean;
+  editable: boolean;
+  onSave: (lineId: string, bonusMinor: number, deductionMinor: number, fxRate: string) => void;
 }) {
-  const detail = useQuery(api.payroll.runDetail, runId ? { runId } : "skip");
+  const baseTotalMinor = lines.reduce((sum, l) => sum + l.baseEquivalentMinor, 0);
+  const groups = groupRunLines(lines);
+  // Only show country · city subtotal headers when there's real grouping to do
+  // (more than one location, or any city recorded) — a single flat country
+  // stays clean.
+  const showGroups = groups.length > 1 || groups.some((g) => g.city);
+  // Total column count for group-header colSpans.
+  const totalCols =
+    1 /* employee */ +
+    (isMultiCurrency ? 1 : 0) /* cur */ +
+    1 /* base */ +
+    1 /* bonus */ +
+    1 /* adjustment */ +
+    1 /* final */ +
+    (isMultiCurrency ? 2 : 0) /* fx + equiv */ +
+    1; /* paid */
+
+  const renderLine = (line: RunLineView) => (
+    <PayrollRunLineRow
+      key={line.id}
+      line={line}
+      baseCurrency={baseCurrency}
+      isMultiCurrency={isMultiCurrency}
+      editable={editable}
+      showCountry={!showGroups}
+      onSave={(bonus, deduction, fx) => onSave(line.id, bonus, deduction, fx)}
+    />
+  );
+
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/30 hover:bg-muted/30">
+            <TableHead className="h-8 text-xs">Employee</TableHead>
+            {isMultiCurrency && <TableHead className="h-8 w-12 text-xs">Cur</TableHead>}
+            <TableHead className="h-8 text-right text-xs">Base salary</TableHead>
+            <TableHead className="h-8 text-right text-xs">Bonus</TableHead>
+            <TableHead className="h-8 text-right text-xs">Deduction</TableHead>
+            <TableHead className="h-8 text-right text-xs">Total</TableHead>
+            {isMultiCurrency && <TableHead className="h-8 text-right text-xs">FX rate</TableHead>}
+            {isMultiCurrency && <TableHead className="h-8 text-right text-xs">{baseCurrency} equiv</TableHead>}
+            <TableHead className="h-8 w-10 text-center text-xs">Paid</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {showGroups
+            ? groups.map((group) => (
+                <Fragment key={group.key}>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableCell colSpan={totalCols} className="py-1.5" data-testid="payroll-group-header">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-1.5 text-xs font-medium">
+                          <MapPin className="size-3 text-muted-foreground" aria-hidden="true" />
+                          {group.country}
+                          {group.city ? <span className="text-muted-foreground"> · {group.city}</span> : null}
+                        </span>
+                        <span className="tabular-nums text-xs font-semibold">
+                          <Amount amountMinor={group.baseSubtotalMinor} currency={baseCurrency} />
+                        </span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {group.lines.map(renderLine)}
+                </Fragment>
+              ))
+            : lines.map(renderLine)}
+        </TableBody>
+        <tfoot>
+          <tr className="border-t bg-muted/20">
+            <td
+              colSpan={totalCols - 2}
+              className="px-4 py-2 text-xs text-muted-foreground"
+            >
+              {lines.length} employee{lines.length !== 1 ? "s" : ""}
+            </td>
+            <td className="px-4 py-2 text-right tabular-nums font-semibold text-sm" data-testid="payroll-base-total">
+              <Amount amountMinor={baseTotalMinor} currency={baseCurrency} />
+            </td>
+            <td className="px-4 py-2" />
+          </tr>
+        </tfoot>
+      </Table>
+    </div>
+  );
+}
+
+function PayrollRunLineRow({
+  line,
+  baseCurrency,
+  isMultiCurrency,
+  editable,
+  showCountry,
+  onSave,
+}: {
+  line: RunLineView;
+  baseCurrency: string;
+  isMultiCurrency: boolean;
+  editable: boolean;
+  showCountry: boolean;
+  onSave: (bonusMinor: number, deductionMinor: number, fxRate: string) => void;
+}) {
+  const [bonus, setBonus] = useState(String(line.bonusMinor / 100));
+  const [deduction, setDeduction] = useState(String(line.deductionMinor / 100));
+  const [fxRate, setFxRate] = useState(line.fxDisplay === "—" ? "1" : line.fxDisplay);
+
+  function commit() {
+    const bonusMinor = Math.max(0, Math.round((Number(bonus.replace(/[,$]/g, "")) || 0) * 100));
+    const deductionMinor = Math.max(0, Math.round((Number(deduction.replace(/[,$]/g, "")) || 0) * 100));
+    onSave(bonusMinor, deductionMinor, fxRate);
+  }
+
+  return (
+    <TableRow data-testid="payroll-line-row" className="hover:bg-muted/20">
+      <TableCell className="py-2">
+        <div className="font-medium leading-snug">{line.employeeName}</div>
+        {showCountry && !isMultiCurrency && line.country !== "—" && (
+          <div className="text-xs text-muted-foreground">{line.country}</div>
+        )}
+      </TableCell>
+      {isMultiCurrency && (
+        <TableCell className="py-2 text-xs text-muted-foreground">{line.currency}</TableCell>
+      )}
+      <TableCell className="py-2 text-right tabular-nums">
+        <Amount amountMinor={line.baseSalaryMinor} currency={line.currency} />
+      </TableCell>
+      <TableCell className="py-2 text-right">
+        {editable ? (
+          <Input
+            value={bonus}
+            onChange={(e) => setBonus(e.target.value)}
+            onBlur={commit}
+            inputMode="decimal"
+            className="ml-auto h-7 w-24 text-right tabular-nums"
+            data-testid="payroll-bonus-input"
+          />
+        ) : (
+          <span className="tabular-nums text-muted-foreground">
+            {line.bonusMinor !== 0
+              ? <Amount amountMinor={line.bonusMinor} currency={line.currency} />
+              : "—"}
+          </span>
+        )}
+      </TableCell>
+      <TableCell className="py-2 text-right">
+        {editable ? (
+          <Input
+            value={deduction}
+            onChange={(e) => setDeduction(e.target.value)}
+            onBlur={commit}
+            inputMode="decimal"
+            className="ml-auto h-7 w-24 text-right tabular-nums"
+            data-testid="payroll-deduction-input"
+          />
+        ) : (
+          <span className="tabular-nums text-muted-foreground">
+            {line.deductionMinor !== 0
+              ? <span className="text-destructive">−<Amount amountMinor={line.deductionMinor} currency={line.currency} /></span>
+              : "—"}
+          </span>
+        )}
+      </TableCell>
+      <TableCell className="py-2 text-right tabular-nums font-medium">
+        <Amount amountMinor={line.finalLocalMinor} currency={line.currency} />
+      </TableCell>
+      {isMultiCurrency && (
+        <TableCell className="py-2 text-right">
+          {editable && line.currency !== baseCurrency ? (
+            <Input
+              value={fxRate}
+              onChange={(e) => setFxRate(e.target.value)}
+              onBlur={commit}
+              inputMode="decimal"
+              className="ml-auto h-7 w-20 text-right tabular-nums"
+              data-testid="payroll-fx-input"
+            />
+          ) : (
+            <span className="tabular-nums text-muted-foreground text-xs">{line.fxDisplay}</span>
+          )}
+        </TableCell>
+      )}
+      {isMultiCurrency && (
+        <TableCell className="py-2 text-right tabular-nums">
+          <Amount amountMinor={line.baseEquivalentMinor} currency={baseCurrency} />
+        </TableCell>
+      )}
+      <TableCell className="py-2 text-center">
+        <Checkbox checked={line.paid} disabled aria-label={`${line.employeeName} paid`} />
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/**
+ * Full-page payroll run detail. Used by /payroll/runs/[runId] — replaces the
+ * old right-side drawer with full browser width and a proper bookmarkable URL.
+ */
+export function PayrollRunPage({ runId }: { runId: string }) {
+  const router = useRouter();
+  const detail = useQuery(api.payroll.runDetail, { runId: runId as Id<"payrollRuns"> });
   const backfill = useMutation(api.payroll.backfillRunLines);
   const updateLine = useMutation(api.payroll.updateRunLine);
   const approveRun = useMutation(api.payroll.approveRun);
   const markRunPaid = useMutation(api.payroll.markRunPaid);
+  const submitRun = useMutation(api.payroll.submitRunForApproval);
+  const sendRunBack = useMutation(api.payroll.sendRunBack);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmApprove, setConfirmApprove] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [sendBackOpen, setSendBackOpen] = useState(false);
+  const [sendBackNote, setSendBackNote] = useState("");
 
-  const open = runId !== null;
-
-  async function withBusy(action: () => Promise<unknown>) {
+  async function withBusy(fn: () => Promise<unknown>) {
     setBusy(true);
     setError("");
     try {
-      await action();
+      await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(getErrorMessage(err, "Something went wrong."));
     } finally {
       setBusy(false);
     }
   }
 
-  if (!open) {
-    return <DetailSheet open={false} onOpenChange={onOpenChange} title="Payroll run" />;
-  }
   if (detail === undefined) {
-    return (
-      <DetailSheet open onOpenChange={onOpenChange} title="Payroll run">
-        <LoadingBlock label="run" />
-      </DetailSheet>
-    );
+    return <LoadingBlock label="run" />;
   }
   if (detail === null) {
     return (
-      <DetailSheet open onOpenChange={onOpenChange} title="Payroll run">
-        <EmptyState title="Run not found" />
-      </DetailSheet>
+      <div className="flex w-full flex-col gap-5">
+        <EmptyState title="Run not found" description="This payroll run may have been deleted." />
+      </div>
     );
   }
 
+  const baseCurrency = detail.entity.currency;
   const isDraft = detail.run.status === "draft";
+  const isSubmitted = detail.run.status === "submitted";
   const isApproved = detail.run.status === "approved";
-  const isAutoDraft = detail.run.source === "auto-draft";
-
-  const gridBody = (
-    <div data-testid="payroll-run-detail" className="flex flex-col gap-3">
-      {/* Editable grid as a card-per-row stack — readable on every width. */}
-      <div className="flex flex-col gap-2">
-        {detail.lines.map((line) => (
-          <PayrollRunLineCard
-            key={line.id}
-            line={line}
-            baseCurrency={baseCurrency}
-            editable={detail.editable}
-            onSave={(adjustmentMinor, fxRate) =>
-              withBusy(() => updateLine({ lineId: line.id as Id<"payrollRunLines">, adjustmentMinor, fxRate }))
-            }
-          />
-        ))}
-      </div>
-      <div className="flex flex-col gap-2 rounded-[14px] bg-muted/50 px-4 py-3 text-sm">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground" data-testid="payroll-currency-totals">
-          {detail.currencyTotals.map((row) => (
-            <span key={row.currency}>
-              <Amount amountMinor={row.localMinor} currency={row.currency} />
-            </span>
-          ))}
-        </div>
-        <div className="flex items-center justify-between border-t pt-2">
-          <span className="text-muted-foreground">Total in {baseCurrency}</span>
-          <span className="text-base font-semibold" data-testid="payroll-base-total">
-            <Amount amountMinor={detail.baseTotalMinor} currency={baseCurrency} />
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-
-  const footer = (
-    <>
-      {isDraft && !detail.periodLocked ? (
-        <Button size="sm" onClick={() => setConfirmApprove(true)} disabled={busy} data-testid="payroll-approve">
-          Approve run
-        </Button>
-      ) : null}
-      {isApproved ? (
-        <Button size="sm" onClick={() => withBusy(() => markRunPaid({ runId }))} disabled={busy} data-testid="payroll-mark-paid">
-          Mark all paid
-        </Button>
-      ) : null}
-      {!detail.materialized && detail.run.status === "paid" ? (
-        <Button size="sm" variant="outline" onClick={() => withBusy(() => backfill({ runId }))} disabled={busy}>
-          Load lines
-        </Button>
-      ) : null}
-    </>
-  );
+  const isMultiCurrency = detail.lines.some((l) => l.currency !== baseCurrency);
+  const typedRunId = runId as Id<"payrollRuns">;
 
   return (
     <>
-      <DetailSheet
-        open={open}
-        onOpenChange={onOpenChange}
-        title={
-          <span className="flex items-center gap-2">
-            {detail.run.periodLabel}
-            <PayrollStatusChip status={detail.run.status} />
-          </span>
-        }
-        subtitle={
-          isAutoDraft && isDraft
-            ? "Auto-drafted from active salaries — review, then approve to post."
-            : "Review the grid, approve to post one ledger entry, then mark people paid."
-        }
-        attention={
-          <>
+      <div className="flex w-full flex-col gap-6">
+        {/* Page header */}
+        <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 mb-1 text-muted-foreground hover:text-foreground"
+            onClick={() => router.push("/payroll")}
+          >
+            <ArrowLeft data-icon="inline-start" />
+            Payroll
+          </Button>
+          <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-semibold leading-tight">{detail.run.periodLabel}</h1>
+                <PayrollStatusChip status={detail.run.status} />
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {isDraft
+                  ? "Add bonuses/deductions on the grid, then submit for approval. Nothing posts until an approver approves."
+                  : isSubmitted
+                    ? "Submitted for approval. An Owner or Accountant reviews and posts it to the ledger."
+                    : "Approved and posted. Mark people paid as the bank payments clear."}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Preparer submits a draft for approval. */}
+              {detail.canPrepare && isDraft && !detail.periodLocked ? (
+                <Button size="sm" onClick={() => setConfirmSubmit(true)} disabled={busy} data-testid="payroll-submit">
+                  Submit for approval
+                </Button>
+              ) : null}
+              {/* Approver approves (from draft or submitted) → posts to the ledger. */}
+              {detail.canApprove && (isDraft || isSubmitted) && !detail.periodLocked ? (
+                <Button size="sm" onClick={() => setConfirmApprove(true)} disabled={busy} data-testid="payroll-approve">
+                  Approve &amp; post
+                </Button>
+              ) : null}
+              {/* Approver can bounce a submitted run back to the preparer. */}
+              {detail.canApprove && isSubmitted ? (
+                <Button size="sm" variant="outline" onClick={() => { setSendBackNote(""); setSendBackOpen(true); }} disabled={busy} data-testid="payroll-send-back">
+                  Send back
+                </Button>
+              ) : null}
+              {detail.canApprove && isApproved ? (
+                <Button
+                  size="sm"
+                  onClick={() => withBusy(() => markRunPaid({ runId: typedRunId }))}
+                  disabled={busy}
+                  data-testid="payroll-mark-paid"
+                >
+                  Mark all paid
+                </Button>
+              ) : null}
+              {detail.canApprove && !detail.materialized && detail.run.status === "paid" ? (
+                <Button size="sm" variant="outline" onClick={() => withBusy(() => backfill({ runId: typedRunId }))} disabled={busy}>
+                  Load lines
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {/* Stepper + status banners */}
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <PayrollStepper status={detail.run.status} />
             {detail.periodLocked ? <CategoryChip label="Period locked" /> : null}
-            {isApproved ? (
-              <div className="flex w-full items-start gap-2 rounded-[11px] bg-primary/5 px-3 py-2 text-sm text-primary" data-testid="payroll-approved-banner">
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                <span>
-                  Approved — recorded{" "}
-                  {detail.currencyTotals.map((row, index) => (
+          </div>
+          {isSubmitted ? (
+            <div className="flex items-start gap-2 rounded-xl bg-warning-surface px-3 py-2.5 text-sm text-warning" data-testid="payroll-submitted-banner">
+              <Clock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span>
+                {detail.canApprove
+                  ? "Submitted for approval — review the grid, then approve to post it to the ledger, or send it back for changes."
+                  : "Submitted for approval. An Owner or Accountant will review and post it. It's locked from edits until then."}
+              </span>
+            </div>
+          ) : null}
+          {isApproved ? (
+            <div className="flex items-start gap-2 rounded-xl bg-primary/5 px-3 py-2.5 text-sm text-primary" data-testid="payroll-approved-banner">
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span>
+                Approved — recorded{" "}
+                {detail.currencyTotals.map((row, index) => (
+                  <span key={row.currency}>
+                    {index > 0 ? " + " : ""}
+                    <Amount amountMinor={row.localMinor} currency={row.currency} />
+                  </span>
+                ))}{" "}
+                as {detail.run.periodLabel} payroll expense. Lines settle as bank payments arrive.
+              </span>
+            </div>
+          ) : null}
+          {detail.run.status === "paid" ? (
+            <div className="flex items-start gap-2 rounded-xl bg-primary/5 px-3 py-2.5 text-sm text-primary">
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span>Settled. FX differences post automatically as a small gain/loss line.</span>
+            </div>
+          ) : null}
+          {error ? <p className="text-sm text-negative" data-testid="payroll-error">{error}</p> : null}
+        </div>
+
+        {/* Grid / Statement tabs */}
+        <Tabs defaultValue="grid">
+          <TabsList>
+            <TabsTrigger value="grid">Grid</TabsTrigger>
+            <TabsTrigger value="statement">Statement</TabsTrigger>
+          </TabsList>
+          <TabsContent value="grid" className="pt-4">
+            <div data-testid="payroll-run-detail" className="flex flex-col gap-2">
+              {isMultiCurrency && detail.currencyTotals.length > 0 && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground" data-testid="payroll-currency-totals">
+                  {detail.currencyTotals.map((row, i) => (
                     <span key={row.currency}>
-                      {index > 0 ? " + " : ""}
+                      {i > 0 && <span className="mr-2">·</span>}
                       <Amount amountMinor={row.localMinor} currency={row.currency} />
                     </span>
-                  ))}{" "}
-                  as {detail.run.periodLabel} payroll expense. Lines settle as the bank payments arrive.
-                </span>
-              </div>
-            ) : null}
-            {detail.run.status === "paid" ? (
-              <div className="flex w-full items-start gap-2 rounded-[11px] bg-primary/5 px-3 py-2 text-sm text-primary">
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                <span>Settled. FX differences between approval and settlement post automatically as a small gain/loss line.</span>
-              </div>
-            ) : null}
-            {error ? <p className="w-full text-sm text-negative" data-testid="payroll-error">{error}</p> : null}
-          </>
-        }
-        tabs={[
-          { value: "grid", label: "Grid", content: gridBody },
-          { value: "statement", label: "Statement", content: <PayrollRunStatement detail={detail} /> },
-        ]}
-        footer={footer}
-      />
+                  ))}
+                  <span className="mx-1 text-muted-foreground/50">→</span>
+                  <span className="font-medium text-foreground" data-testid="payroll-base-total">
+                    <Amount amountMinor={detail.baseTotalMinor} currency={baseCurrency} />
+                  </span>
+                </div>
+              )}
+              <PayrollRunGrid
+                lines={detail.lines}
+                baseCurrency={baseCurrency}
+                isMultiCurrency={isMultiCurrency}
+                editable={detail.editable}
+                onSave={(lineId, bonusMinor, deductionMinor, fxRate) =>
+                  withBusy(() => updateLine({ lineId: lineId as Id<"payrollRunLines">, bonusMinor, deductionMinor, fxRate }))
+                }
+              />
+            </div>
+          </TabsContent>
+          <TabsContent value="statement" className="pt-4">
+            <PayrollRunStatement detail={detail} />
+          </TabsContent>
+        </Tabs>
+      </div>
 
       <AlertDialog open={confirmApprove} onOpenChange={setConfirmApprove}>
         <AlertDialogContent>
@@ -1923,129 +4105,241 @@ function PayrollRunDetailSheet({
             <AlertDialogAction
               onClick={() => {
                 setConfirmApprove(false);
-                void withBusy(() => approveRun({ runId }));
+                void withBusy(() => approveRun({ runId: typedRunId }));
               }}
             >
-              Approve & post
+              Approve &amp; post
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={confirmSubmit} onOpenChange={setConfirmSubmit}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Submit {detail.run.periodLabel} for approval?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This hands the run to an Owner or Accountant to review and post. It locks from further edits until it&apos;s
+              approved or sent back. Nothing posts to the ledger yet.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmSubmit(false);
+                void withBusy(() => submitRun({ runId: typedRunId }));
+              }}
+            >
+              Submit for approval
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={sendBackOpen} onOpenChange={setSendBackOpen}>
+        <DialogContent data-testid="payroll-send-back-form">
+          <DialogHeader>
+            <DialogTitle>Send {detail.run.periodLabel} back to draft</DialogTitle>
+            <DialogDescription>
+              Tell the preparer what needs changing. Your note is saved to the run&apos;s history and sent to them so they
+              can fix it and resubmit. Nothing is posted or reversed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="send-back-note">Reason / feedback</Label>
+            <Textarea
+              id="send-back-note"
+              data-testid="payroll-send-back-note"
+              value={sendBackNote}
+              onChange={(e) => setSendBackNote(e.target.value)}
+              placeholder="e.g. Ahmed's bonus looks too high — please double-check before resubmitting."
+              className="min-h-24"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setSendBackOpen(false)}>Cancel</Button>
+            <Button
+              size="sm"
+              disabled={busy || sendBackNote.trim().length === 0}
+              data-testid="payroll-send-back-submit"
+              onClick={() => {
+                const note = sendBackNote.trim();
+                setSendBackOpen(false);
+                void withBusy(() => sendRunBack({ runId: typedRunId, note }));
+              }}
+            >
+              Send back
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
 
-/**
- * One payroll line as a card (label/value stacks), not a horizontal-scroll table
- * row. Editable adjustment + FX use plain Inputs; the paid state is a shadcn
- * Checkbox routed through --primary instead of the old raw-hex checkbox.
- */
-function PayrollRunLineCard({
-  line,
-  baseCurrency,
-  editable,
-  onSave,
-}: {
-  line: RunLineView;
-  baseCurrency: string;
-  editable: boolean;
-  onSave: (adjustmentMinor: number, fxRate: string) => void;
-}) {
-  const [adjustment, setAdjustment] = useState(String(line.adjustmentMinor / 100));
-  const [fxRate, setFxRate] = useState(line.fxDisplay === "—" ? "1" : line.fxDisplay);
+function escapeXml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
-  function commit() {
-    const adjMinor = Math.round((Number(adjustment.replace(/[,$]/g, "")) || 0) * 100);
-    onSave(adjMinor, fxRate);
-  }
-
-  return (
-    <div data-testid="payroll-line-row" className="rounded-[14px] bg-card p-3 ring-1 ring-foreground/10 shadow-xs">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate font-medium">{line.employeeName}</div>
-          <div className="text-xs text-muted-foreground">{line.country} · {line.currency}</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Checkbox checked={line.paid} disabled aria-label={`${line.employeeName} paid`} />
-          <span className="text-xs text-muted-foreground">{line.paid ? "Paid" : "Unpaid"}</span>
-        </div>
-      </div>
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-        <div className="flex flex-col">
-          <dt className="text-xs text-muted-foreground">Base salary</dt>
-          <dd className="money-figures"><Amount amountMinor={line.baseSalaryMinor} currency={line.currency} /></dd>
-        </div>
-        <div className="flex flex-col">
-          <dt className="text-xs text-muted-foreground">Adjustment</dt>
-          <dd>
-            {editable ? (
-              <Input
-                value={adjustment}
-                onChange={(event) => setAdjustment(event.target.value)}
-                onBlur={commit}
-                inputMode="decimal"
-                className="h-8 w-full text-right"
-                data-testid="payroll-adjustment-input"
-              />
-            ) : (
-              <span className="money-figures"><Amount amountMinor={line.adjustmentMinor} currency={line.currency} signed /></span>
-            )}
-          </dd>
-        </div>
-        <div className="flex flex-col">
-          <dt className="text-xs text-muted-foreground">Final</dt>
-          <dd className="money-figures font-medium"><Amount amountMinor={line.finalLocalMinor} currency={line.currency} /></dd>
-        </div>
-        <div className="flex flex-col">
-          <dt className="text-xs text-muted-foreground">FX rate</dt>
-          <dd>
-            {editable && line.currency !== baseCurrency ? (
-              <Input
-                value={fxRate}
-                onChange={(event) => setFxRate(event.target.value)}
-                onBlur={commit}
-                inputMode="decimal"
-                className="h-8 w-full text-right"
-                data-testid="payroll-fx-input"
-              />
-            ) : (
-              <span className="money-figures text-muted-foreground">{line.fxDisplay}</span>
-            )}
-          </dd>
-        </div>
-        <div className="flex flex-col">
-          <dt className="text-xs text-muted-foreground">{baseCurrency} equiv</dt>
-          <dd className="money-figures"><Amount amountMinor={line.baseEquivalentMinor} currency={baseCurrency} /></dd>
-        </div>
-      </dl>
-    </div>
-  );
+function fmtMoney(minor: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(minor / 100);
 }
 
 function PayrollRunStatement({ detail }: { detail: RunDetail }) {
   const baseCurrency = detail.entity.currency;
-  function exportCsv() {
-    const rows = [
-      ["group", "employee", "currency", "local_minor", "base_currency", "base_minor"],
-      ...detail.statementGroups.flatMap((group) =>
-        group.lines.map((line) => [group.key, line.employeeName, line.currency, String(line.finalLocalMinor), baseCurrency, String(line.baseEquivalentMinor)]),
-      ),
-    ];
-    downloadCsv(
-      `payroll-statement-${detail.run.period}.csv`,
-      rows.map((row) => row.join(",")).join("\n"),
-    );
+  const filename = `payroll-statement-${detail.run.period}`;
+  const totalEmployees = detail.statementGroups.reduce((n, g) => n + g.lines.length, 0);
+
+  function handleExport(format: ExportFormat) {
+    if (format === "csv") exportCsv();
+    else if (format === "xlsx") exportExcel();
+    else if (format === "pdf") exportPdf();
   }
+
+  function exportCsv() {
+    const q = (s: string) => `"${s.replace(/"/g, '""')}"`;
+    const header = [q("Group"), q("Employee"), q("Currency"), q("Amount"), q(`${baseCurrency} Equivalent`)];
+    const lines = detail.statementGroups.flatMap((group) => [
+      ...group.lines.map((line) => [
+        q(group.key),
+        q(line.employeeName),
+        q(line.currency),
+        q(fmtMoney(line.finalLocalMinor, line.currency)),
+        q(fmtMoney(line.baseEquivalentMinor, baseCurrency)),
+      ]),
+      [q(`${group.key} Subtotal`), q(""), q(group.currency), q(fmtMoney(group.localMinor, group.currency)), q(fmtMoney(group.baseMinor, baseCurrency))],
+    ]);
+    const totalRow = [q(`${detail.run.periodLabel} Total`), q(""), q(baseCurrency), q(""), q(fmtMoney(detail.baseTotalMinor, baseCurrency))];
+    downloadCsv(`${filename}.csv`, [header, ...lines, totalRow].map((r) => r.join(",")).join("\n"));
+  }
+
+  function exportExcel() {
+    const cell = (val: string, type: "String" | "Number", style?: string) =>
+      `<Cell${style ? ` ss:StyleID="${style}"` : ""}><Data ss:Type="${type}">${escapeXml(val)}</Data></Cell>`;
+
+    const headerRow = `<Row>
+        ${cell("Group", "String", "hdr")}${cell("Employee", "String", "hdr")}${cell("Currency", "String", "hdr")}${cell("Amount", "String", "hdr")}${cell(`${baseCurrency} Equivalent`, "String", "hdr")}
+      </Row>`;
+
+    const dataRows = detail.statementGroups.flatMap((group) => [
+      ...group.lines.map((line) => `<Row>
+        ${cell(group.key, "String")}${cell(line.employeeName, "String")}${cell(line.currency, "String")}
+        ${cell((line.finalLocalMinor / 100).toFixed(2), "Number", "money")}${cell((line.baseEquivalentMinor / 100).toFixed(2), "Number", "money")}
+      </Row>`),
+      `<Row>
+        ${cell(`${group.key} Subtotal`, "String", "sub")}${cell("", "String")}${cell(group.currency, "String")}
+        ${cell((group.localMinor / 100).toFixed(2), "Number", "subm")}${cell((group.baseMinor / 100).toFixed(2), "Number", "subm")}
+      </Row>`,
+    ]);
+
+    const totalRow = `<Row>
+      ${cell(`${detail.run.periodLabel} Total`, "String", "tot")}${cell("", "String", "tot")}${cell(baseCurrency, "String", "tot")}
+      ${cell("", "String", "tot")}${cell((detail.baseTotalMinor / 100).toFixed(2), "Number", "totm")}
+    </Row>`;
+
+    const xml = `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles>
+      <Style ss:ID="hdr"><Font ss:Bold="1"/><Interior ss:Color="#F4F4F5" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
+      <Style ss:ID="money"><NumberFormat ss:Format="#,##0.00"/></Style>
+      <Style ss:ID="sub"><Font ss:Bold="1"/></Style>
+      <Style ss:ID="subm"><Font ss:Bold="1"/><NumberFormat ss:Format="#,##0.00"/></Style>
+      <Style ss:ID="tot"><Font ss:Bold="1"/><Interior ss:Color="#F0FDF4" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="totm"><Font ss:Bold="1"/><NumberFormat ss:Format="#,##0.00"/><Interior ss:Color="#F0FDF4" ss:Pattern="Solid"/></Style>
+    </Styles><Worksheet ss:Name="Payroll Statement"><Table>${headerRow}${dataRows.join("")}${totalRow}</Table></Worksheet></Workbook>`;
+
+    const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${filename}.xls`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportPdf() {
+    const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    const groupRows = detail.statementGroups.flatMap((group) => [
+      `<tr class="g-hdr"><td colspan="4">${escapeXml(group.key)}</td></tr>`,
+      ...group.lines.map((line) => `<tr>
+          <td class="ind">${escapeXml(line.employeeName)}</td>
+          <td>${line.currency}</td>
+          <td class="num">${fmtMoney(line.finalLocalMinor, line.currency)}</td>
+          <td class="num">${fmtMoney(line.baseEquivalentMinor, baseCurrency)}</td>
+        </tr>`),
+      `<tr class="sub">
+          <td colspan="2">Subtotal — ${escapeXml(group.key)}</td>
+          <td class="num">${fmtMoney(group.localMinor, group.currency)}</td>
+          <td class="num">${fmtMoney(group.baseMinor, baseCurrency)}</td>
+        </tr>`,
+    ]);
+
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+      <title>Payroll Statement · ${escapeXml(detail.run.periodLabel)}</title>
+      <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111;font-size:11px;padding:32px}
+        .hdr{border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:20px}
+        .hdr h1{font-size:18px;font-weight:700;margin-bottom:2px}
+        .hdr .sub{font-size:12px;color:#555}
+        .meta{display:flex;gap:24px;margin-top:6px;font-size:10px;color:#666}
+        table{width:100%;border-collapse:collapse;margin-bottom:6px}
+        th{text-align:left;padding:6px 10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;background:#f4f4f5;border-bottom:1px solid #ddd}
+        th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+        td{padding:5px 10px;border-bottom:1px solid #f0f0f0}
+        td.ind{padding-left:22px}
+        tr.g-hdr td{background:#fafafa;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#777;padding:4px 10px;border-top:1px solid #e4e4e7}
+        tr.sub td{background:#fafafa;font-weight:600;border-top:1px solid #ddd;border-bottom:2px solid #e4e4e7}
+        tfoot tr td{background:#f0fdf4;font-weight:700;font-size:12px;border-top:2px solid #2ca01c;padding:8px 10px}
+        .footer{margin-top:24px;font-size:9px;color:#999;border-top:1px solid #eee;padding-top:10px}
+        @media print{@page{margin:1.5cm}body{padding:0}}
+      </style></head><body>
+      <div class="hdr">
+        <h1>${escapeXml(detail.entity.name)}</h1>
+        <div class="sub">Payroll Statement · ${escapeXml(detail.run.periodLabel)}</div>
+        <div class="meta">
+          <span>Base currency: ${baseCurrency}</span>
+          <span>Employees: ${totalEmployees}</span>
+          <span>Generated: ${today}</span>
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Employee</th><th>Currency</th>
+          <th class="num">Amount</th><th class="num">${escapeXml(baseCurrency)} Equivalent</th>
+        </tr></thead>
+        <tbody>${groupRows.join("")}</tbody>
+        <tfoot><tr>
+          <td colspan="3">${escapeXml(detail.run.periodLabel)} Total</td>
+          <td class="num">${fmtMoney(detail.baseTotalMinor, baseCurrency)}</td>
+        </tr></tfoot>
+      </table>
+      <div class="footer">Generated by OpenBooks · ${escapeXml(detail.entity.name)} · ${today}</div>
+      <script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),400)})</script>
+    </body></html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank");
+    if (!win) {
+      // Popup blocked — fall back to an anchor download so the user can open it manually.
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${filename}.html`;
+      a.click();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-end gap-2">
-        <Button size="sm" variant="outline" onClick={() => window.print()}>
-          <Printer data-icon="inline-start" /> Print
-        </Button>
-        <Button size="sm" onClick={exportCsv} data-testid="payroll-statement-csv">
-          <Download data-icon="inline-start" /> CSV
-        </Button>
+      <div className="flex items-center justify-end">
+        <ExportMenu
+          formats={["csv", "xlsx", "pdf"]}
+          filename={filename}
+          onExport={handleExport}
+          data-testid="payroll-statement-csv"
+        />
       </div>
       {detail.statementGroups.map((group) => (
         <div key={group.key} className="rounded-[14px] ring-1 ring-foreground/10">
@@ -2255,7 +4549,7 @@ export function RemainingSettingsScreens() {
       const option = aiAutonomyOptions.find((item) => item.value === value);
       setAiTestMessage(`Autonomy saved: ${option?.label ?? value} (${option?.thresholdLabel ?? "threshold configured"}).`);
     } catch (error) {
-      setAiTestMessage(error instanceof Error ? error.message : "Could not save AI autonomy.");
+      setAiTestMessage(getErrorMessage(error, "Could not save AI autonomy."));
     }
   }
 
@@ -2269,7 +4563,7 @@ export function RemainingSettingsScreens() {
       const result = await testAiConnection({ workspaceId: viewer.workspace.id });
       setAiTestMessage(result.message);
     } catch (error) {
-      setAiTestMessage(error instanceof Error ? error.message : "AI connection test failed.");
+      setAiTestMessage(getErrorMessage(error, "AI connection test failed."));
     }
   }
 
@@ -2286,7 +4580,7 @@ export function RemainingSettingsScreens() {
         `${result.evaluatedCount} rows, ${(result.accuracy * 100).toFixed(1)}% accuracy. ${result.finding}`,
       );
     } catch (error) {
-      setAiEvalMessage(error instanceof Error ? error.message : "Could not record the categorization eval.");
+      setAiEvalMessage(getErrorMessage(error, "Could not record the categorization eval."));
     } finally {
       setRunningAiEval(false);
     }
@@ -2315,7 +4609,7 @@ export function RemainingSettingsScreens() {
         `${result.attemptedCount} checked. ${result.postedCount} posted, ${result.needsReviewCount} updated for review, ${result.skippedCount} skipped.${status}${degraded}${fallback} Remaining items are draining in the background.`,
       );
     } catch (error) {
-      setAiBatchMessage(error instanceof Error ? error.message : "Could not run batch categorization.");
+      setAiBatchMessage(getErrorMessage(error, "Could not run batch categorization."));
     } finally {
       setRunningAiBatch(false);
     }
@@ -2486,7 +4780,7 @@ export function RemainingSettingsScreens() {
           : `Live Sandbox refreshed; ${result.accountsCreated} missing chart accounts added.`,
       );
     } catch (error) {
-      setEntityMessage(error instanceof Error ? error.message : "Could not create the Live Sandbox entity.");
+      setEntityMessage(getErrorMessage(error, "Could not create the Live Sandbox entity."));
     } finally {
       setCreatingEntity(false);
     }

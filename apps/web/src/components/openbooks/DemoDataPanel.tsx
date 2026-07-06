@@ -9,6 +9,7 @@ import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { Amount } from "@/components/openbooks/primitives";
 import { Button } from "@/components/ui/button";
+import { getErrorMessage } from "@/lib/errors";
 import { useActiveEntity } from "@/lib/openbooks/active-entity";
 import {
   downloadReportFile,
@@ -34,10 +35,7 @@ type SeedResult = {
 };
 
 function readableError(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) return fallback;
-  const uncaught = error.message.match(/Uncaught Error: ([\s\S]+)/);
-  if (uncaught) return uncaught[1].trim().split("\n")[0] ?? fallback;
-  return error.message;
+  return getErrorMessage(error, fallback);
 }
 
 function isSeedConnectionInterruption(message: string) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import { useEffect, useState } from "react";
 
 import { api } from "../../../../../../convex/_generated/api";
@@ -86,7 +87,7 @@ export function TaxSection() {
       });
       setSaved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save tax settings.");
+      setError(getErrorMessage(err, "Could not save tax settings."));
     } finally {
       setBusy(false);
     }

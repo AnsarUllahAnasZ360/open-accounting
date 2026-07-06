@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import { Archive, Check, Pencil, Plus, X } from "lucide-react";
 import { useState } from "react";
 
@@ -65,7 +66,7 @@ export function CategoriesSection({ entityId }: { entityId: Id<"entities"> | nul
       await rename({ accountId: id, name: editName.trim() });
       setEditingId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not rename.");
+      setError(getErrorMessage(err, "Could not rename."));
     }
   }
 
@@ -74,7 +75,7 @@ export function CategoriesSection({ entityId }: { entityId: Id<"entities"> | nul
     try {
       await setArchived({ accountId: id, archived: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not archive.");
+      setError(getErrorMessage(err, "Could not archive."));
     }
   }
 
@@ -83,7 +84,7 @@ export function CategoriesSection({ entityId }: { entityId: Id<"entities"> | nul
     try {
       await moveGroup({ accountId: id, group });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not move the category.");
+      setError(getErrorMessage(err, "Could not move the category."));
     }
   }
 
@@ -229,7 +230,7 @@ function AddCategoryModal({ entityId }: { entityId: Id<"entities"> }) {
         setDone(false);
       }, 600);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add the category.");
+      setError(getErrorMessage(err, "Could not add the category."));
     } finally {
       setBusy(false);
     }

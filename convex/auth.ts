@@ -216,8 +216,11 @@ export async function ensureWorkspaceForUser(
 
     if (existingWorkspace) {
       workspaceId = existingWorkspace._id;
+      // Do NOT overwrite the name on an existing workspace. The owner may have
+      // renamed it during onboarding or in Settings, and re-applying the env/
+      // default name on every sign-in would silently revert their choice. The
+      // env/default name only SEEDS a brand-new workspace (the insert path).
       await ctx.db.patch(workspaceId, {
-        name: workspaceName,
         updatedAt: now,
       });
     } else {

@@ -5,16 +5,17 @@ import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
   internalMutation,
+  internalQuery,
   mutation,
   query,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { requireAnyWorkspacePermission, requireWorkspacePermission } from "./authz";
+import { requireAnyWorkspacePermission, requireWorkspacePermission, roleHasPermission } from "./authz";
 import { assertNotDemoWrite } from "./demoWorkspace";
 import { resolveDefaultEntity } from "./entityScope";
 import { postLedgerEntryCore } from "./ledger";
-import { assertSignedMinorUnit } from "./money";
+import { notifyRoleHolders, notifyUser } from "./notifications";
 import {
   baseEquivalentMinor,
   computeRunLine,
@@ -59,9 +60,11 @@ type RunLineView = {
   employeeId: Id<"employees"> | null;
   employeeName: string;
   country: string;
+  city: string | null;
   currency: string;
   baseSalaryMinor: number;
-  adjustmentMinor: number;
+  bonusMinor: number;
+  deductionMinor: number;
   fxRateMicros: number;
   fxDisplay: string;
   finalLocalMinor: number;
@@ -84,9 +87,13 @@ function lineToView(line: Doc<"payrollRunLines">, baseCurrency: string): RunLine
     employeeId: line.employeeId ?? null,
     employeeName: line.employeeName,
     country: line.country,
+    city: line.city ?? null,
     currency: line.currency,
     baseSalaryMinor: line.baseSalaryMinor,
-    adjustmentMinor: line.adjustmentMinor,
+    // Fold any legacy signed adjustment into the bonus/deduction the UI shows,
+    // so old rows read as Bonus/Deduction and the total stays identical.
+    bonusMinor: (line.bonusMinor ?? 0) + Math.max(0, line.adjustmentMinor ?? 0),
+    deductionMinor: (line.deductionMinor ?? 0) + Math.max(0, -(line.adjustmentMinor ?? 0)),
     fxRateMicros: line.fxRateMicros,
     fxDisplay: formatFxRateMicros(line.fxRateMicros, baseCurrency, line.currency),
     finalLocalMinor: line.finalLocalMinor,
@@ -120,7 +127,6 @@ function projectLinesFromEmployees(
       const fxRateMicros = defaultFxRateMicros(employee.currency, baseCurrency);
       const computed = computeRunLine({
         baseSalaryMinor: employee.monthlySalaryMinor,
-        adjustmentMinor: 0,
         fxRateMicros,
       });
       return {
@@ -128,9 +134,11 @@ function projectLinesFromEmployees(
         employeeId: employee._id,
         employeeName: employee.name,
         country: employee.country,
+        city: employee.city ?? null,
         currency: employee.currency,
         baseSalaryMinor: employee.monthlySalaryMinor,
-        adjustmentMinor: 0,
+        bonusMinor: 0,
+        deductionMinor: 0,
         fxRateMicros,
         fxDisplay: formatFxRateMicros(fxRateMicros, baseCurrency, employee.currency),
         finalLocalMinor: computed.finalLocalMinor,
@@ -153,7 +161,11 @@ export const runDetail = query({
     if (!run) return null;
     const entity = await ctx.db.get(run.entityId);
     if (!entity) return null;
-    await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.view");
+    const { membership } = await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.view");
+    // Maker-checker: preparers (HR + Accountant + Owner) draft/edit/submit;
+    // approvers (Accountant + Owner) approve/post/settle/send-back.
+    const canPrepare = roleHasPermission(membership.role, "payroll.prepare");
+    const canApprove = roleHasPermission(membership.role, "payroll.approve");
 
     const [persistedLines, employees, lock] = await Promise.all([
       ctx.db.query("payrollRunLines").withIndex("by_run", (q) => q.eq("runId", run._id)).take(500),
@@ -197,8 +209,14 @@ export const runDetail = query({
         totalBaseMinor: materialized ? baseTotalMinor : run.totalBaseMinor,
         approvedAt: run.approvedAt ?? null,
         paidAt: run.paidAt ?? null,
+        submittedAt: run.submittedAt ?? null,
       },
-      editable: materialized && run.status === "draft" && !periodLocked,
+      // Lines are editable only while a draft, only by a preparer (the server
+      // also rejects other writes — this just keeps the UI honest). A submitted
+      // run is locked until an approver approves or sends it back.
+      editable: materialized && run.status === "draft" && !periodLocked && canPrepare,
+      canPrepare,
+      canApprove,
       periodLocked,
       lines: lineViews,
       currencyTotals: totals,
@@ -211,16 +229,144 @@ export const runDetail = query({
   },
 });
 
+/**
+ * Single-line payslip read model for the printable payslip route. Gated on
+ * payroll.view. Deliberately excludes bank details — a payslip shows the pay
+ * breakdown, not the account it was paid into.
+ */
+export const payslip = query({
+  args: { lineId: v.id("payrollRunLines") },
+  handler: async (ctx, args) => {
+    const line = await ctx.db.get(args.lineId);
+    if (!line) return null;
+    const entity = await ctx.db.get(line.entityId);
+    if (!entity) return null;
+    await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.view");
+    const [run, employee] = await Promise.all([
+      ctx.db.get(line.runId),
+      line.employeeId ? ctx.db.get(line.employeeId) : Promise.resolve(null),
+    ]);
+    return {
+      entity: { name: entity.name, currency: entity.currency },
+      run: run
+        ? { period: run.period, periodLabel: periodLabel(run.period), status: run.status, postingDate: postingDateForRun(run) }
+        : null,
+      employee: {
+        name: line.employeeName,
+        title: employee?.title ?? null,
+        country: line.country,
+        city: line.city ?? null,
+      },
+      currency: line.currency,
+      baseSalaryMinor: line.baseSalaryMinor,
+      bonusMinor: (line.bonusMinor ?? 0) + Math.max(0, line.adjustmentMinor ?? 0),
+      deductionMinor: (line.deductionMinor ?? 0) + Math.max(0, -(line.adjustmentMinor ?? 0)),
+      finalLocalMinor: line.finalLocalMinor,
+      paid: line.paid,
+    };
+  },
+});
+
+/**
+ * Public, token-authorized payslip read for the emailed link. Employees have no
+ * login, so the unguessable per-line token IS the capability (mirrors
+ * team.lookupInvite). Returns null for a wrong/missing token — the token is
+ * never revealed and short/blank tokens can't match a stored one.
+ */
+export const payslipByToken = query({
+  args: { lineId: v.id("payrollRunLines"), token: v.string() },
+  handler: async (ctx, args) => {
+    const token = args.token.trim();
+    if (token.length < 16) return null;
+    const line = await ctx.db.get(args.lineId);
+    if (!line || line.payslipToken !== token) return null;
+    const entity = await ctx.db.get(line.entityId);
+    if (!entity) return null;
+    const [run, employee] = await Promise.all([
+      ctx.db.get(line.runId),
+      line.employeeId ? ctx.db.get(line.employeeId) : Promise.resolve(null),
+    ]);
+    return {
+      entity: { name: entity.name, currency: entity.currency },
+      run: run
+        ? { period: run.period, periodLabel: periodLabel(run.period), status: run.status, postingDate: postingDateForRun(run) }
+        : null,
+      employee: { name: line.employeeName, title: employee?.title ?? null, country: line.country, city: line.city ?? null },
+      currency: line.currency,
+      baseSalaryMinor: line.baseSalaryMinor,
+      bonusMinor: (line.bonusMinor ?? 0) + Math.max(0, line.adjustmentMinor ?? 0),
+      deductionMinor: (line.deductionMinor ?? 0) + Math.max(0, -(line.adjustmentMinor ?? 0)),
+      finalLocalMinor: line.finalLocalMinor,
+      paid: line.paid,
+    };
+  },
+});
+
+/**
+ * Persist the payslip capability token. Internal — called only from the
+ * authed sendPayslip action (which has already authorized payroll.prepare via
+ * payslipSendData). Idempotent: keeps an existing token so old links stay valid.
+ */
+export const setPayslipToken = internalMutation({
+  args: { lineId: v.id("payrollRunLines"), token: v.string() },
+  handler: async (ctx, args) => {
+    const line = await ctx.db.get(args.lineId);
+    if (!line) return { token: null };
+    if (line.payslipToken) return { token: line.payslipToken };
+    await ctx.db.patch(line._id, { payslipToken: args.token, updatedAt: Date.now() });
+    return { token: args.token };
+  },
+});
+
+/**
+ * Internal read for the Plunk payslip email (E-payroll). Authorizes
+ * payroll.prepare (HR handles employee comms) and blocks demo workspaces
+ * (sending mail is a side effect), so the "use node" send action stays free of
+ * db + authz logic.
+ */
+export const payslipSendData = internalQuery({
+  args: { lineId: v.id("payrollRunLines") },
+  handler: async (ctx, args) => {
+    const line = await ctx.db.get(args.lineId);
+    if (!line) throw new ConvexError("Payroll line not found.");
+    const entity = await ctx.db.get(line.entityId);
+    if (!entity) throw new ConvexError("OpenBooks business not found.");
+    await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.prepare");
+    await assertNotDemoWrite(ctx, entity.workspaceId);
+    const [run, employee] = await Promise.all([
+      ctx.db.get(line.runId),
+      line.employeeId ? ctx.db.get(line.employeeId) : Promise.resolve(null),
+    ]);
+    return {
+      workspaceId: entity.workspaceId,
+      to: employee?.email ?? null,
+      employeeName: line.employeeName,
+      entityName: entity.name,
+      period: run?.period ?? "",
+      periodLabel: run ? periodLabel(run.period) : "",
+      currency: line.currency,
+      baseSalaryMinor: line.baseSalaryMinor,
+      bonusMinor: (line.bonusMinor ?? 0) + Math.max(0, line.adjustmentMinor ?? 0),
+      deductionMinor: (line.deductionMinor ?? 0) + Math.max(0, -(line.adjustmentMinor ?? 0)),
+      finalLocalMinor: line.finalLocalMinor,
+    };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
 
-async function loadRunForWrite(ctx: MutationCtx, runId: Id<"payrollRuns">) {
+async function loadRunForWrite(
+  ctx: MutationCtx,
+  runId: Id<"payrollRuns">,
+  permission: "payroll.prepare" | "payroll.approve",
+) {
   const run = await ctx.db.get(runId);
   if (!run) throw new Error("Payroll run not found.");
   const entity = await ctx.db.get(run.entityId);
   if (!entity) throw new Error("OpenBooks entity not found.");
-  const { userId } = await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.manage");
+  const { userId } = await requireWorkspacePermission(ctx, entity.workspaceId, permission);
   await assertNotDemoWrite(ctx, entity.workspaceId); // E11-T6: demo is read-only.
   return { run, entity, userId };
 }
@@ -230,7 +376,7 @@ async function loadRunForWrite(ctx: MutationCtx, runId: Id<"payrollRuns">) {
  * persisted day-of-pay rate; fall back to the seed-consistency default only when
  * nothing has been fetched (so demo runs read back unchanged). USD-in-USD is 1.
  */
-async function resolveAccrualFxRateMicros(
+export async function resolveAccrualFxRateMicros(
   ctx: QueryCtx | MutationCtx,
   baseCurrency: string,
   localCurrency: string,
@@ -240,6 +386,24 @@ async function resolveAccrualFxRateMicros(
   if (fetched && fetched > 0) return fetched;
   return defaultFxRateMicros(localCurrency, baseCurrency);
 }
+
+/**
+ * Current local→base FX rate for the employee form's live salary preview. Given
+ * an entity + a local currency, returns the rate the payroll engine would use
+ * to accrue (same source as a draft run), so the "≈ USD" preview in the form
+ * matches what the run will actually post. Gated on payroll.view.
+ */
+export const currentFxRate = query({
+  args: { entityId: v.id("entities"), localCurrency: v.string() },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) return null;
+    await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.view");
+    const localCurrency = args.localCurrency.trim().toUpperCase();
+    const rateMicros = await resolveAccrualFxRateMicros(ctx, entity.currency, localCurrency);
+    return { baseCurrency: entity.currency, localCurrency, rateMicros };
+  },
+});
 
 async function materializeLines(ctx: MutationCtx, run: Doc<"payrollRuns">, entity: Doc<"entities">) {
   const existing = await ctx.db.query("payrollRunLines").withIndex("by_run", (q) => q.eq("runId", run._id)).take(1);
@@ -254,7 +418,6 @@ async function materializeLines(ctx: MutationCtx, run: Doc<"payrollRuns">, entit
     const fxRateMicros = await resolveAccrualFxRateMicros(ctx, entity.currency, employee.currency);
     const computed = computeRunLine({
       baseSalaryMinor: employee.monthlySalaryMinor,
-      adjustmentMinor: 0,
       fxRateMicros,
     });
     await ctx.db.insert("payrollRunLines", {
@@ -263,9 +426,11 @@ async function materializeLines(ctx: MutationCtx, run: Doc<"payrollRuns">, entit
       employeeId: employee._id,
       employeeName: employee.name,
       country: employee.country,
+      ...(employee.city ? { city: employee.city } : {}),
       currency: employee.currency,
       baseSalaryMinor: employee.monthlySalaryMinor,
-      adjustmentMinor: 0,
+      bonusMinor: 0,
+      deductionMinor: 0,
       fxRateMicros,
       finalLocalMinor: computed.finalLocalMinor,
       baseEquivalentMinor: computed.baseEquivalentMinor,
@@ -285,7 +450,7 @@ async function materializeLines(ctx: MutationCtx, run: Doc<"payrollRuns">, entit
 export const backfillRunLines = mutation({
   args: { runId: v.id("payrollRuns") },
   handler: async (ctx, args) => {
-    const { run, entity } = await loadRunForWrite(ctx, args.runId);
+    const { run, entity } = await loadRunForWrite(ctx, args.runId, "payroll.prepare");
     await materializeLines(ctx, run, entity);
     return { runId: run._id };
   },
@@ -354,7 +519,6 @@ async function draftRunForEntity(
     const fxRateMicros = await resolveAccrualFxRateMicros(ctx, entity.currency, employee.currency);
     const computed = computeRunLine({
       baseSalaryMinor: employee.monthlySalaryMinor,
-      adjustmentMinor: 0,
       fxRateMicros,
     });
     baseTotalMinor += computed.baseEquivalentMinor;
@@ -364,9 +528,11 @@ async function draftRunForEntity(
       employeeId: employee._id,
       employeeName: employee.name,
       country: employee.country,
+      ...(employee.city ? { city: employee.city } : {}),
       currency: employee.currency,
       baseSalaryMinor: employee.monthlySalaryMinor,
-      adjustmentMinor: 0,
+      bonusMinor: 0,
+      deductionMinor: 0,
       fxRateMicros,
       finalLocalMinor: computed.finalLocalMinor,
       baseEquivalentMinor: computed.baseEquivalentMinor,
@@ -405,7 +571,7 @@ export const startRun = mutation({
   handler: async (ctx, args) => {
     const entity = await ctx.db.get(args.entityId);
     if (!entity) throw new Error("OpenBooks entity not found.");
-    const { userId } = await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.manage");
+    const { userId } = await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.prepare");
     await assertNotDemoWrite(ctx, entity.workspaceId); // E11-T6: demo is read-only.
     const { runId } = await draftRunForEntity(ctx, {
       entity,
@@ -417,32 +583,45 @@ export const startRun = mutation({
   },
 });
 
-/** Edit one draft line (adjustment and/or FX rate). Recomputes derived totals. */
+/** Edit one draft line (one-time bonus, deduction, and/or FX rate). Recomputes derived totals. */
 export const updateRunLine = mutation({
   args: {
     lineId: v.id("payrollRunLines"),
-    adjustmentMinor: v.optional(v.number()),
+    bonusMinor: v.optional(v.number()),
+    deductionMinor: v.optional(v.number()),
     fxRate: v.optional(v.union(v.string(), v.number())),
   },
   handler: async (ctx, args) => {
     const line = await ctx.db.get(args.lineId);
     if (!line) throw new Error("Payroll line not found.");
-    const { run, entity, userId } = await loadRunForWrite(ctx, line.runId);
+    const { run, entity, userId } = await loadRunForWrite(ctx, line.runId, "payroll.prepare");
     if (run.status !== "draft") {
-      throw new ConvexError("Only draft payroll runs can be edited. Reopen the period to correct a posted run.");
+      throw new ConvexError("Only draft payroll runs can be edited. Submitted or posted runs are locked.");
     }
 
-    const adjustmentMinor = args.adjustmentMinor ?? line.adjustmentMinor;
-    assertSignedMinorUnit(adjustmentMinor, "Adjustment");
+    // Defaults fold any legacy signed adjustment into bonus/deduction so editing
+    // an old line preserves its total, then clears the adjustment for good.
+    const legacyAdj = line.adjustmentMinor ?? 0;
+    const bonusMinor = args.bonusMinor ?? (line.bonusMinor ?? 0) + Math.max(0, legacyAdj);
+    const deductionMinor = args.deductionMinor ?? (line.deductionMinor ?? 0) + Math.max(0, -legacyAdj);
+    if (!Number.isInteger(bonusMinor) || bonusMinor < 0) {
+      throw new ConvexError("Bonus must be a non-negative amount.");
+    }
+    if (!Number.isInteger(deductionMinor) || deductionMinor < 0) {
+      throw new ConvexError("Deduction must be a non-negative amount.");
+    }
     const fxRateMicros = args.fxRate === undefined ? line.fxRateMicros : parseFxRateToMicros(args.fxRate);
     const computed = computeRunLine({
       baseSalaryMinor: line.baseSalaryMinor,
-      adjustmentMinor,
+      bonusMinor,
+      deductionMinor,
       fxRateMicros,
     });
     const now = Date.now();
     await ctx.db.patch(line._id, {
-      adjustmentMinor,
+      bonusMinor,
+      deductionMinor,
+      adjustmentMinor: 0, // retire the legacy signed field now it's folded in
       fxRateMicros,
       finalLocalMinor: computed.finalLocalMinor,
       baseEquivalentMinor: computed.baseEquivalentMinor,
@@ -459,6 +638,94 @@ export const updateRunLine = mutation({
 });
 
 /**
+ * Submit a prepared draft run for approval (maker-checker hand-off). A preparer
+ * (HR / Accountant / Owner) moves it draft → submitted; it then locks from
+ * further line edits until an approver approves or sends it back. No ledger
+ * posting happens here.
+ */
+export const submitRunForApproval = mutation({
+  args: { runId: v.id("payrollRuns") },
+  handler: async (ctx, args) => {
+    const { run, entity, userId } = await loadRunForWrite(ctx, args.runId, "payroll.prepare");
+    if (run.status !== "draft") {
+      throw new ConvexError("Only a draft run can be submitted for approval.");
+    }
+    await materializeLines(ctx, run, entity);
+    const lines = await ctx.db.query("payrollRunLines").withIndex("by_run", (q) => q.eq("runId", run._id)).take(500);
+    if (lines.length === 0) {
+      throw new ConvexError("Add at least one employee line before submitting.");
+    }
+    const now = Date.now();
+    await ctx.db.patch(run._id, { status: "submitted", submittedAt: now, submittedBy: userId, updatedAt: now });
+    await ctx.db.insert("auditEvents", {
+      workspaceId: entity.workspaceId,
+      actorUserId: userId,
+      action: "payroll.run.submitted",
+      entityType: "payrollRun",
+      entityId: run._id,
+      summary: `Submitted ${periodLabel(run.period)} payroll run for approval (${lines.length} people)`,
+      createdAt: now,
+    });
+    // Ping the approvers (owners + accountants) so they can review + post it.
+    await notifyRoleHolders(ctx, {
+      workspaceId: entity.workspaceId,
+      permission: "payroll.approve",
+      kind: "payroll.run.submitted",
+      title: `${periodLabel(run.period)} payroll needs approval`,
+      body: `${entity.name} · ${lines.length} ${lines.length === 1 ? "person" : "people"} · submitted for approval`,
+      link: `/payroll/runs/${run._id}`,
+      actorUserId: userId,
+      entityId: entity._id,
+    });
+    return { runId: run._id };
+  },
+});
+
+/**
+ * Send a submitted run back to draft for changes (the checker declines). An
+ * approver-only action; reopens the run so a preparer can edit and resubmit.
+ * Nothing is posted or reversed (a submitted run never touched the ledger).
+ */
+export const sendRunBack = mutation({
+  args: { runId: v.id("payrollRuns"), note: v.string() },
+  handler: async (ctx, args) => {
+    const { run, entity, userId } = await loadRunForWrite(ctx, args.runId, "payroll.approve");
+    if (run.status !== "submitted") {
+      throw new ConvexError("Only a submitted run can be sent back.");
+    }
+    const note = args.note.trim();
+    if (!note) {
+      throw new ConvexError("Add a reason so the preparer knows what to change.");
+    }
+    const now = Date.now();
+    await ctx.db.patch(run._id, { status: "draft", submittedAt: undefined, submittedBy: undefined, updatedAt: now });
+    await ctx.db.insert("auditEvents", {
+      workspaceId: entity.workspaceId,
+      actorUserId: userId,
+      action: "payroll.run.sent_back",
+      entityType: "payrollRun",
+      entityId: run._id,
+      summary: `Sent ${periodLabel(run.period)} payroll run back to draft${note ? ` — ${note}` : ""}`,
+      createdAt: now,
+    });
+    // Tell the preparer who submitted it that it needs changes.
+    if (run.submittedBy) {
+      await notifyUser(ctx, {
+        workspaceId: entity.workspaceId,
+        userId: run.submittedBy,
+        kind: "payroll.run.sent_back",
+        title: `${periodLabel(run.period)} payroll sent back`,
+        body: note ? `Needs changes — ${note}` : "Sent back to draft for changes.",
+        link: `/payroll/runs/${run._id}`,
+        actorUserId: userId,
+        entityId: entity._id,
+      });
+    }
+    return { runId: run._id };
+  },
+});
+
+/**
  * Approve a draft run: posts ONE balanced entry through the ledger —
  * debit Payroll & Contractors (expense) / credit Payroll Payable (liability),
  * in base currency, dated the period's last day. Respects the period lock.
@@ -466,9 +733,11 @@ export const updateRunLine = mutation({
 export const approveRun = mutation({
   args: { runId: v.id("payrollRuns") },
   handler: async (ctx, args) => {
-    const { run, entity, userId } = await loadRunForWrite(ctx, args.runId);
-    if (run.status !== "draft") {
-      throw new ConvexError("Only draft runs can be approved.");
+    const { run, entity, userId } = await loadRunForWrite(ctx, args.runId, "payroll.approve");
+    // Approve either a draft (an approver preparing their own run) or a run HR
+    // has submitted for approval. Already-approved/paid runs are rejected.
+    if (run.status !== "draft" && run.status !== "submitted") {
+      throw new ConvexError("Only draft or submitted runs can be approved.");
     }
     await materializeLines(ctx, run, entity);
     const lines = await ctx.db.query("payrollRunLines").withIndex("by_run", (q) => q.eq("runId", run._id)).take(500);
@@ -509,6 +778,20 @@ export const approveRun = mutation({
       approvedAt: now,
       updatedAt: now,
     });
+
+    // If HR submitted this run, tell them it's approved + posted.
+    if (run.submittedBy) {
+      await notifyUser(ctx, {
+        workspaceId: entity.workspaceId,
+        userId: run.submittedBy,
+        kind: "payroll.run.approved",
+        title: `${periodLabel(run.period)} payroll approved`,
+        body: `${entity.name} · posted to the ledger`,
+        link: `/payroll/runs/${run._id}`,
+        actorUserId: userId,
+        entityId: entity._id,
+      });
+    }
 
     return { runId: run._id, entryId: posted.entryId, baseTotalMinor };
   },
@@ -778,7 +1061,7 @@ export const markLinePaid = mutation({
   handler: async (ctx, args) => {
     const line = await ctx.db.get(args.lineId);
     if (!line) throw new Error("Payroll line not found.");
-    const { run, entity, userId } = await loadRunForWrite(ctx, line.runId);
+    const { run, entity, userId } = await loadRunForWrite(ctx, line.runId, "payroll.approve");
     if (run.status !== "approved") {
       throw new ConvexError("Approve the run before marking lines paid.");
     }
@@ -872,7 +1155,7 @@ export const markRunPaid = mutation({
     settlementFxRateMicrosByCurrency: v.optional(v.record(v.string(), v.number())),
   },
   handler: async (ctx, args) => {
-    const { run, entity, userId } = await loadRunForWrite(ctx, args.runId);
+    const { run, entity, userId } = await loadRunForWrite(ctx, args.runId, "payroll.approve");
     if (run.status !== "approved") {
       throw new ConvexError("Approve the run before marking it paid.");
     }
@@ -922,6 +1205,119 @@ export const markRunPaid = mutation({
 
     await maybeMarkRunPaid(ctx, run._id);
     return { runId: run._id, settledCount, fxDiffTotalMinor };
+  },
+});
+
+/**
+ * Auto-settle approved payroll runs whose matching bank payment has arrived.
+ * Scheduled after every Plaid sync with a SYSTEM actor (no human click). For each
+ * approved (unpaid) run it looks for a SINGLE unmatched bank outflow on the
+ * entity's settlement account that clears the run's outstanding base total —
+ * exact amount (±1), unique within a ±5-day window, AND carrying a payroll
+ * keyword (strict, so a coincidental same-amount debit is never auto-settled).
+ * On a match it settles every line (payable → bank, +FX), reconciles that
+ * outflow to Payroll Payable (metadata only — a confirmed txn never posts its
+ * own entry, so there's exactly one cash-out), flips the run to paid, and
+ * notifies the approvers. Idempotent; anything ambiguous is left for manual
+ * "Mark paid".
+ */
+export const autoSettleApprovedRunsForEntity = internalMutation({
+  args: { entityId: v.id("entities"), actorUserId: v.id("users") },
+  handler: async (ctx, args): Promise<{ settledRuns: number }> => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) return { settledRuns: 0 };
+    const approvedRuns = (
+      await ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(120)
+    ).filter((run) => run.status === "approved");
+    if (approvedRuns.length === 0) return { settledRuns: 0 };
+
+    let bank: Awaited<ReturnType<typeof resolveSettlementBankAccount>>;
+    try {
+      bank = await resolveSettlementBankAccount(ctx, entity._id);
+    } catch {
+      return { settledRuns: 0 }; // no bank account to match against yet
+    }
+    const allTxns = await ctx.db
+      .query("transactions")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .take(2000);
+    const usedTxnIds = await consumedSettlementTxnIds(ctx, entity._id);
+
+    let settledRuns = 0;
+    for (const run of approvedRuns) {
+      const unpaidLines = (
+        await ctx.db.query("payrollRunLines").withIndex("by_run", (q) => q.eq("runId", run._id)).take(500)
+      ).filter((line) => !line.paid);
+      if (unpaidLines.length === 0) {
+        await maybeMarkRunPaid(ctx, run._id);
+        continue;
+      }
+      let outstandingBaseMinor = 0;
+      for (const line of unpaidLines) {
+        outstandingBaseMinor += await resolveSettlementBaseMinor(ctx, { entity, line });
+      }
+      if (outstandingBaseMinor <= 0) continue;
+
+      const candidate = findMatchingBankTxn(
+        allTxns.filter((txn) => !usedTxnIds.has(txn._id) && txn.review !== "confirmed"),
+        bank._id,
+        outstandingBaseMinor,
+        postingDateForRun(run),
+      );
+      // Strict for AUTO-posting: only settle when the outflow is clearly labelled
+      // payroll. Anything else waits for a human to "Mark paid".
+      if (!candidate || !PAYROLL_KEYWORD_RE.test(`${candidate.merchant} ${candidate.rawDescription}`)) continue;
+
+      usedTxnIds.add(candidate._id);
+      const payableAccountId =
+        run.payableAccountId ?? (await accountByNumber(ctx, entity._id, PAYROLL_PAYABLE_NUMBER))._id;
+      for (const line of unpaidLines) {
+        await settleLine(ctx, {
+          run,
+          entity,
+          userId: args.actorUserId,
+          line,
+          bankLedgerAccountId: bank.ledgerAccountId,
+          payableAccountId,
+        });
+      }
+      // Reconcile the aggregate outflow to Payroll Payable — metadata only, so
+      // the per-line settlement entries above remain the single cash-out.
+      const now = Date.now();
+      const provenance = `Matched to ${periodLabel(run.period)} payroll (auto-settled)`;
+      await ctx.db.patch(candidate._id, {
+        review: "confirmed",
+        decidedBy: "match",
+        categoryAccountId: payableAccountId,
+        rawDescription: candidate.rawDescription.includes(provenance)
+          ? candidate.rawDescription
+          : `${candidate.rawDescription} · ${provenance}`,
+        updatedAt: now,
+      });
+      await maybeMarkRunPaid(ctx, run._id);
+      settledRuns += 1;
+
+      await ctx.db.insert("auditEvents", {
+        workspaceId: entity.workspaceId,
+        actorUserId: args.actorUserId,
+        action: "payroll.run.auto_settled",
+        entityType: "payrollRun",
+        entityId: run._id,
+        summary: `Auto-settled ${periodLabel(run.period)} payroll from a matched bank payment`,
+        createdAt: now,
+      });
+      await notifyRoleHolders(ctx, {
+        workspaceId: entity.workspaceId,
+        permission: "payroll.approve",
+        kind: "payroll.run.auto_settled",
+        title: `${periodLabel(run.period)} payroll auto-settled`,
+        body: `${entity.name} · a matched bank payment cleared the payroll payable`,
+        link: `/payroll/runs/${run._id}`,
+        actorUserId: args.actorUserId,
+        entityId: entity._id,
+      });
+    }
+    return { settledRuns };
   },
 });
 
@@ -1015,7 +1411,7 @@ export const setPaySchedule = mutation({
   handler: async (ctx, args) => {
     const entity = await ctx.db.get(args.entityId);
     if (!entity) throw new Error("OpenBooks entity not found.");
-    const { userId } = await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.manage");
+    const { userId } = await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.prepare");
     await assertNotDemoWrite(ctx, entity.workspaceId); // E11-T6: demo is read-only.
     const existing = await ctx.db
       .query("paySchedules")
@@ -1229,5 +1625,167 @@ export const fetchDayOfPayRates = action({
       persisted.push({ currency, rateMicros });
     }
     return { baseCurrency: base, date: effectiveDate, persisted };
+  },
+});
+
+/**
+ * Import payroll rows from a CSV upload. Upserts employees by name, creates or
+ * replaces a draft run for the given period, and inserts one run line per row.
+ * FX rates must be pre-fetched by the caller via `fetchDayOfPayRates` and passed
+ * in the `fxRateMicros` field for each non-base row. USD rows use 1_000_000.
+ */
+export const importPayrollRows = mutation({
+  args: {
+    entityId: v.id("entities"),
+    period: v.string(),
+    rows: v.array(
+      v.object({
+        name: v.string(),
+        email: v.optional(v.string()),
+        department: v.optional(v.string()),
+        currency: v.string(),
+        basePayMinor: v.number(),
+        deductionsMinor: v.number(),
+        bonusesMinor: v.number(),
+        fxRateMicros: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    if (!/^\d{4}-\d{2}$/.test(args.period)) {
+      throw new ConvexError("Period must be YYYY-MM format.");
+    }
+    if (args.rows.length === 0) throw new ConvexError("No rows to import.");
+    if (args.rows.length > 500) throw new ConvexError("Maximum 500 rows per import.");
+
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) throw new ConvexError("Business not found.");
+    const { userId } = await requireWorkspacePermission(ctx, entity.workspaceId, "payroll.prepare");
+    await assertNotDemoWrite(ctx, entity.workspaceId);
+
+    const now = Date.now();
+
+    // Load all employees for name-matching (case-insensitive within entity).
+    const allEmployees = await ctx.db
+      .query("employees")
+      .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+      .take(1000);
+    const byNormName = new Map(allEmployees.map((e) => [e.name.toLowerCase().trim(), e]));
+
+    // Find or create a draft run for this period.
+    const existingRun = await ctx.db
+      .query("payrollRuns")
+      .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+      .filter((q) => q.eq(q.field("period"), args.period))
+      .first();
+
+    let runId: Id<"payrollRuns">;
+    if (existingRun) {
+      if (existingRun.status !== "draft") {
+        throw new ConvexError(
+          `A ${existingRun.status} run already exists for ${args.period}. Only draft runs can be replaced by import.`,
+        );
+      }
+      // Delete existing draft lines so the import is idempotent.
+      const existingLines = await ctx.db
+        .query("payrollRunLines")
+        .withIndex("by_run", (q) => q.eq("runId", existingRun._id))
+        .take(1000);
+      for (const line of existingLines) {
+        await ctx.db.delete(line._id);
+      }
+      runId = existingRun._id;
+    } else {
+      runId = await ctx.db.insert("payrollRuns", {
+        entityId: args.entityId,
+        period: args.period,
+        status: "draft",
+        source: "manual",
+        totalBaseMinor: 0,
+        entryIds: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    let employeesCreated = 0;
+    let employeesUpdated = 0;
+    let totalBaseMinor = 0;
+
+    for (const row of args.rows) {
+      const name = row.name.trim();
+      if (name.length < 2) continue;
+
+      const currency = row.currency.trim().toUpperCase();
+      const existing = byNormName.get(name.toLowerCase());
+
+      let employeeId: Id<"employees">;
+      let country = "—";
+
+      if (existing) {
+        const patch: Partial<Doc<"employees">> = { currency, monthlySalaryMinor: row.basePayMinor, updatedAt: now };
+        if (row.email?.trim()) patch.email = row.email.trim();
+        if (row.department?.trim()) patch.department = row.department.trim();
+        await ctx.db.patch(existing._id, patch);
+        employeeId = existing._id;
+        country = existing.country;
+        employeesUpdated++;
+      } else {
+        const newDoc: Omit<Doc<"employees">, "_id" | "_creationTime"> = {
+          entityId: args.entityId,
+          name,
+          country: "—",
+          currency,
+          monthlySalaryMinor: row.basePayMinor,
+          active: true,
+          createdAt: now,
+          updatedAt: now,
+        };
+        if (row.email?.trim()) newDoc.email = row.email.trim();
+        if (row.department?.trim()) newDoc.department = row.department.trim();
+        employeeId = await ctx.db.insert("employees", newDoc);
+        byNormName.set(name.toLowerCase(), { ...newDoc, _id: employeeId, _creationTime: now });
+        employeesCreated++;
+      }
+
+      // Bonus (+) and deduction (−) are each their own non-negative column.
+      const bonusMinor = Math.max(0, row.bonusesMinor);
+      const deductionMinor = Math.max(0, row.deductionsMinor);
+      const computed = computeRunLine({ baseSalaryMinor: row.basePayMinor, bonusMinor, deductionMinor, fxRateMicros: row.fxRateMicros });
+      totalBaseMinor += computed.baseEquivalentMinor;
+
+      await ctx.db.insert("payrollRunLines", {
+        entityId: args.entityId,
+        runId,
+        employeeId,
+        employeeName: name,
+        country,
+        ...(existing?.city ? { city: existing.city } : {}),
+        currency,
+        baseSalaryMinor: row.basePayMinor,
+        bonusMinor,
+        deductionMinor,
+        fxRateMicros: row.fxRateMicros,
+        finalLocalMinor: computed.finalLocalMinor,
+        baseEquivalentMinor: computed.baseEquivalentMinor,
+        paid: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.db.patch(runId, { totalBaseMinor, updatedAt: now });
+
+    await ctx.db.insert("auditEvents", {
+      workspaceId: entity.workspaceId,
+      actorUserId: userId,
+      action: "payroll.run.imported",
+      entityType: "payrollRun",
+      entityId: runId,
+      summary: `Imported ${args.rows.length} payroll rows for ${args.period} (${employeesCreated} new, ${employeesUpdated} updated)`,
+      createdAt: now,
+    });
+
+    return { runId, linesCreated: args.rows.length, employeesCreated, employeesUpdated };
   },
 });

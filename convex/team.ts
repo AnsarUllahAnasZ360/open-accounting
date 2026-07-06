@@ -14,25 +14,34 @@ import {
 } from "./authz";
 
 function siteUrl() {
-  return (process.env.SITE_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
+  return (
+    process.env.SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3100"
+  ).replace(/\/+$/, "");
 }
 
 function createInviteToken() {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 async function hashInviteToken(token: string) {
   const data = new TextEncoder().encode(token);
   const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 function initials(name: string | null | undefined, email: string) {
   const base = name?.trim() || email;
   const parts = base.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0]![0]}${parts.at(-1)![0]}`.toUpperCase();
+  if (parts.length >= 2)
+    return `${parts[0]![0]}${parts.at(-1)![0]}`.toUpperCase();
   return base.slice(0, 2).toUpperCase();
 }
 
@@ -43,10 +52,21 @@ function initials(name: string | null | undefined, email: string) {
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const { userId: viewerUserId, membership } = await requireAnyWorkspaceRole(ctx, "member");
+    const { userId: viewerUserId, membership } = await requireAnyWorkspaceRole(
+      ctx,
+      "member",
+    );
     const [members, invites, workspace] = await Promise.all([
-      ctx.db.query("workspaceMembers").withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId)).take(100),
-      ctx.db.query("invites").withIndex("by_status", (q) => q.eq("status", "pending")).take(100),
+      ctx.db
+        .query("workspaceMembers")
+        .withIndex("by_workspace", (q) =>
+          q.eq("workspaceId", membership.workspaceId),
+        )
+        .take(100),
+      ctx.db
+        .query("invites")
+        .withIndex("by_status", (q) => q.eq("status", "pending"))
+        .take(100),
       ctx.db.get(membership.workspaceId),
     ]);
 
@@ -54,7 +74,9 @@ export const list = query({
     // Last-owner guard input (E12-T6): an owner can only be demoted/removed when
     // another active owner remains. Surfaced to the UI so the role Select and
     // remove action disable themselves for the final owner.
-    const ownerCount = activeMembers.filter((m) => canonicalWorkspaceRole(m.role) === "owner").length;
+    const ownerCount = activeMembers.filter(
+      (m) => canonicalWorkspaceRole(m.role) === "owner",
+    ).length;
 
     const memberRows = await Promise.all(
       activeMembers.map(async (m) => {
@@ -98,10 +120,13 @@ export const list = query({
     // for this workspace OR the env key is set (back-compat).
     const plunkRows = await ctx.db
       .query("credentials")
-      .withIndex("by_workspace_and_kind", (q) => q.eq("workspaceId", membership.workspaceId).eq("kind", "plunk"))
+      .withIndex("by_workspace_and_kind", (q) =>
+        q.eq("workspaceId", membership.workspaceId).eq("kind", "plunk"),
+      )
       .take(1);
     const emailDeliveryConfigured =
-      plunkRows.length > 0 || Boolean(process.env.PLUNK_SECRET_KEY || process.env.PLUNK_API_KEY);
+      plunkRows.length > 0 ||
+      Boolean(process.env.PLUNK_SECRET_KEY || process.env.PLUNK_API_KEY);
 
     return {
       members: [...memberRows, ...inviteRows],
@@ -121,11 +146,23 @@ export const list = query({
 export const invite = mutation({
   args: {
     email: v.string(),
-    role: v.union(v.literal("accountant"), v.literal("hr"), v.literal("admin"), v.literal("member")),
+    role: v.union(
+      v.literal("accountant"),
+      v.literal("hr"),
+      v.literal("admin"),
+      v.literal("member"),
+    ),
   },
   handler: async (ctx, args) => {
-    const { userId, membership } = await requireAnyWorkspacePermission(ctx, "team.manage");
-    await requireWorkspacePermission(ctx, membership.workspaceId, "team.manage");
+    const { userId, membership } = await requireAnyWorkspacePermission(
+      ctx,
+      "team.manage",
+    );
+    await requireWorkspacePermission(
+      ctx,
+      membership.workspaceId,
+      "team.manage",
+    );
     const email = normalizeEmail(args.email);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       throw new ConvexError("Enter a valid email address.");
@@ -135,19 +172,31 @@ export const invite = mutation({
       .query("invites")
       .withIndex("by_email", (q) => q.eq("email", email))
       .take(20);
-    const pending = existing.find((invite) => invite.status === "pending" && invite.workspaceId === membership.workspaceId);
+    const pending = existing.find(
+      (invite) =>
+        invite.status === "pending" &&
+        invite.workspaceId === membership.workspaceId,
+    );
     const now = Date.now();
     const token = createInviteToken();
     const tokenHash = await hashInviteToken(token);
     const invitePath = `/invite/${token}`;
     const inviteUrl = `${siteUrl()}${invitePath}`;
     const role =
-      args.role === "admin" ? "accountant"
-      : args.role === "member" ? "hr"
-      : args.role;
+      args.role === "admin"
+        ? "accountant"
+        : args.role === "member"
+          ? "hr"
+          : args.role;
     if (pending) {
       await ctx.db.patch(pending._id, { role, tokenHash, updatedAt: now });
-      return { inviteId: pending._id, status: "updated" as const, emailSent: false, invitePath, inviteUrl };
+      return {
+        inviteId: pending._id,
+        status: "updated" as const,
+        emailSent: false,
+        invitePath,
+        inviteUrl,
+      };
     }
 
     const inviteId = await ctx.db.insert("invites", {
@@ -168,7 +217,13 @@ export const invite = mutation({
       summary: `Invited ${email} as ${workspaceRoleLabel(role)}`,
       createdAt: now,
     });
-    return { inviteId, status: "created" as const, emailSent: false, invitePath, inviteUrl };
+    return {
+      inviteId,
+      status: "created" as const,
+      emailSent: false,
+      invitePath,
+      inviteUrl,
+    };
   },
 });
 
@@ -186,7 +241,9 @@ export const lookupInvite = query({
     if (!invite) {
       return { status: "invalid" as const };
     }
-    const workspace = invite.workspaceId ? await ctx.db.get(invite.workspaceId) : null;
+    const workspace = invite.workspaceId
+      ? await ctx.db.get(invite.workspaceId)
+      : null;
     return {
       status: invite.status,
       email: invite.email,
@@ -202,13 +259,24 @@ export const lookupInvite = query({
 export const revokeInvite = mutation({
   args: { inviteId: v.id("invites") },
   handler: async (ctx, args) => {
-    const { userId, membership } = await requireAnyWorkspacePermission(ctx, "team.manage");
+    const { userId, membership } = await requireAnyWorkspacePermission(
+      ctx,
+      "team.manage",
+    );
     const invite = await ctx.db.get(args.inviteId);
     if (!invite || invite.workspaceId !== membership.workspaceId) {
       throw new ConvexError("Invite not found in this workspace.");
     }
-    await requireWorkspacePermission(ctx, membership.workspaceId, "team.manage");
-    await ctx.db.patch(invite._id, { status: "revoked", revokedAt: Date.now(), updatedAt: Date.now() });
+    await requireWorkspacePermission(
+      ctx,
+      membership.workspaceId,
+      "team.manage",
+    );
+    await ctx.db.patch(invite._id, {
+      status: "revoked",
+      revokedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
     await ctx.db.insert("auditEvents", {
       workspaceId: membership.workspaceId,
       actorUserId: userId,
@@ -233,7 +301,8 @@ async function activeOwnerCount(
     .withIndex("by_workspace", (q: any) => q.eq("workspaceId", workspaceId))
     .take(200);
   return members.filter(
-    (m: Doc<"workspaceMembers">) => m.status === "active" && canonicalWorkspaceRole(m.role) === "owner",
+    (m: Doc<"workspaceMembers">) =>
+      m.status === "active" && canonicalWorkspaceRole(m.role) === "owner",
   ).length;
 }
 
@@ -245,11 +314,22 @@ async function activeOwnerCount(
 export const changeRole = mutation({
   args: {
     memberId: v.id("workspaceMembers"),
-    newRole: v.union(v.literal("owner"), v.literal("accountant"), v.literal("hr")),
+    newRole: v.union(
+      v.literal("owner"),
+      v.literal("accountant"),
+      v.literal("hr"),
+    ),
   },
   handler: async (ctx, args) => {
-    const { userId, membership } = await requireAnyWorkspacePermission(ctx, "team.manage");
-    await requireWorkspacePermission(ctx, membership.workspaceId, "team.manage");
+    const { userId, membership } = await requireAnyWorkspacePermission(
+      ctx,
+      "team.manage",
+    );
+    await requireWorkspacePermission(
+      ctx,
+      membership.workspaceId,
+      "team.manage",
+    );
     const member = await ctx.db.get(args.memberId);
     if (!member || member.workspaceId !== membership.workspaceId) {
       throw new ConvexError("Member not found in this workspace.");
@@ -267,7 +347,9 @@ export const changeRole = mutation({
     if (fromRole === "owner" && args.newRole !== "owner") {
       const owners = await activeOwnerCount(ctx, membership.workspaceId);
       if (owners <= 1) {
-        throw new ConvexError("This is the last owner — promote another member to owner before changing this role.");
+        throw new ConvexError(
+          "This is the last owner — promote another member to owner before changing this role.",
+        );
       }
     }
 
@@ -300,8 +382,15 @@ export const changeRole = mutation({
 export const removeMember = mutation({
   args: { memberId: v.id("workspaceMembers") },
   handler: async (ctx, args) => {
-    const { userId, membership } = await requireAnyWorkspacePermission(ctx, "team.manage");
-    await requireWorkspacePermission(ctx, membership.workspaceId, "team.manage");
+    const { userId, membership } = await requireAnyWorkspacePermission(
+      ctx,
+      "team.manage",
+    );
+    await requireWorkspacePermission(
+      ctx,
+      membership.workspaceId,
+      "team.manage",
+    );
     const member = await ctx.db.get(args.memberId);
     if (!member || member.workspaceId !== membership.workspaceId) {
       throw new ConvexError("Member not found in this workspace.");
@@ -313,7 +402,9 @@ export const removeMember = mutation({
     if (canonicalWorkspaceRole(member.role) === "owner") {
       const owners = await activeOwnerCount(ctx, membership.workspaceId);
       if (owners <= 1) {
-        throw new ConvexError("This is the last owner — promote another member to owner before removing this one.");
+        throw new ConvexError(
+          "This is the last owner — promote another member to owner before removing this one.",
+        );
       }
     }
 
@@ -332,8 +423,15 @@ export const removeMember = mutation({
         .withIndex("by_email", (q) => q.eq("email", email))
         .take(50);
       for (const invite of invites) {
-        if (invite.status === "pending" && invite.workspaceId === membership.workspaceId) {
-          await ctx.db.patch(invite._id, { status: "revoked", revokedAt: now, updatedAt: now });
+        if (
+          invite.status === "pending" &&
+          invite.workspaceId === membership.workspaceId
+        ) {
+          await ctx.db.patch(invite._id, {
+            status: "revoked",
+            revokedAt: now,
+            updatedAt: now,
+          });
         }
       }
     }

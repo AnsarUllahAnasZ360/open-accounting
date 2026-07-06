@@ -21,12 +21,28 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { openBooksAgent, aiChatRuntimeStatus, isAiChatConfigured } from "./agent";
+import {
+  openBooksAgent,
+  createOpenBooksAgent,
+  type AgentLanguageModel,
+  aiChatRuntimeStatus,
+  isAiChatConfigured,
+} from "./agent";
+import { buildModelForProvider } from "./aiProvider";
+import { resolveActiveAiModel } from "./aiResolve";
 import { authorizeThreadAccess, requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
 import { resolveDefaultEntity } from "./entityScope";
+import { safeErrorMessage } from "./secretRedaction";
 
 const MAX_TITLE_LENGTH = 80;
 const DEFAULT_TITLE = "New conversation";
+
+// Cap the chatbot's output length so requests stay affordable on metered/free
+// provider accounts (e.g. OpenRouter rejects a request whose max_tokens exceeds
+// the account's credit allowance). Without this, models default to their full
+// context window (gpt-5 → 65,536), which a free account can't afford. A concise
+// bookkeeping answer fits comfortably here.
+const CHAT_MAX_OUTPUT_TOKENS = 1500;
 
 function deriveTitle(message: string | undefined): string {
   const trimmed = (message ?? "").trim().replace(/\s+/g, " ");
@@ -235,29 +251,62 @@ export const sendMessage = mutation({
 export const generateResponse = internalAction({
   args: { threadId: v.string(), promptMessageId: v.string() },
   handler: async (ctx, args) => {
-    if (!isAiChatConfigured()) {
-      const status = aiChatRuntimeStatus();
+    // Resolve the thread's workspace, then the model that workspace configured in
+    // Settings → AI — bring-your-own key first, env fallback. The chatbot runs on
+    // WHATEVER provider the owner set up (OpenAI, Anthropic, OpenRouter via
+    // openai_compatible, Bedrock, …), resolved per request. No Bedrock hard gate.
+    const context = await ctx.runQuery(internal.aiThreads.threadContext, {
+      threadId: args.threadId,
+    });
+    const resolved = await resolveActiveAiModel(ctx, {
+      workspaceId: context.workspaceId,
+      purpose: "chat",
+    });
+    if (!resolved.ready) {
       await saveMessage(ctx, components.agent, {
         threadId: args.threadId,
         message: {
           role: "assistant",
           content:
-            status.degradedReason ??
-            "AI is not configured. Connect Amazon Bedrock in Settings → AI to ask questions about your books.",
+            "AI is not configured. Add a provider key in Settings → AI — any provider works (OpenAI, Anthropic, OpenRouter, Google, Bedrock, …) — then ask again.",
         },
       });
       return { ok: false, mode: "degraded" as const };
     }
 
-    const result = await openBooksAgent.streamText(
-      ctx,
-      { threadId: args.threadId },
-      { promptMessageId: args.promptMessageId },
-      { saveStreamDeltas: { chunking: "word", throttleMs: 250 } },
-    );
-    // Consume the stream so deltas are saved and the final message persists.
-    await result.consumeStream();
-    return { ok: true, mode: "active" as const };
+    const model = buildModelForProvider({
+      providerId: resolved.provider,
+      modelId: resolved.modelId,
+      credential: resolved.credential,
+    }) as AgentLanguageModel;
+    const agent = createOpenBooksAgent(model);
+
+    try {
+      const result = await agent.streamText(
+        ctx,
+        { threadId: args.threadId },
+        { promptMessageId: args.promptMessageId, maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS },
+        { saveStreamDeltas: { chunking: "word", throttleMs: 250 } },
+      );
+      // Consume the stream so deltas are saved and the final message persists.
+      await result.consumeStream();
+      return { ok: true, mode: "active" as const };
+    } catch (error) {
+      // Never crash the scheduled action (the UI would hang waiting for a reply).
+      // Save a friendly, secret-free assistant message instead. A model that
+      // can't tool-call (some openai_compatible endpoints) surfaces here too.
+      await saveMessage(ctx, components.agent, {
+        threadId: args.threadId,
+        message: {
+          role: "assistant",
+          content: `OpenBooks AI couldn't complete that with your configured model (${resolved.provider} · ${resolved.modelId}): ${safeErrorMessage(
+            error,
+            [resolved.credential.apiKey, resolved.credential.secretAccessKey],
+          )}`,
+        },
+      });
+      return { ok: false, mode: "error" as const };
+    }
   },
 });
 

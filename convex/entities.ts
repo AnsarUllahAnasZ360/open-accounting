@@ -116,6 +116,12 @@ export const list = query({
             entityType: entity.entityType ?? "LLC",
             taxId: entity.taxId ?? "",
             homeState: entity.homeState ?? "",
+            // Invoice identity (Settings → Businesses). Logo resolved to a URL for
+            // display; contact + show-tax-id default to unset/empty.
+            logoUrl: entity.logoStorageId ? await ctx.storage.getUrl(entity.logoStorageId) : null,
+            contactEmail: entity.contactEmail ?? "",
+            contactPhone: entity.contactPhone ?? "",
+            showTaxIdOnInvoice: entity.showTaxIdOnInvoice ?? false,
             ...counts,
           };
         }),
@@ -202,6 +208,22 @@ export const create = mutation({
  * No ledger/account rows are touched — only the entities doc is patched. Owner/
  * admin only; re-checks workspace authz server-side and writes an audit event.
  */
+// Upload URL for replacing a business logo from Settings. Gated by
+// business.manage on the entity's workspace; the returned storageId is then
+// saved via updateProfile.
+export const generateLogoUploadUrl = mutation({
+  args: { entityId: v.id("entities") },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) {
+      throw new ConvexError("OpenBooks business not found.");
+    }
+    await requireWorkspacePermission(ctx, entity.workspaceId, "business.manage");
+    await assertNotDemoWrite(ctx, entity.workspaceId);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
 export const updateProfile = mutation({
   args: {
     entityId: v.id("entities"),
@@ -211,6 +233,12 @@ export const updateProfile = mutation({
     entityType: v.optional(v.string()),
     taxId: v.optional(v.string()),
     homeState: v.optional(v.string()),
+    // Invoice identity. logoStorageId sets/replaces the logo; removeLogo clears it.
+    contactEmail: v.optional(v.string()),
+    contactPhone: v.optional(v.string()),
+    showTaxIdOnInvoice: v.optional(v.boolean()),
+    logoStorageId: v.optional(v.id("_storage")),
+    removeLogo: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const entity = await ctx.db.get(args.entityId);
@@ -242,6 +270,19 @@ export const updateProfile = mutation({
     if (args.entityType !== undefined) patch.entityType = args.entityType.trim();
     if (args.taxId !== undefined) patch.taxId = args.taxId.trim();
     if (args.homeState !== undefined) patch.homeState = args.homeState.trim();
+    if (args.contactEmail !== undefined) patch.contactEmail = args.contactEmail.trim();
+    if (args.contactPhone !== undefined) patch.contactPhone = args.contactPhone.trim();
+    if (args.showTaxIdOnInvoice !== undefined) patch.showTaxIdOnInvoice = args.showTaxIdOnInvoice;
+    // Logo: replace then clean up the prior file, or remove on request.
+    if (args.removeLogo) {
+      if (entity.logoStorageId) await ctx.storage.delete(entity.logoStorageId);
+      patch.logoStorageId = undefined;
+    } else if (args.logoStorageId !== undefined) {
+      if (entity.logoStorageId && entity.logoStorageId !== args.logoStorageId) {
+        await ctx.storage.delete(entity.logoStorageId);
+      }
+      patch.logoStorageId = args.logoStorageId;
+    }
 
     await ctx.db.patch(entity._id, patch);
     await ctx.db.insert("auditEvents", {

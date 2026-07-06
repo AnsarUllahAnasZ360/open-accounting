@@ -117,9 +117,14 @@ describe("revenue by stream (E9-T8)", () => {
     let dashboard = await session.query(api.coreViews.dashboard, { entityId: seeded.eid, period: "2026-06" });
     expect(dashboard?.revenueByStream).toHaveLength(2);
 
-    // Tag both accounts into one "Marketing services" stream.
-    await session.mutation(api.categories.setStreamTag, { accountId: seeded.incomeA, streamTag: "Marketing services" });
-    await session.mutation(api.categories.setStreamTag, { accountId: seeded.incomeB, streamTag: "Marketing services" });
+    // Tag both accounts into one "Marketing services" stream. The category
+    // stream-tag mutation was removed in the streams redesign; the dashboard's
+    // account-based revenue-by-stream rollup still reads the field, so set it
+    // directly to exercise that (legacy) rollup.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(seeded.incomeA, { streamTag: "Marketing services" });
+      await ctx.db.patch(seeded.incomeB, { streamTag: "Marketing services" });
+    });
 
     dashboard = await session.query(api.coreViews.dashboard, { entityId: seeded.eid, period: "2026-06" });
     expect(dashboard?.revenueByStream).toHaveLength(1);

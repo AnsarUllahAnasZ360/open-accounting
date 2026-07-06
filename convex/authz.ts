@@ -17,7 +17,11 @@ export type WorkspacePermission =
   | "ledger.post"
   | "reports.view"
   | "payroll.view"
-  | "payroll.manage";
+  // Maker-checker payroll split: `prepare` = draft/edit runs, manage the roster,
+  // submit for approval (Owner + Accountant + HR). `approve` = post the run to
+  // the ledger, settle/mark paid, send back for changes (Owner + Accountant).
+  | "payroll.prepare"
+  | "payroll.approve";
 
 const roleRank: Record<WorkspaceRole, number> = {
   hr: 0,
@@ -35,8 +39,8 @@ const roleLabels: Record<CanonicalWorkspaceRole, string> = {
 
 const roleDescriptions: Record<CanonicalWorkspaceRole, string> = {
   owner: "Full control of workspace, team, businesses, connections, payroll, reports, and reset tools.",
-  accountant: "Bookkeeping, reconciliation, chart/rules, reports, imports, and ledger corrections without owner-only administration.",
-  hr: "Payroll and employee-pay workflows only; no general books, connectors, team, or workspace settings.",
+  accountant: "Bookkeeping, reconciliation, chart/rules, reports, imports, ledger corrections, and full payroll (prepare + approve/post) without owner-only administration.",
+  hr: "Prepares payroll — manages the employee roster, drafts monthly runs, adds bonuses/deductions, and submits for approval; cannot approve or post to the ledger.",
 };
 
 const rolePermissions: Record<CanonicalWorkspaceRole, ReadonlySet<WorkspacePermission>> = {
@@ -52,7 +56,8 @@ const rolePermissions: Record<CanonicalWorkspaceRole, ReadonlySet<WorkspacePermi
     "ledger.post",
     "reports.view",
     "payroll.view",
-    "payroll.manage",
+    "payroll.prepare",
+    "payroll.approve",
   ]),
   accountant: new Set([
     "settings.manage",
@@ -62,8 +67,15 @@ const rolePermissions: Record<CanonicalWorkspaceRole, ReadonlySet<WorkspacePermi
     "books.manage",
     "ledger.post",
     "reports.view",
+    // Full payroll: prepare AND approve/post (the checker in maker-checker).
+    "payroll.view",
+    "payroll.prepare",
+    "payroll.approve",
   ]),
-  hr: new Set(["payroll.view", "payroll.manage"]),
+  // HR is the payroll preparer (the maker): manages the roster, drafts runs,
+  // adds bonuses/deductions, and submits for approval — but cannot approve or
+  // post to the ledger (no `payroll.approve`).
+  hr: new Set(["payroll.view", "payroll.prepare"]),
 };
 
 export function canonicalWorkspaceRole(role: WorkspaceRole): CanonicalWorkspaceRole {

@@ -16,6 +16,7 @@ import type { ActiveChip } from "./FilterBar";
  * app chrome; this toolbar only carries controls that change the current table.
  */
 export function WorkbenchToolbar({
+  search,
   views,
   pills,
   trailing,
@@ -24,6 +25,7 @@ export function WorkbenchToolbar({
   onClearAll,
   className,
 }: {
+  search?: ReactNode;
   views?: ReactNode;
   pills?: ReactNode;
   trailing?: ReactNode;
@@ -35,6 +37,7 @@ export function WorkbenchToolbar({
   return (
     <div className={cn("flex min-w-0 flex-col gap-3", className)}>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {search ? <div className="w-full min-w-0 sm:w-auto">{search}</div> : null}
         {views ? <div className="flex shrink-0 items-center gap-2">{views}</div> : null}
         {pills ? <div className="flex min-w-0 flex-wrap items-center gap-2">{pills}</div> : null}
         {trailing ? <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ml-auto">{trailing}</div> : null}

@@ -1,10 +1,14 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import type { FunctionReturnType } from "convex/server";
 import {
   AlertCircle,
   Archive,
+  ArrowDownLeft,
+  ArrowUpRight,
+  BarChart2,
   Building2,
   CalendarDays,
   Download,
@@ -65,6 +69,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useActiveEntity } from "@/lib/openbooks/active-entity";
+import { createAiRequestEvent, OPENBOOKS_AI_EVENT } from "@/lib/openbooks/ai";
 import { cn } from "@/lib/utils";
 
 type ModuleData = FunctionReturnType<typeof api.moduleViews.overview>;
@@ -407,6 +412,9 @@ function ContactsDirectory({
 
   return (
     <WorkbenchSurface<ContactRow>
+      search={search}
+      onSearch={setSearch}
+      searchPlaceholder="Search contacts"
       config={config}
       testId="m6-contacts-screen"
       banner={
@@ -607,7 +615,7 @@ function ContactDetailSheet({
         onClose();
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update the contact.");
+      toast.error(getErrorMessage(error, "Could not update the contact."));
     } finally {
       setBusy(false);
     }
@@ -635,6 +643,12 @@ function ContactDetailSheet({
     </span>
   ) : null;
 
+  function askAiAboutContact() {
+    if (!profile) return;
+    const prompt = `Give me a breakdown of all transactions with ${profile.name}: which services are generating the most revenue, what's the total received vs outstanding, and any trends worth noting.`;
+    window.dispatchEvent(createAiRequestEvent(prompt, `Contact: ${profile.name}`));
+  }
+
   const footer = profile ? (
     <div className="flex flex-wrap items-center gap-2">
       {isCustomer ? (
@@ -656,6 +670,15 @@ function ContactDetailSheet({
           Record payment
         </Button>
       ) : null}
+      <Button
+        size="sm"
+        variant="outline"
+        data-testid="contact-ask-ai"
+        onClick={askAiAboutContact}
+        className="gap-1.5"
+      >
+        <Sparkles className="size-3.5" /> Ask AI
+      </Button>
       <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={toggleArchive}>
         <Archive className="size-3.5" /> {profile.archived ? "Restore" : "Archive"}
       </Button>
@@ -699,8 +722,8 @@ function ContactDetailBody({ profile, currency, initialTab }: { profile: Contact
   );
 }
 
-type ContactTabId = "activity" | "open" | "statements" | "details" | "notes";
-const CONTACT_TAB_IDS: ContactTabId[] = ["activity", "open", "statements", "details", "notes"];
+type ContactTabId = "activity" | "open" | "statements" | "insights" | "details" | "notes";
+const CONTACT_TAB_IDS: ContactTabId[] = ["activity", "open", "statements", "insights", "details", "notes"];
 
 function Tabs({ profile, currency, initialTab }: { profile: ContactProfile; currency: string; initialTab?: string }) {
   const [tab, setTab] = useState<ContactTabId>(
@@ -710,6 +733,7 @@ function Tabs({ profile, currency, initialTab }: { profile: ContactProfile; curr
     { id: "activity", label: "Activity" },
     { id: "open", label: "Open items" },
     { id: "statements", label: "Statements" },
+    { id: "insights", label: "Insights" },
     { id: "details", label: "Details" },
     { id: "notes", label: "Notes" },
   ];
@@ -737,6 +761,7 @@ function Tabs({ profile, currency, initialTab }: { profile: ContactProfile; curr
       {tab === "activity" ? <ActivityTab profile={profile} currency={currency} /> : null}
       {tab === "open" ? <OpenItemsTab profile={profile} currency={currency} /> : null}
       {tab === "statements" ? <StatementsTab profile={profile} currency={currency} /> : null}
+      {tab === "insights" ? <InsightsTab profile={profile} currency={currency} /> : null}
       {tab === "details" ? <DetailsTab profile={profile} /> : null}
       {tab === "notes" ? <NotesTab profile={profile} /> : null}
     </div>
@@ -753,25 +778,120 @@ function ActivityTab({ profile, currency }: { profile: ContactProfile; currency:
         const isCharge = item.chargeMinor > 0;
         const amount = isCharge ? item.chargeMinor : item.paymentMinor;
         const running = item.side === "receivable" ? item.runningReceivableMinor : item.runningPayableMinor;
+        const isTxn = item.kind === "transaction";
         return (
-          <div key={item.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-            <span className="min-w-0">
+          <div key={item.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+            {/* Direction icon */}
+            <span className={cn(
+              "flex size-6 shrink-0 items-center justify-center rounded-full",
+              item.side === "receivable" ? "bg-ob-green-50 text-ob-green-700" : "bg-muted text-muted-foreground",
+            )}>
+              {item.side === "receivable"
+                ? <ArrowDownLeft className="size-3.5" />
+                : <ArrowUpRight className="size-3.5" />}
+            </span>
+            <span className="min-w-0 flex-1">
               <span className="block truncate font-medium">{item.label}</span>
               <span className="money-figures block text-xs text-muted-foreground">
-                {item.date} · {item.side === "receivable" ? "A/R" : "A/P"}
+                {item.date}
+                {isTxn && item.categoryName ? ` · ${item.categoryName}` : ` · ${item.side === "receivable" ? "A/R" : "A/P"}`}
               </span>
             </span>
-            <span className="flex flex-col items-end">
-              <span className={cn("money-figures text-sm", isCharge ? "text-foreground" : "text-primary")}>
-                {isCharge ? "" : "−"}{formatMinorMoney(amount, { currency })}
+            <span className="flex flex-col items-end shrink-0">
+              <span className={cn("money-figures text-sm tabular-nums", item.side === "receivable" ? "text-ob-green-700" : "text-foreground")}>
+                {item.side === "receivable" ? "+" : "−"}{formatMinorMoney(amount, { currency })}
               </span>
-              <span className="money-figures text-[11px] text-muted-foreground">
-                bal {formatMinorMoney(running, { currency })}
-              </span>
+              {!isTxn && (
+                <span className="money-figures text-[11px] text-muted-foreground">
+                  bal {formatMinorMoney(running, { currency })}
+                </span>
+              )}
             </span>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function InsightsTab({ profile, currency }: { profile: ContactProfile; currency: string }) {
+  const breakdown = profile.categoryBreakdown;
+  if (!breakdown || breakdown.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No categorized transactions yet. Once bank transactions are linked to this contact and posted, a service breakdown will appear here.
+      </p>
+    );
+  }
+
+  const totalIn = breakdown.reduce((s, r) => s + r.inMinor, 0);
+  const totalOut = breakdown.reduce((s, r) => s + r.outMinor, 0);
+
+  return (
+    <div className="flex flex-col gap-4" data-testid="contact-insights">
+      {/* Revenue breakdown */}
+      {totalIn > 0 && (
+        <div>
+          <div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <ArrowDownLeft className="size-3" /> Revenue by service
+          </div>
+          <div className="flex flex-col divide-y rounded-[14px] ring-1 ring-foreground/10">
+            {breakdown.filter((r) => r.inMinor > 0).map((row) => {
+              const pct = totalIn > 0 ? Math.round((row.inMinor / totalIn) * 100) : 0;
+              return (
+                <div key={row.name} className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[13px] font-medium">{row.name}</span>
+                      <span className="money-figures shrink-0 text-[13px] font-semibold tabular-nums text-ob-green-700">
+                        {formatMinorMoney(row.inMinor, { currency })}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-ob-green-500" style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {pct}% of revenue · {row.txCount} transaction{row.txCount !== 1 ? "s" : ""}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Spend breakdown */}
+      {totalOut > 0 && (
+        <div>
+          <div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <ArrowUpRight className="size-3" /> Spend by category
+          </div>
+          <div className="flex flex-col divide-y rounded-[14px] ring-1 ring-foreground/10">
+            {breakdown.filter((r) => r.outMinor > 0).map((row) => {
+              const pct = totalOut > 0 ? Math.round((row.outMinor / totalOut) * 100) : 0;
+              return (
+                <div key={`out-${row.name}`} className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[13px] font-medium">{row.name}</span>
+                      <span className="money-figures shrink-0 text-[13px] tabular-nums text-foreground">
+                        {formatMinorMoney(row.outMinor, { currency })}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-foreground/30" style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {pct}% of spend · {row.txCount} transaction{row.txCount !== 1 ? "s" : ""}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -989,7 +1109,7 @@ function DetailsTab({ profile }: { profile: ContactProfile }) {
       });
       toast.success("Default category updated.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update the category.");
+      toast.error(getErrorMessage(error, "Could not update the category."));
     } finally {
       setSavingCategory(false);
     }
@@ -1001,7 +1121,7 @@ function DetailsTab({ profile }: { profile: ContactProfile }) {
       await setBankDetails({ contactId: profile.id as Id<"contacts">, bankDetails: bank.trim() || null });
       toast.success("Bank details saved.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save bank details.");
+      toast.error(getErrorMessage(error, "Could not save bank details."));
     } finally {
       setSavingBank(false);
     }
@@ -1110,7 +1230,7 @@ function NotesTab({ profile }: { profile: ContactProfile }) {
       await updateContact({ contactId: profile.id as Id<"contacts">, notes });
       toast.success("Notes saved.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save notes.");
+      toast.error(getErrorMessage(error, "Could not save notes."));
     } finally {
       setBusy(false);
     }
@@ -1192,7 +1312,7 @@ function AddContactModal({
       toast.success(`Added ${name.trim()} to the directory.`);
       onCreated(result.contactId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add the contact.");
+      setError(getErrorMessage(err, "Could not add the contact."));
     } finally {
       setBusy(false);
     }

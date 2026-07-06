@@ -4,6 +4,7 @@ import {
   CircleDollarSign,
   Inbox,
   Landmark,
+  Layers,
   LayoutDashboard,
   PieChart,
   Settings,
@@ -59,6 +60,12 @@ export const appRoutes: AppRoute[] = [
     label: "Contacts",
     icon: UsersRound,
     summary: "Customers, vendors, aliases, balances, and transaction history.",
+  },
+  {
+    href: "/revenue-streams",
+    label: "Revenue Streams",
+    icon: Layers,
+    summary: "Per-stream income and profit, the AI review queue, and learned rules.",
   },
   {
     href: "/payroll",

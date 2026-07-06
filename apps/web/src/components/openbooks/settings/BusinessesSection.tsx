@@ -1,12 +1,14 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { Archive, ArchiveRestore, Pencil, Plus } from "lucide-react";
-import { useState } from "react";
+import { getErrorMessage } from "@/lib/errors";
+import { Archive, ArchiveRestore, Image as ImageIcon, Pencil, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -53,6 +55,10 @@ type BusinessRow = {
   entityType: string;
   taxId: string;
   homeState: string;
+  logoUrl: string | null;
+  contactEmail: string;
+  contactPhone: string;
+  showTaxIdOnInvoice: boolean;
 };
 
 const MONTHS = [
@@ -76,6 +82,89 @@ function avatarTint(name: string) {
   return AVATAR_TINTS[hash % AVATAR_TINTS.length]!;
 }
 
+// Rename the whole workspace/account. Owner-only on the server; the name shows
+// in the sidebar switcher and the session viewer. Kept here (the Businesses /
+// Workspace settings area) so it sits with the other workspace-level identity.
+function WorkspaceNameCard() {
+  const viewer = useQuery(api.session.viewer, {});
+  const rename = useMutation(api.workspaces.rename);
+  const workspaceId = viewer?.workspace?.id;
+  const currentName = viewer?.workspace?.name ?? "";
+
+  const [name, setName] = useState("");
+  const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  // Seed the field from the current name once the viewer resolves, unless the
+  // owner has started editing. External-store sync, not a render cascade.
+  useEffect(() => {
+    if (!touched && currentName) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setName(currentName);
+    }
+  }, [currentName, touched]);
+
+  const trimmed = name.trim();
+  const dirty = trimmed.length >= 2 && trimmed !== currentName;
+
+  async function save() {
+    if (!workspaceId || !dirty) return;
+    setSaving(true);
+    setError("");
+    setSaved(false);
+    try {
+      await rename({ workspaceId, name: trimmed });
+      setTouched(false);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not rename the workspace."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-[14px] border bg-card p-5 shadow-xs" data-testid="workspace-name-card">
+      <div className="grid max-w-md gap-1.5">
+        <Label htmlFor="workspace-name-setting" className="text-sm font-medium">
+          Workspace name
+        </Label>
+        <p className="text-[12.5px] leading-5 text-muted-foreground">
+          The display name for your whole account — shown in the sidebar switcher.
+          Every business lives under it.
+        </p>
+        <Input
+          id="workspace-name-setting"
+          data-testid="workspace-name-input"
+          className="mt-1"
+          value={name}
+          onChange={(event) => {
+            setTouched(true);
+            setSaved(false);
+            setName(event.target.value);
+          }}
+          placeholder="e.g. Acme Holdings"
+        />
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        <div className="mt-2 flex items-center gap-2">
+          <Button
+            type="button"
+            onClick={save}
+            disabled={!dirty || saving}
+            data-testid="workspace-name-save"
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
+          {saved ? <span className="text-sm text-primary">Saved</span> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function BusinessesSection() {
   const data = useQuery(api.entities.list, {});
   const archive = useMutation(api.entities.archive);
@@ -94,7 +183,7 @@ export function BusinessesSection() {
       if (archived) await unarchive({ entityId: id });
       else await archive({ entityId: id });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update the business.");
+      setError(getErrorMessage(err, "Could not update the business."));
     } finally {
       setBusyId(null);
     }
@@ -102,6 +191,7 @@ export function BusinessesSection() {
 
   return (
     <div className="flex flex-col gap-4">
+      <WorkspaceNameCard />
       {error ? <p className="text-sm text-destructive" data-testid="businesses-error">{error}</p> : null}
       <div className="grid gap-[14px] sm:grid-cols-2" data-testid="businesses-grid">
         {data.rows.map((business) => {
@@ -112,14 +202,23 @@ export function BusinessesSection() {
               className={cn("rounded-[14px] border bg-card p-5 shadow-xs", business.archived && "opacity-60")}
             >
               <div className="flex items-center gap-2.5">
-                <span
-                  className={cn(
-                    "flex size-7 items-center justify-center rounded-[8px] text-xs font-semibold",
-                    avatarTint(business.name),
-                  )}
-                >
-                  {business.name.slice(0, 1).toUpperCase()}
-                </span>
+                {business.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={business.logoUrl}
+                    alt={business.name}
+                    className="size-8 rounded-[8px] object-contain"
+                  />
+                ) : (
+                  <span
+                    className={cn(
+                      "flex size-8 items-center justify-center rounded-[8px] text-xs font-semibold",
+                      avatarTint(business.name),
+                    )}
+                  >
+                    {business.name.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
                 <span className="text-[14.5px] font-semibold">{business.name}</span>
                 {business.isDemo ? (
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground">Demo</span>
@@ -171,6 +270,7 @@ export function BusinessesSection() {
 
 function EditBusinessModal({ business }: { business: BusinessRow }) {
   const updateProfile = useMutation(api.entities.updateProfile);
+  const generateLogoUploadUrl = useMutation(api.entities.generateLogoUploadUrl);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(business.name);
   const [businessType, setBusinessType] = useState<BusinessType>(business.businessType as BusinessType);
@@ -178,6 +278,17 @@ function EditBusinessModal({ business }: { business: BusinessRow }) {
   const [entityType, setEntityType] = useState(business.entityType || "LLC");
   const [taxId, setTaxId] = useState(business.taxId);
   const [homeState, setHomeState] = useState(business.homeState);
+  const [contactEmail, setContactEmail] = useState(business.contactEmail);
+  const [contactPhone, setContactPhone] = useState(business.contactPhone);
+  const [showTaxId, setShowTaxId] = useState(business.showTaxIdOnInvoice);
+  // Logo edit state: preview is what the user sees (existing URL, a freshly
+  // uploaded object URL, or null when removed). newLogoStorageId / removeLogo
+  // record the pending change applied on save.
+  const [logoPreview, setLogoPreview] = useState<string | null>(business.logoUrl);
+  const [newLogoStorageId, setNewLogoStorageId] = useState<Id<"_storage"> | null>(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -191,9 +302,43 @@ function EditBusinessModal({ business }: { business: BusinessRow }) {
       setEntityType(business.entityType || "LLC");
       setTaxId(business.taxId);
       setHomeState(business.homeState);
+      setContactEmail(business.contactEmail);
+      setContactPhone(business.contactPhone);
+      setShowTaxId(business.showTaxIdOnInvoice);
+      setLogoPreview(business.logoUrl);
+      setNewLogoStorageId(null);
+      setRemoveLogo(false);
       setError("");
     }
     setOpen(next);
+  }
+
+  async function pickLogo(file: File) {
+    setUploadingLogo(true);
+    setError("");
+    try {
+      const uploadUrl = await generateLogoUploadUrl({ entityId: business.id as Id<"entities"> });
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
+      setNewLogoStorageId(storageId);
+      setRemoveLogo(false);
+      setLogoPreview(URL.createObjectURL(file));
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not upload that logo. Try a PNG or JPG."));
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
+
+  function dropLogo() {
+    setNewLogoStorageId(null);
+    setRemoveLogo(true);
+    setLogoPreview(null);
   }
 
   async function submit() {
@@ -212,10 +357,15 @@ function EditBusinessModal({ business }: { business: BusinessRow }) {
         entityType: entityType.trim(),
         taxId: taxId.trim(),
         homeState: homeState.trim(),
+        contactEmail: contactEmail.trim(),
+        contactPhone: contactPhone.trim(),
+        showTaxIdOnInvoice: showTaxId,
+        ...(newLogoStorageId ? { logoStorageId: newLogoStorageId } : {}),
+        ...(removeLogo ? { removeLogo: true } : {}),
       });
       setOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the business.");
+      setError(getErrorMessage(err, "Could not save the business."));
     } finally {
       setBusy(false);
     }
@@ -323,6 +473,99 @@ function EditBusinessModal({ business }: { business: BusinessRow }) {
               className="font-mono text-[12.5px]"
             />
           </div>
+
+          {/* Invoice identity: logo, contact, and whether to print the Tax ID. */}
+          <div className="mt-1 border-t pt-3">
+            <div className="text-[12px] font-semibold text-muted-foreground">Invoice details</div>
+            <p className="mt-0.5 text-[11.5px] text-muted-foreground/80">
+              Shown on the invoices this business sends.
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
+                {logoPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={logoPreview} alt="Business logo" className="size-full object-contain" />
+                ) : (
+                  <ImageIcon className="size-5 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={uploadingLogo}
+                    data-testid="edit-business-logo-upload"
+                    onClick={() => logoInputRef.current?.click()}
+                  >
+                    {uploadingLogo ? "Uploading…" : logoPreview ? "Replace logo" : "Upload logo"}
+                  </Button>
+                  {logoPreview ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={uploadingLogo}
+                      data-testid="edit-business-logo-remove"
+                      onClick={dropLogo}
+                    >
+                      Remove
+                    </Button>
+                  ) : null}
+                </div>
+                <span className="text-[11px] text-muted-foreground">PNG or JPG.</span>
+              </div>
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) void pickLogo(file);
+                }}
+              />
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="grid gap-2">
+                <Label htmlFor={`edit-biz-email-${business.slug}`}>Contact email</Label>
+                <Input
+                  id={`edit-biz-email-${business.slug}`}
+                  type="email"
+                  data-testid="edit-business-email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  placeholder="billing@acme.com"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor={`edit-biz-phone-${business.slug}`}>Contact phone</Label>
+                <Input
+                  id={`edit-biz-phone-${business.slug}`}
+                  data-testid="edit-business-phone"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  placeholder="(555) 123-4567"
+                />
+              </div>
+            </div>
+            <label className="mt-3 flex items-center justify-between gap-3 rounded-lg border p-3">
+              <span className="text-[12.5px]">
+                Show Tax ID on invoices
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                  Prints the EIN / Tax ID above on the invoice.
+                </span>
+              </span>
+              <Switch
+                checked={showTaxId}
+                onCheckedChange={setShowTaxId}
+                data-testid="edit-business-show-tax-id"
+              />
+            </label>
+          </div>
+
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>
@@ -359,7 +602,7 @@ function AddBusinessModal() {
       setBusinessType("services");
       setCurrency("USD");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create the business.");
+      setError(getErrorMessage(err, "Could not create the business."));
     } finally {
       setBusy(false);
     }

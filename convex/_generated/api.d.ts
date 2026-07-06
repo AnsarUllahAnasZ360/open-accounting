@@ -48,6 +48,7 @@ import type * as demo from "../demo.js";
 import type * as demoWorkspace from "../demoWorkspace.js";
 import type * as embeddings from "../embeddings.js";
 import type * as embeddingsStore from "../embeddingsStore.js";
+import type * as employees from "../employees.js";
 import type * as entities from "../entities.js";
 import type * as entityMetrics from "../entityMetrics.js";
 import type * as entityScope from "../entityScope.js";
@@ -63,9 +64,11 @@ import type * as ledger from "../ledger.js";
 import type * as lib_provenance from "../lib/provenance.js";
 import type * as moduleViews from "../moduleViews.js";
 import type * as money from "../money.js";
+import type * as notifications from "../notifications.js";
 import type * as onboarding from "../onboarding.js";
 import type * as onboardingProposals from "../onboardingProposals.js";
 import type * as payroll from "../payroll.js";
+import type * as payrollEmail from "../payrollEmail.js";
 import type * as payrollMath from "../payrollMath.js";
 import type * as performance from "../performance.js";
 import type * as pipeline from "../pipeline.js";
@@ -90,8 +93,13 @@ import type * as secretRedaction from "../secretRedaction.js";
 import type * as seedDemo from "../seedDemo.js";
 import type * as session from "../session.js";
 import type * as settings from "../settings.js";
+import type * as streamRules from "../streamRules.js";
+import type * as streamTags from "../streamTags.js";
+import type * as streamViews from "../streamViews.js";
+import type * as streams from "../streams.js";
 import type * as stripe from "../stripe.js";
 import type * as stripeWebhook from "../stripeWebhook.js";
+import type * as syncAll from "../syncAll.js";
 import type * as systemActors from "../systemActors.js";
 import type * as team from "../team.js";
 import type * as testSupport from "../testSupport.js";
@@ -100,6 +108,7 @@ import type * as unreviewedGap from "../unreviewedGap.js";
 import type * as weeklyDigest from "../weeklyDigest.js";
 import type * as weeklyDigestData from "../weeklyDigestData.js";
 import type * as workspaceReset from "../workspaceReset.js";
+import type * as workspaces from "../workspaces.js";
 
 import type {
   ApiFromModules,
@@ -148,6 +157,7 @@ declare const fullApi: ApiFromModules<{
   demoWorkspace: typeof demoWorkspace;
   embeddings: typeof embeddings;
   embeddingsStore: typeof embeddingsStore;
+  employees: typeof employees;
   entities: typeof entities;
   entityMetrics: typeof entityMetrics;
   entityScope: typeof entityScope;
@@ -163,9 +173,11 @@ declare const fullApi: ApiFromModules<{
   "lib/provenance": typeof lib_provenance;
   moduleViews: typeof moduleViews;
   money: typeof money;
+  notifications: typeof notifications;
   onboarding: typeof onboarding;
   onboardingProposals: typeof onboardingProposals;
   payroll: typeof payroll;
+  payrollEmail: typeof payrollEmail;
   payrollMath: typeof payrollMath;
   performance: typeof performance;
   pipeline: typeof pipeline;
@@ -190,8 +202,13 @@ declare const fullApi: ApiFromModules<{
   seedDemo: typeof seedDemo;
   session: typeof session;
   settings: typeof settings;
+  streamRules: typeof streamRules;
+  streamTags: typeof streamTags;
+  streamViews: typeof streamViews;
+  streams: typeof streams;
   stripe: typeof stripe;
   stripeWebhook: typeof stripeWebhook;
+  syncAll: typeof syncAll;
   systemActors: typeof systemActors;
   team: typeof team;
   testSupport: typeof testSupport;
@@ -200,6 +217,7 @@ declare const fullApi: ApiFromModules<{
   weeklyDigest: typeof weeklyDigest;
   weeklyDigestData: typeof weeklyDigestData;
   workspaceReset: typeof workspaceReset;
+  workspaces: typeof workspaces;
 }>;
 
 /**

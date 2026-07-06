@@ -15,6 +15,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -174,6 +175,7 @@ export function ConnectionsSection({ workspaceId }: { workspaceId?: Id<"workspac
   const syncBank = useAction(api.plaid.syncItemNow);
   const disconnectBank = useAction(api.plaid.disconnectPlaidItem);
   const setBankSync = useMutation(api.plaid.setBankAccountSync);
+  const archiveBank = useMutation(api.plaid.setBankAccountArchived);
   const testPlaidApp = useAction(api.plaid.testWorkspacePlaidApp);
   const syncStripe = useAction(api.stripe.syncNow);
   const verifyStripeWebhook = useAction(api.connections.verifyStripeWebhook);
@@ -528,6 +530,64 @@ export function ConnectionsSection({ workspaceId }: { workspaceId?: Id<"workspac
         </div>
       </section>
 
+      {/* Manual / imported (non-Plaid) accounts — e.g. the default placeholder
+          or a CSV import target. Owners can remove ones they don't need. */}
+      {(data?.manualBankAccounts?.length ?? 0) > 0 ? (
+        <section className="flex flex-col gap-3" data-testid="manual-accounts">
+          <h3 className="text-[12px] font-semibold uppercase tracking-normal text-muted-foreground/80">
+            Manual &amp; imported accounts
+          </h3>
+          <div className="rounded-[14px] border bg-card shadow-xs divide-y">
+            {(data?.manualBankAccounts ?? []).map((account) => (
+              <div
+                key={String(account.id)}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3"
+                data-testid="manual-account-row"
+              >
+                <Landmark className="size-4 shrink-0 text-muted-foreground" />
+                <span className="text-sm font-medium">{account.name}</span>
+                <span className="text-[11.5px] text-muted-foreground">
+                  ••{account.mask} · {account.kind} · {account.entityName}
+                </span>
+                <div className="ml-auto">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy === `remove:${String(account.id)}`}
+                    data-testid="manual-account-remove"
+                    onClick={() =>
+                      setConfirm({
+                        title: `Remove ${account.name}?`,
+                        description:
+                          "It's hidden from your dashboard and lists. Any posted history stays in your ledger — nothing is deleted. You can't undo this from here, but reconnecting a bank recreates accounts as needed.",
+                        cta: "Remove account",
+                        action: async () => {
+                          setBusy(`remove:${String(account.id)}`);
+                          try {
+                            await archiveBank({
+                              bankAccountId: account.id as Id<"bankAccounts">,
+                              archived: true,
+                            });
+                            toast.success(`${account.name} removed.`);
+                          } catch (error) {
+                            toast.error(readableError(error, "Could not remove the account."));
+                          } finally {
+                            setBusy(null);
+                          }
+                        },
+                      })
+                    }
+                  >
+                    <Trash2 className="size-4" />
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {/* Connected accounts, grouped by business. */}
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
@@ -840,6 +900,7 @@ export function ConnectionsSection({ workspaceId }: { workspaceId?: Id<"workspac
         onOpenChange={setAddBankOpen}
         businesses={businesses}
         defaultEntityId={defaultEntityId}
+        existingBankAccounts={data?.bankAccounts ?? []}
       />
       <StripeConnectSheet
         open={stripeOpen}

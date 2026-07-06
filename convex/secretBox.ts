@@ -50,24 +50,64 @@ function bytesFromBase64(value: string) {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
+/** One HMAC-SHA-256 over Web Crypto (the HKDF primitive). */
+async function hmacSha256(keyBytes: Uint8Array, data: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    toBufferSource(keyBytes),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, toBufferSource(data));
+  return new Uint8Array(signature);
+}
+
+/**
+ * RFC 5869 HKDF-SHA-256 implemented over Web Crypto HMAC. Some Convex runtimes
+ * do not implement crypto.subtle's NATIVE "HKDF" (importKey/deriveKey throws
+ * "Not implemented … for HKDF"), but they do support HMAC + AES-GCM. This output
+ * is byte-identical to native WebCrypto HKDF for the same (ikm, salt, info,
+ * length), so v2 ciphertext stays portable across runtimes and deployments.
+ */
+async function hkdfSha256(
+  ikm: Uint8Array,
+  salt: Uint8Array,
+  info: Uint8Array,
+  length: number,
+): Promise<Uint8Array> {
+  const effectiveSalt = salt.byteLength > 0 ? salt : new Uint8Array(32);
+  const prk = await hmacSha256(effectiveSalt, ikm); // extract
+  const okm = new Uint8Array(length);
+  let previous: Uint8Array<ArrayBuffer> = new Uint8Array(0);
+  let offset = 0;
+  for (let counter = 1; offset < length; counter += 1) {
+    const input = new Uint8Array(previous.byteLength + info.byteLength + 1);
+    input.set(previous, 0);
+    input.set(info, previous.byteLength);
+    input[input.byteLength - 1] = counter;
+    previous = await hmacSha256(prk, input); // expand
+    const take = Math.min(previous.byteLength, length - offset);
+    okm.set(previous.subarray(0, take), offset);
+    offset += take;
+  }
+  return okm;
+}
+
 /**
  * Derive a 32-byte AES-GCM key from the configured env secret via HKDF-SHA-256.
- * HKDF (RFC 5869) is the correct KDF here: it extracts uniform key material from
- * the (possibly low-entropy) env string and expands it to exactly 32 raw bytes,
- * unlike a bare SHA-256 digest which performs no salting and no expansion.
+ * HKDF (RFC 5869) extracts uniform key material from the (possibly low-entropy)
+ * env string and expands it to exactly 32 raw bytes, unlike a bare SHA-256
+ * digest which performs no salting and no expansion. Computed over HMAC (above)
+ * so it works in the default Convex runtime where native HKDF is unavailable.
  */
 async function deriveHkdfKey(secretValue: string, salt: Uint8Array): Promise<CryptoKey> {
-  const ikm = await crypto.subtle.importKey(
+  const ikm = new TextEncoder().encode(secretValue);
+  const rawKey = await hkdfSha256(ikm, salt, HKDF_INFO, 32);
+  return await crypto.subtle.importKey(
     "raw",
-    toBufferSource(new TextEncoder().encode(secretValue)),
-    "HKDF",
-    false,
-    ["deriveKey"],
-  );
-  return await crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt: toBufferSource(salt), info: HKDF_INFO },
-    ikm,
-    { name: "AES-GCM", length: 256 },
+    toBufferSource(rawKey),
+    "AES-GCM",
     false,
     ["encrypt", "decrypt"],
   );

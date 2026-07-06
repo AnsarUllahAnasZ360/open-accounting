@@ -1,7 +1,9 @@
 "use client";
 
 import { useAuthActions, useConvexAuth } from "@convex-dev/auth/react";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
+import { toast } from "sonner";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -26,9 +28,14 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import { AccessErrorBoundary } from "@/components/openbooks/AccessErrorBoundary";
 import { AskAIWidget } from "@/components/openbooks/AskAIWidget";
 import { CommandPalette } from "@/components/openbooks/CommandPalette";
+import { DensityToggle } from "@/components/openbooks/DensityToggle";
+import { NotificationBell } from "@/components/openbooks/NotificationBell";
 import { OnboardingScreen } from "@/components/openbooks/OnboardingScreen";
+import { ThemeToggle } from "@/components/openbooks/ThemeToggle";
+import { WorkspaceUnavailableScreen } from "@/components/openbooks/WorkspaceUnavailableScreen";
 import { useIsMobile } from "@/components/openbooks/workbench";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,12 +89,25 @@ function roleLabel(role: string | null | undefined) {
 
 function routesForRole(role: string | null | undefined) {
   if (role === "hr" || role === "member") {
+    // HR works payroll only — no books, dashboard, reports, revenue streams,
+    // etc. Their entire surface is the Payroll module.
     return appRoutes.filter((route) => route.href === "/payroll");
   }
-  if (role === "accountant" || role === "admin") {
-    return appRoutes.filter((route) => route.href !== "/payroll");
-  }
+  // Accountant/Admin now have full payroll access (Owner + Accountant tier), so
+  // Payroll stays in their nav alongside the books.
   return appRoutes;
+}
+
+// Paths an HR/member is allowed to open. Everything else (dashboard, income,
+// expenses, reports, revenue-streams, settings, …) is redirected to Payroll.
+function isPayrollScopedPathAllowed(pathname: string) {
+  return (
+    pathname === "/" ||
+    pathname.startsWith("/payroll") ||
+    pathname.startsWith("/profile") ||
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/sign-in")
+  );
 }
 
 function isRouteActive(pathname: string, href: string) {
@@ -130,7 +150,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  return <AuthenticatedAppShell>{children}</AuthenticatedAppShell>;
+  return (
+    <AccessErrorBoundary>
+      <AuthenticatedAppShell>{children}</AuthenticatedAppShell>
+    </AccessErrorBoundary>
+  );
 }
 
 function AuthenticatedAppShell({ children }: { children: ReactNode }) {
@@ -154,6 +178,15 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     api.onboarding.getProgress,
     sessionReady && workspaceReady && rawRole === "owner" ? {} : "skip",
   );
+  // HR/member are scoped to Payroll only. If they land anywhere else (the
+  // dashboard is the post-login default), send them to Payroll and don't render
+  // the disallowed page's content in the meantime.
+  const restrictedToPayroll = rawRole === "hr" || rawRole === "member";
+  const restrictedBlocked = restrictedToPayroll && !isPayrollScopedPathAllowed(pathname);
+  useEffect(() => {
+    if (!sessionReady || !workspaceReady) return;
+    if (restrictedBlocked) router.replace("/payroll");
+  }, [restrictedBlocked, sessionReady, workspaceReady, router]);
   const [activeEntityId, setActiveEntityId] = useState<string | null>(null);
   // Portfolio scope (Epic E5-T2). `true` = 'All businesses' is selected. Stored
   // separately from the single-entity selection so switching back to a business
@@ -210,7 +243,13 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     [activeBusinessRows, activeEntityId],
   );
   const selectedEntityId = selectedEntity?.id;
-  const routeForcesPortfolioScope = pathname === "/dashboard";
+  // The dashboard used to be locked to the 'All businesses' portfolio roll-up
+  // (and the business switcher was hidden there). It now honors the global
+  // business switcher like every other screen, so a multi-business owner can
+  // view the combined portfolio OR drill into a single business's dashboard.
+  // 'All businesses' remains the first option in the switcher, so the portfolio
+  // view is still one click away. No route forces portfolio scope anymore.
+  const routeForcesPortfolioScope = false;
   const reportArgs = useMemo(
     () =>
       routeForcesPortfolioScope || portfolioActive
@@ -321,7 +360,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (!(event.metaKey || event.ctrlKey)) return;
-      const key = event.key.toLowerCase();
+      const key = event.key?.toLowerCase();
       if (key === "k") {
         event.preventDefault();
         setPaletteMounted(true);
@@ -526,6 +565,17 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     );
   }
 
+  // The user's workspace was deleted, or their access was removed/suspended.
+  // Show a calm explanation instead of crashing on an unauthorized read.
+  if (viewer.status === "workspace_unavailable") {
+    return (
+      <WorkspaceUnavailableScreen
+        userEmail={viewer.user?.email ?? undefined}
+        onSignOut={() => void signOut()}
+      />
+    );
+  }
+
   if (workspaceReady && businesses === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm text-muted-foreground">
@@ -554,12 +604,24 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     (workspaceReady && activeBusinessRows.length === 0) ||
     ownerMidOnboarding
   ) {
+    // Onboarding is owner-only (it reads owner-scoped connection settings). A
+    // non-owner who lands here has no usable workspace — show the calm
+    // "unavailable" screen instead of rendering the wizard, which would fire
+    // owner-only queries their role can't access.
+    if (rawRole === "owner" || viewer.joinedViaInvite) {
+      return (
+        <OnboardingScreen
+          workspaceName={viewer.workspace?.name}
+          userName={viewer.user?.profile?.displayName ?? viewer.user?.name ?? viewer.user?.email}
+          joinedViaInvite={viewer.joinedViaInvite}
+          role={viewer.role}
+        />
+      );
+    }
     return (
-      <OnboardingScreen
-        workspaceName={viewer.workspace?.name}
-        userName={viewer.user?.profile?.displayName ?? viewer.user?.name ?? viewer.user?.email}
-        joinedViaInvite={viewer.joinedViaInvite}
-        role={viewer.role}
+      <WorkspaceUnavailableScreen
+        userEmail={viewer.user?.email ?? undefined}
+        onSignOut={() => void signOut()}
       />
     );
   }
@@ -606,6 +668,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
                 role={role}
                 routes={visibleAppRoutes}
                 canAccessSettings={canAccessSettings}
+                canSync={canViewBooks}
                 onSignOut={handleSignOut}
               />
             ) : (
@@ -619,6 +682,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
                 role={role}
                 routes={visibleAppRoutes}
                 canAccessSettings={canAccessSettings}
+                canSync={canViewBooks}
                 onCollapse={toggleCollapsed}
                 onCloseMobile={() => setSidebarOpen(false)}
                 onNavigate={() => setSidebarOpen(false)}
@@ -671,6 +735,9 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <div id="ob-topbar-page-actions" className="flex items-center gap-1.5" />
+                    <NotificationBell workspaceId={viewer?.workspace?.id} />
+                    <DensityToggle />
+                    <ThemeToggle />
                     {/* Search is a compact affordance reachable at ALL widths
                         (the only ⌘K path on mobile), not a desktop-only pill. */}
                     <Tooltip>
@@ -736,7 +803,13 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
                     onAskAiPage ? "h-[calc(100dvh-3.5rem)] overflow-hidden" : "px-4 py-4 lg:px-6",
                   )}
                 >
-                  {children}
+                  {restrictedBlocked ? (
+                    <div className="flex min-h-[60vh] items-center justify-center text-sm text-muted-foreground">
+                      Taking you to Payroll…
+                    </div>
+                  ) : (
+                    children
+                  )}
                 </main>
               </div>
 
@@ -856,6 +929,32 @@ function InboxBadge({ collapsed }: { collapsed?: boolean }) {
   );
 }
 
+// Unreviewed stream-suggestion count for the Revenue Streams nav item.
+function RevenueStreamsBadge({ collapsed }: { collapsed?: boolean }) {
+  const { activeEntity, scope } = useActiveEntity();
+  const count =
+    useQuery(
+      api.streamRules.streamNeedsReviewCount,
+      scope !== "all" && activeEntity.id ? { entityId: activeEntity.id as Id<"entities"> } : "skip",
+    ) ?? 0;
+  if (count <= 0) return null;
+  if (collapsed) {
+    return (
+      <span className="absolute top-0.5 right-0.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-warning-surface px-1 text-[9px] font-semibold text-warning">
+        {count}
+      </span>
+    );
+  }
+  return (
+    <span
+      data-testid="streams-badge"
+      className="flex h-[18px] min-w-[20px] items-center justify-center rounded-full bg-warning-surface px-1.5 text-[11px] font-semibold text-warning"
+    >
+      {count}
+    </span>
+  );
+}
+
 function ExpandedSidebar({
   pathname,
   workspaceName,
@@ -866,6 +965,7 @@ function ExpandedSidebar({
   role,
   routes,
   canAccessSettings,
+  canSync,
   onCollapse,
   onCloseMobile,
   onNavigate,
@@ -880,6 +980,7 @@ function ExpandedSidebar({
   role: string;
   routes: typeof appRoutes;
   canAccessSettings: boolean;
+  canSync: boolean;
   onCollapse: () => void;
   onCloseMobile: () => void;
   onNavigate: () => void;
@@ -962,6 +1063,7 @@ function ExpandedSidebar({
                 <Icon className="size-[17px] shrink-0 opacity-85" />
                 <span className="flex-1">{route.label}</span>
                 {route.href === "/inbox" ? <InboxBadge /> : null}
+                {route.href === "/revenue-streams" ? <RevenueStreamsBadge /> : null}
               </Link>
               {active && childLinks.length > 0 ? (
                 <div className="ml-7 flex flex-col gap-px border-l border-border pl-2">
@@ -998,7 +1100,7 @@ function ExpandedSidebar({
 
       {/* Footer utility cluster: Sync + Profile. Settings stays in the profile menu. */}
       <div className="flex flex-col gap-1 border-t border-border p-3">
-        <SyncRow />
+        <SyncRow canSync={canSync} />
         <ProfileMenu
           userName={userName}
           userInitials={userInitials}
@@ -1023,12 +1125,14 @@ function CollapsedRail({
   role,
   routes,
   canAccessSettings,
+  canSync,
   onSignOut,
 }: {
   pathname: string;
   onExpand: () => void;
   onAskAi: () => void;
   aiOpen: boolean;
+  canSync: boolean;
   userName: string;
   userInitials: string;
   avatarColor: string;
@@ -1079,6 +1183,7 @@ function CollapsedRail({
               >
                 <Icon className="size-[17px] opacity-85" />
                 {route.href === "/inbox" ? <InboxBadge collapsed /> : null}
+                {route.href === "/revenue-streams" ? <RevenueStreamsBadge collapsed /> : null}
               </Link>
             </TooltipTrigger>
             <TooltipContent side="right">{route.label}</TooltipContent>
@@ -1112,7 +1217,7 @@ function CollapsedRail({
       <div className="flex-1" />
 
       {/* Settings stays in the profile menu so account/admin controls live together. */}
-      <SyncRow collapsed />
+      <SyncRow collapsed canSync={canSync} />
       <ProfileMenu
         collapsed
         userName={userName}
@@ -1259,36 +1364,55 @@ function WorkspaceSwitcher({
   );
 }
 
-function SyncRow({ collapsed }: { collapsed?: boolean }) {
-  // Last-sync text reflects the dashboard query's freshness; "Sync now"
-  // re-fetches client data (the live Convex subscription already keeps the UI
-  // current). A dedicated per-entity sync-now action is a backend follow-up
-  // (plan G2 "Sync now" per connection) — noted in the report rather than
-  // invented here.
+function SyncRow({ collapsed, canSync }: { collapsed?: boolean; canSync?: boolean }) {
+  // "Sync now" pulls the latest transactions from every connected bank (Plaid)
+  // AND Stripe account across ALL of the user's businesses at once, then
+  // refreshes the view. Only users with connection access (Owner/Accountant)
+  // trigger the real sync; others just refresh the (already-live) UI.
   const router = useRouter();
+  const syncAll = useAction(api.syncAll.syncAllNow);
   const [spinning, setSpinning] = useState(false);
 
-  const onSync = useCallback(() => {
+  const onSync = useCallback(async () => {
     setSpinning(true);
-    router.refresh();
-    window.setTimeout(() => setSpinning(false), 900);
-  }, [router]);
+    try {
+      if (canSync) {
+        const result = await syncAll({});
+        const total = result.plaidItems + result.stripeConnections;
+        if (total === 0) {
+          toast.info("No connected bank or Stripe accounts to sync yet.");
+        } else if (result.failed > 0) {
+          toast.warning(`Synced ${result.synced} of ${total} connections — ${result.failed} failed.`);
+        } else {
+          toast.success(`Synced ${total} connection${total === 1 ? "" : "s"} across your businesses.`);
+        }
+      }
+      router.refresh();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not sync. Try again shortly."));
+    } finally {
+      setSpinning(false);
+    }
+  }, [canSync, syncAll, router]);
+
+  const label = spinning ? "Syncing…" : canSync ? "Sync now" : "Refresh";
 
   if (collapsed) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            aria-label="Sync now"
+            aria-label={canSync ? "Sync bank + Stripe now" : "Refresh"}
             data-testid="sync-now-collapsed"
             size="icon-sm"
             variant="ghost"
-            onClick={onSync}
+            disabled={spinning}
+            onClick={() => void onSync()}
           >
             <RefreshCw className={cn("size-3.5", spinning && "animate-spin")} />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="right">{spinning ? "Syncing…" : "Sync now"}</TooltipContent>
+        <TooltipContent side="right">{canSync ? "Sync bank + Stripe now" : "Refresh"}</TooltipContent>
       </Tooltip>
     );
   }
@@ -1297,11 +1421,13 @@ function SyncRow({ collapsed }: { collapsed?: boolean }) {
     <button
       type="button"
       data-testid="sync-now"
-      onClick={onSync}
-      className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted"
+      onClick={() => void onSync()}
+      disabled={spinning}
+      title={canSync ? "Pull latest transactions from bank + Stripe for all businesses" : "Refresh"}
+      className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
     >
       <RefreshCw className={cn("size-3.5 shrink-0", spinning && "animate-spin")} />
-      <span>{spinning ? "Syncing…" : "Synced just now"}</span>
+      <span>{label}</span>
     </button>
   );
 }

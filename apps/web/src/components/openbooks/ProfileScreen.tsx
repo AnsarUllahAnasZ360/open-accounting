@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuthActions } from "@convex-dev/auth/react";
+import { getErrorMessage } from "@/lib/errors";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Check, KeyRound, UserRound } from "lucide-react";
@@ -53,7 +54,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   "ledger.post": "Ledger posting",
   "reports.view": "Reports",
   "payroll.view": "Payroll view",
-  "payroll.manage": "Payroll manage",
+  "payroll.prepare": "Payroll prepare",
+  "payroll.approve": "Payroll approve",
 };
 
 export function ProfileScreen({ embedded = false }: { embedded?: boolean }) {
@@ -100,7 +102,7 @@ function ProfileForm({ data, embedded }: { data: ProfileData; embedded: boolean 
       await update({ displayName, timezone, avatarColor });
       setSaved(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not save your profile.");
+      setError(getErrorMessage(caught, "Could not save your profile."));
     } finally {
       setBusy(false);
     }
@@ -119,7 +121,7 @@ function ProfileForm({ data, embedded }: { data: ProfileData; embedded: boolean 
       });
       setResetMessage("Password reset email sent.");
     } catch (caught) {
-      setResetMessage(caught instanceof Error ? caught.message : "Could not send password reset email.");
+      setResetMessage(getErrorMessage(caught, "Could not send password reset email."));
     } finally {
       setResetBusy(false);
     }

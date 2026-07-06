@@ -156,7 +156,8 @@ const searchContacts = createTool({
 });
 
 const getPayrollRuns = createTool({
-  description: "Read active employees and recent payroll runs.",
+  description:
+    "Read the payroll roster and recent runs. Returns active employees (with title, department, country, city, salary in native currency AND base-currency equivalent) plus ranked roll-ups byDepartment / byCountry / byCurrency (monthly cost in base currency, highest first) and the total monthly roster cost. Use this — not the ledger report — to answer 'which department/country/currency costs the most' and to compare pay across currencies. Note: draft runs are not yet posted to the ledger, so the payroll-summary report only reflects APPROVED runs.",
   inputSchema: jsonSchema<{ limit?: number }>({
     type: "object",
     properties: { limit: numberLimitSchema },

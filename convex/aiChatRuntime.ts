@@ -78,6 +78,16 @@ const getRunwayAndBurnRef = makeFunctionReference<
   { entityId?: Id<"entities">; today?: string },
   unknown
 >("aiChatTools:getRunwayAndBurn");
+const getContactInsightsRef = makeFunctionReference<
+  "query",
+  { entityId?: Id<"entities">; contactName: string },
+  unknown
+>("aiChatTools:getContactInsights");
+const getStreamPnlRef = makeFunctionReference<
+  "query",
+  { entityId?: Id<"entities">; startDate?: string; endDate?: string },
+  unknown
+>("aiChatTools:getStreamPnl");
 const getAdvisoriesRef = makeFunctionReference<
   "query",
   { entityId?: Id<"entities">; today?: string },
@@ -346,6 +356,45 @@ export const answer = action({
               return await ctx.runQuery(getAdvisoriesRef, {
                 ...withEntity(args.entityId),
                 today: advisorAsOf(),
+              });
+            },
+          }),
+          getContactInsights: tool({
+            description:
+              "Get revenue and spend breakdown by service for a specific customer or vendor. Use when asked about revenue by service from a contact, transaction history with a contact, or how much a customer has paid across different services. Searches by contact name (partial match). Returns lifetime KPIs, service-by-service revenue breakdown, and recent transactions.",
+            inputSchema: jsonSchema<{ contactName: string }>({
+              type: "object",
+              properties: {
+                contactName: { type: "string" },
+              },
+              required: ["contactName"],
+              additionalProperties: false,
+            }),
+            execute: async ({ contactName }): Promise<unknown> => {
+              toolsUsed.add("getContactInsights");
+              return await ctx.runQuery(getContactInsightsRef, {
+                ...withEntity(args.entityId),
+                contactName,
+              });
+            },
+          }),
+          getStreamPnl: tool({
+            description:
+              "Get profit-and-loss broken down by revenue stream (business line / service line, e.g. 'Web Dev', 'Digital Marketing', 'AI Dev'). Use for questions like 'how did Web Dev do this month?', 'which stream is most profitable?', 'revenue vs cost per service line', or 'per-stream P&L'. Each stream returns revenue, direct costs, profit, and margin. Untagged income and shared overhead (untagged expenses) are reported separately. Dates are ISO YYYY-MM-DD; omit them to default to the current calendar year. Numbers are ledger-derived — cite them, never estimate.",
+            inputSchema: jsonSchema<{ startDate?: string; endDate?: string }>({
+              type: "object",
+              properties: {
+                startDate: { type: "string" },
+                endDate: { type: "string" },
+              },
+              additionalProperties: false,
+            }),
+            execute: async ({ startDate, endDate }): Promise<unknown> => {
+              toolsUsed.add("getStreamPnl");
+              return await ctx.runQuery(getStreamPnlRef, {
+                ...withEntity(args.entityId),
+                startDate,
+                endDate,
               });
             },
           }),

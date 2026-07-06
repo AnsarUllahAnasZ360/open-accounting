@@ -1,6 +1,7 @@
 "use client";
 
 import { useAction } from "convex/react";
+import { getErrorMessage } from "@/lib/errors";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -96,7 +97,7 @@ export function PlaidOAuthRedirectScreen() {
           window.setTimeout(() => router.push("/settings/connections"), 900);
         })
         .catch((caught) => {
-          setError(caught instanceof Error ? caught.message : "Plaid OAuth could not be completed.");
+          setError(getErrorMessage(caught, "Plaid OAuth could not be completed."));
         });
     },
     [exchangePublicToken, router, session],

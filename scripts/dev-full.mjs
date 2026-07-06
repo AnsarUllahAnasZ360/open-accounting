@@ -87,6 +87,9 @@ async function run(name, command, args, options = {}) {
     cwd: root,
     env: options.env,
     timeout: options.timeout ?? 120_000,
+    // Windows has no bare `npx`/`pnpm` on PATH (only `.cmd`/`.ps1`); spawning
+    // through a shell resolves the right launcher on every platform.
+    shell: true,
   });
   if (stdout.trim()) console.log(stdout.trim());
   if (stderr.trim()) console.error(stderr.trim());
@@ -115,6 +118,8 @@ function spawnLong(name, command, args, env) {
     cwd: root,
     env,
     stdio: "inherit",
+    // See run(): a shell is required so `npx`/`pnpm` resolve on Windows.
+    shell: true,
   });
   child.on("exit", (code, signal) => {
     if (shuttingDown) return;

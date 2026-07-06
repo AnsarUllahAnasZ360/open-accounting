@@ -8,20 +8,36 @@
 export const FX_MICRO_SCALE = 1_000_000;
 
 /**
- * SEED-CONSISTENCY fallback rates (local-per-base, in micro-units).
+ * Fallback rates (local currency per 1 USD base, whole units).
  *
- * E10-T3: the authoritative day-of-pay rate is now FETCHED and persisted (see
+ * The authoritative day-of-pay rate is FETCHED + persisted (see
  * `payroll.fetchDayOfPayRates`) and a manual override takes precedence; the
- * settle/draft paths read the persisted rate via `resolveAccrualFxRateMicros` /
- * `resolveSettlementFxRateMicros`. This map is NOT the FX source — it exists only
- * so the demo seed's historical runs (which were materialized at these factors)
- * read back consistently when NO fetched rate exists yet. Real entities get live
- * rates; this is the inert last-resort default, not the `PKR:278/INR:83` source
- * the engine used to depend on.
+ * settle/draft/preview paths read the persisted rate via
+ * `resolveAccrualFxRateMicros`. This map is the last-resort default used when no
+ * rate has been fetched yet.
+ *
+ * It matters because the live source (Frankfurter/ECB reference rates) only
+ * covers ~30 mostly-Western currencies and does NOT publish several South-Asian
+ * / Gulf currencies teams actually pay in — BDT, PKR, AED, SAR, LKR, NPR. For
+ * those, this table is effectively the source, so a currency missing here would
+ * silently convert 1:1 (e.g. "BDT 37,500 = $37,500"). Keep the common ones here
+ * with approximate rates; ECB-covered currencies (EUR/GBP/INR/CAD/AUD) also get
+ * a sane default until a live rate is fetched. PKR:278 / INR:83 are unchanged so
+ * demo-seed historical runs still read back consistently.
  */
 const SEED_FALLBACK_LOCAL_PER_BASE: Record<string, number> = {
   PKR: 278,
   INR: 83,
+  BDT: 120,
+  LKR: 300,
+  NPR: 133,
+  AED: 3.6725, // pegged
+  SAR: 3.75, // pegged
+  EUR: 0.92,
+  GBP: 0.79,
+  CAD: 1.37,
+  AUD: 1.53,
+  SGD: 1.35,
 };
 
 export function defaultFxRateMicros(localCurrency: string, baseCurrency: string): number {
@@ -30,9 +46,18 @@ export function defaultFxRateMicros(localCurrency: string, baseCurrency: string)
   return rate ? rate * FX_MICRO_SCALE : FX_MICRO_SCALE;
 }
 
-/** final local = base salary + signed adjustment, both in local minor units. */
-export function finalLocalMinor(baseSalaryMinor: number, adjustmentMinor: number): number {
-  return baseSalaryMinor + adjustmentMinor;
+/**
+ * final local = base salary + one-time bonus − one-time deduction, all in local
+ * minor units. Bonus and deduction are both non-negative run-only amounts; they
+ * never change the employee's monthly salary but do flow into the base
+ * equivalent (and thus the ledger posting) via this total.
+ */
+export function finalLocalMinor(
+  baseSalaryMinor: number,
+  bonusMinor = 0,
+  deductionMinor = 0,
+): number {
+  return baseSalaryMinor + bonusMinor - deductionMinor;
 }
 
 /**
@@ -69,10 +94,11 @@ export type RunLineComputed = {
 
 export function computeRunLine(args: {
   baseSalaryMinor: number;
-  adjustmentMinor: number;
+  bonusMinor?: number;
+  deductionMinor?: number;
   fxRateMicros: number;
 }): RunLineComputed {
-  const final = finalLocalMinor(args.baseSalaryMinor, args.adjustmentMinor);
+  const final = finalLocalMinor(args.baseSalaryMinor, args.bonusMinor ?? 0, args.deductionMinor ?? 0);
   return {
     finalLocalMinor: final,
     baseEquivalentMinor: baseEquivalentMinor(final, args.fxRateMicros),

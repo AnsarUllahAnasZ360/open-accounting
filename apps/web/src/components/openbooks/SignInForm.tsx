@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuthActions } from "@convex-dev/auth/react";
+import { getErrorMessage } from "@/lib/errors";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -54,7 +55,7 @@ export function SignInForm({
       });
       router.push("/dashboard");
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "";
+      const message = getErrorMessage(caught, "");
       setError(message || "Could not reset this password. Request a fresh reset email.");
       setState("error");
     }
@@ -87,7 +88,7 @@ export function SignInForm({
         });
         router.push(postAuthRoute);
       } catch (caught) {
-        const message = caught instanceof Error ? caught.message : "";
+        const message = getErrorMessage(caught, "");
         setError(message || "Check your email and password, or create a new OpenBooks account.");
         setState("error");
       }

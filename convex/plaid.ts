@@ -18,7 +18,7 @@ type PlaidEnvInput = {
   PLAID_ENV?: string;
 };
 
-type PlaidApiCredential = {
+export type PlaidApiCredential = {
   clientId: string;
   secret: string;
   environment: "sandbox" | "development" | "production";
@@ -1537,6 +1537,16 @@ export const syncItemTransactionsInternal = internalMutation({
       updatedAt: now,
     });
 
+    // Auto-settle any approved payroll run whose matching bank payment just
+    // arrived. Enqueued BEFORE the categorization drainer so it claims a payroll
+    // outflow (marking it confirmed) before the drainer could categorize it as a
+    // plain expense — keeping payroll single-counted. Runs as its own system
+    // transaction; a settle error never rolls back the sync.
+    await ctx.scheduler.runAfter(0, internal.payroll.autoSettleApprovedRunsForEntity, {
+      entityId: entity._id,
+      actorUserId,
+    });
+
     if (summary.needsReviewCount > 0) {
       // E2-T3: kick off the self-rescheduling drainer (pass 0). It processes a
       // bounded batch per pass and re-enqueues itself until the queue is empty
@@ -1557,6 +1567,21 @@ export const syncItemTransactionsInternal = internalMutation({
       ...summary,
       nextCursor: args.nextCursor,
     };
+  },
+});
+
+// Resolve the owning entity for an incoming Plaid item (by Plaid's item_id).
+// The webhook route uses this to pick which workspace's Plaid credential to
+// verify the signature with — env-var credentials aren't set when Plaid is
+// configured through the in-app setup form.
+export const getEntityForPlaidItem = internalQuery({
+  args: { plaidItemId: v.string() },
+  handler: async (ctx, args) => {
+    const item = await ctx.db
+      .query("plaidItems")
+      .withIndex("by_item", (q) => q.eq("plaidItemId", args.plaidItemId))
+      .first();
+    return item ? { entityId: item.entityId } : null;
   },
 });
 
@@ -1796,6 +1821,32 @@ export const setBankAccountSync = mutation({
     await requireWorkspacePermission(ctx, entity.workspaceId, "connections.manage");
     await ctx.db.patch(account._id, { includeInSync: args.includeInSync, updatedAt: Date.now() });
     return { bankAccountId: account._id, includeInSync: args.includeInSync };
+  },
+});
+
+// Soft-remove (archive) a manual / imported bank account. Ledger-safe: the row
+// and any posted history stay in the DB (posted entries are immutable), but the
+// account is filtered out of the dashboard, AI, and connection lists. Plaid-
+// linked accounts must use "Disconnect" instead (they own a sync + token), so
+// this rejects accounts with a plaidItemId.
+export const setBankAccountArchived = mutation({
+  args: { bankAccountId: v.id("bankAccounts"), archived: v.boolean() },
+  handler: async (ctx, args): Promise<{ bankAccountId: Id<"bankAccounts">; archived: boolean }> => {
+    const account = await ctx.db.get(args.bankAccountId);
+    if (!account) throw new Error("Bank account not found.");
+    if (account.plaidItemId) {
+      throw new Error("This is a linked bank account — use Disconnect instead of Remove.");
+    }
+    const entity = await ctx.db.get(account.entityId);
+    if (!entity) throw new Error("OpenBooks entity not found.");
+    await requireWorkspacePermission(ctx, entity.workspaceId, "connections.manage");
+    await ctx.db.patch(account._id, {
+      archived: args.archived,
+      // Archiving also stops any (unlikely) sync; unarchiving leaves sync off.
+      ...(args.archived ? { includeInSync: false } : {}),
+      updatedAt: Date.now(),
+    });
+    return { bankAccountId: account._id, archived: args.archived };
   },
 });
 
@@ -2269,6 +2320,37 @@ async function upsertPlaidAccountsForItemCore(
       entityId: targetEntity._id,
     });
     createdCount += 1;
+  }
+
+  // Auto-hide the empty default "CSV" placeholder for any business that just got
+  // a real Plaid account. Only archive it when genuinely unused (mask "CSV", not
+  // synced, $0, and no transactions ever posted to it) so we never hide an
+  // account the owner actually used. Ledger history, if any, is left untouched.
+  const touchedEntityIds = new Set(accounts.map((entry) => String(entry.entityId)));
+  for (const entityIdStr of touchedEntityIds) {
+    const entityId = entityIdStr as Id<"entities">;
+    const entityBankAccounts = await ctx.db
+      .query("bankAccounts")
+      .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+      .take(50);
+    for (const placeholder of entityBankAccounts) {
+      if (placeholder.archived) continue;
+      if (placeholder.plaidItemId) continue; // linked/real account — leave it
+      if (placeholder.mask !== "CSV") continue;
+      if (placeholder.includeInSync) continue;
+      if (placeholder.balanceMinor !== 0) continue;
+      const anyTxn = await ctx.db
+        .query("transactions")
+        .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+        .filter((q) => q.eq(q.field("bankAccountId"), placeholder._id))
+        .first();
+      if (anyTxn) continue;
+      await ctx.db.patch(placeholder._id, {
+        archived: true,
+        includeInSync: false,
+        updatedAt: now,
+      });
+    }
   }
 
   return { createdCount, updatedCount, accounts };

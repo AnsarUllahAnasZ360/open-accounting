@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { getErrorMessage } from "@/lib/errors";
 
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
@@ -63,7 +64,7 @@ export function DataSection() {
       await logExport(entityArg);
       setExportMessage("Exported your full account: a JSON snapshot and a zip of per-table CSVs.");
     } catch (caught) {
-      setExportMessage(caught instanceof Error ? caught.message : "Export failed.");
+      setExportMessage(getErrorMessage(caught, "Export failed."));
     } finally {
       setExportBusy(false);
     }
@@ -182,7 +183,7 @@ function WorkspaceResetPanel({
       // Land back in the guided first-run on the next render.
       window.location.assign("/dashboard");
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Reset failed.");
+      setMessage(getErrorMessage(caught, "Reset failed."));
     } finally {
       setBusy(false);
     }
@@ -266,7 +267,7 @@ function RealTestResetPanel({
       const result = await startFullRebuild({ confirmation });
       setMessage(`Reset completed. ${result.workspaceName} was recreated and owner bootstrap returned ${result.bootstrap.status}.`);
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Real-test reset failed.");
+      setMessage(getErrorMessage(caught, "Real-test reset failed."));
     } finally {
       setBusy(false);
     }

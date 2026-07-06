@@ -45,6 +45,12 @@ export const viewer = query({
     ]);
     const membership = memberships.find((candidate) => candidate.status === "active") ?? null;
     const activeWorkspace = membership ? await ctx.db.get(membership.workspaceId) : null;
+    // "Workspace unavailable" = the user HAD access that is now gone (the owner
+    // deleted the workspace, or the member was removed/suspended), as opposed to
+    // a brand-new user who simply hasn't onboarded. Signals: an active
+    // membership pointing at a now-deleted workspace, or a disabled membership.
+    const membershipWorkspaceMissing = Boolean(membership) && !activeWorkspace;
+    const hasDisabledMembership = memberships.some((candidate) => candidate.status === "disabled");
 
     // A workspace with zero active businesses means the owner has not finished
     // (or has just RESET — Epic E4-T10) their books: there is nothing to show, so
@@ -83,6 +89,22 @@ export const viewer = query({
       );
     }
 
+    // A user with no membership at all who previously accepted an invite (so
+    // their workspace was later deleted) is also "unavailable" — not a new
+    // onboarding user. A genuine new signup has no membership AND no accepted
+    // invite, and should still be routed to onboarding.
+    let hadAcceptedInvite = false;
+    if (!membership && !hasDisabledMembership && user?.email) {
+      const invitesForUser = await ctx.db
+        .query("invites")
+        .withIndex("by_email", (q) => q.eq("email", user.email!))
+        .collect();
+      hadAcceptedInvite = invitesForUser.some(
+        (invite) => invite.status === "accepted" && invite.acceptedByUserId === userId,
+      );
+    }
+    const workspaceUnavailable = membershipWorkspaceMissing || hasDisabledMembership || hadAcceptedInvite;
+
     return {
       user: user
         ? {
@@ -116,7 +138,9 @@ export const viewer = query({
       status:
         membership && activeWorkspace && (joinedViaInvite || workspaceHasBusiness)
           ? ("ready" as const)
-          : ("needs_onboarding" as const),
+          : workspaceUnavailable
+            ? ("workspace_unavailable" as const)
+            : ("needs_onboarding" as const),
     };
   },
 });

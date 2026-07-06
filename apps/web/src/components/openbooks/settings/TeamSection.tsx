@@ -1,14 +1,12 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { ConvexError } from "convex/values";
 import { Copy, Mail, Trash2 } from "lucide-react";
-// ConvexError surfaces its `.data` payload on the client; we read it when present
-// (clear server messages like the last-owner guard) and fall back to `.message`.
 import { useState } from "react";
 
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
+import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,9 +39,7 @@ function avatarTint(role: string, pending: boolean) {
 }
 
 function errorMessage(err: unknown, fallback: string) {
-  if (err instanceof ConvexError) return String(err.data);
-  if (err instanceof Error) return err.message;
-  return fallback;
+  return getErrorMessage(err, fallback);
 }
 
 type ManageableRole = "owner" | "accountant" | "hr";
@@ -246,6 +242,18 @@ function MemberRow({ member, canManage }: { member: MemberRowData; canManage: bo
   );
 }
 
+// Invitable roles. The trigger shows the short name; the full description rides
+// the dropdown item as a second line, so the closed control stays clean instead
+// of cramming a long sentence against the chevron.
+const INVITE_ROLE_OPTIONS = [
+  { value: "hr" as const, label: "HR", desc: "Payroll only" },
+  {
+    value: "accountant" as const,
+    label: "Accountant",
+    desc: "Books, imports, reports & ledger corrections",
+  },
+];
+
 function InviteModal({ emailDeliveryConfigured }: { emailDeliveryConfigured: boolean }) {
   const invite = useMutation(api.team.invite);
   const [open, setOpen] = useState(false);
@@ -304,12 +312,23 @@ function InviteModal({ emailDeliveryConfigured }: { emailDeliveryConfigured: boo
             <Label>Role</Label>
             <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
               <SelectTrigger data-testid="team-invite-role" className="w-full">
-                <SelectValue />
+                <span className="truncate">
+                  {INVITE_ROLE_OPTIONS.find((option) => option.value === role)
+                    ?.label ?? "Select a role"}
+                </span>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" className="w-(--radix-select-trigger-width)">
                 <SelectGroup>
-                  <SelectItem value="hr">HR — payroll only</SelectItem>
-                  <SelectItem value="accountant">Accountant — books, imports, reports &amp; ledger corrections</SelectItem>
+                  {INVITE_ROLE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <span className="flex flex-col gap-0.5">
+                        <span className="font-medium">{option.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {option.desc}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
                 </SelectGroup>
               </SelectContent>
             </Select>

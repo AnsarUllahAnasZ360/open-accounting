@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenBooks — Product Update &amp; Roadmap</title>
+    <style>
+      :root {
+        --green: #2ca01c;
+        --green-700: #1d6b12;
+        --green-50: #f1f8ee;
+        --ink: #111827;
+        --muted: #5b6472;
+        --line: #e5e7eb;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: #fff;
+        line-height: 1.5;
+        font-size: 13px;
+        font-family:
+          "Geist",
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      .doc {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 40px 48px 56px;
+      }
+
+      .cover {
+        border-bottom: 3px solid var(--green);
+        padding-bottom: 14px;
+        margin-bottom: 18px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 700;
+      }
+      .brand .mark {
+        width: 24px;
+        height: 24px;
+        border-radius: 7px;
+        background: var(--green);
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 800;
+      }
+      h1 {
+        font-size: 25px;
+        line-height: 1.1;
+        margin: 12px 0 4px;
+        letter-spacing: -0.4px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 11.5px;
+        margin-top: 6px;
+      }
+      .meta b {
+        color: var(--ink);
+      }
+
+      h2 {
+        font-size: 16px;
+        margin: 20px 0 8px;
+        padding-bottom: 5px;
+        border-bottom: 1.5px solid var(--line);
+        letter-spacing: -0.2px;
+      }
+      p {
+        margin: 7px 0;
+      }
+      ul {
+        margin: 6px 0;
+        padding-left: 18px;
+      }
+      li {
+        margin: 3px 0;
+      }
+      strong {
+        font-weight: 600;
+      }
+      em {
+        color: var(--muted);
+      }
+
+      .lead {
+        background: var(--green-50);
+        border: 1px solid #dcecd2;
+        border-radius: 10px;
+        padding: 10px 13px;
+        margin: 10px 0;
+        font-size: 13px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 10px 0;
+        font-size: 11.8px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 6px 9px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      thead th {
+        border-bottom: 2px solid var(--ink);
+        font-weight: 600;
+      }
+      tbody tr:nth-child(even) {
+        background: #fafafa;
+      }
+      td:first-child,
+      th:first-child {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .seq {
+        background: #fafafa;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 13px;
+        margin: 10px 0;
+        font-size: 12.5px;
+      }
+      .seq b {
+        color: var(--green-700);
+      }
+      .footer {
+        margin-top: 22px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 11.5px;
+        text-align: center;
+      }
+      .principle {
+        font-weight: 600;
+        color: var(--green-700);
+      }
+
+      @media print {
+        .doc {
+          padding: 0;
+          max-width: none;
+        }
+        h2 {
+          break-after: avoid;
+        }
+        table,
+        ul,
+        .lead,
+        .seq {
+          break-inside: avoid;
+        }
+        @page {
+          margin: 14mm;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="doc">
+      <header class="cover">
+        <div class="brand"><span class="mark">ob</span> OpenBooks</div>
+        <h1>Product Update &amp; Roadmap</h1>
+        <p class="sub">
+          Open-source, AI-assisted double-entry bookkeeping —
+          <strong>AI proposes, the ledger engine posts.</strong>
+        </p>
+        <p class="meta">
+          <b>26 June 2026</b> · Founder brief · A QuickBooks alternative for
+          small businesses &amp; multi-LLC owners
+        </p>
+      </header>
+
+      <p>
+        A hidden double-entry ledger is the source of truth. Money flows in
+        (banks, Stripe, CSV, invoices, bills, receipts, manual); an AI pipeline
+        posts the confident items and sends the rest to an
+        <strong>Inbox</strong> for one-click review; reports read from journal
+        lines.
+      </p>
+
+      <h2>Where the product is today</h2>
+      <p>
+        <strong>The money loop works end-to-end:</strong> ingest → AI classify
+        (transfer → rule → memory → embedding → AI → review) → post through one
+        ledger mutation → review uncertain items → report.
+      </p>
+      <p>
+        <strong>Built &amp; shipping:</strong> Dashboard (per-business or
+        portfolio), Transactions, Income/Expenses, Inbox, Contacts, Invoices
+        (A/R, Stripe send + PDF), Bills (A/P), Reports (P&amp;L / Balance Sheet
+        / cash flow), Settings (Team, BYO-AI, Connections, Rules, Tax, Audit).
+        <strong>AI engine:</strong> bring-your-own keys (OpenAI-compatible,
+        OpenRouter, Bedrock…), confidence calibration, semantic memory, a
+        grounded copilot, and CFO advisories (runway, burn, concentration, tax
+        set-aside).
+      </p>
+      <p>
+        <strong>Guardrails:</strong> posted entries are immutable (corrections
+        reverse-and-repost); money is integer minor-units; AI autonomy is one
+        setting — Suggest / Balanced (≥90%) / Autopilot (≥75%).
+      </p>
+
+      <h2>What I have delivered since taking on the project</h2>
+      <ul>
+        <li>
+          <strong>Got it running locally (Windows)</strong> — fixed
+          setup/spawn/auth-bypass/env issues, repaired the
+          <strong>credential vault</strong> (Convex-compatible HKDF), and wired
+          <strong>bring-your-own AI</strong> (OpenRouter/Fireworks) so the
+          chatbot &amp; categorizer use the owner's own model.
+        </li>
+        <li>
+          <strong>UI modernization ("quiet futurism")</strong> — full
+          <strong>dark mode</strong> + toggle, refined depth/elevation, subtle
+          <strong>motion</strong> (count-up KPIs, page entrance, reduced-motion
+          safe), and a <strong>density toggle</strong>.
+        </li>
+        <li>
+          <strong>Workflow features</strong> — per-business dashboard, "where
+          money came from" income donut, red-expense/green-income colors, Inbox
+          <strong>AI-review filters</strong> + "Run AI on selected,"
+          <strong>Run AI catch-up</strong>, contact linking, single-screen
+          Transactions, search across tables, CSV file upload, professional
+          <strong>invoice PDF</strong> + calendar due-dates.
+        </li>
+        <li>
+          <strong>Reliability &amp; fixes</strong> — system-wide clean error
+          handling, removed hard-coded demo dates (expenses/invoices/aging),
+          verified the <strong>team-invite flow</strong> and fixed the invite
+          URL (<code>SITE_URL</code>), plus many UI/layout fixes (table fit,
+          dropdown alignment, button cursor, Inbox rows).
+        </li>
+        <li>
+          <strong>Cleanup &amp; docs</strong> — removed unused files and dead
+          Convex functions; produced this update &amp; roadmap.
+        </li>
+      </ul>
+
+      <h2>Next up — finish Payroll</h2>
+      <p>
+        Payroll has a data model and a screen but isn't yet end-to-end. It's the
+        priority build because it touches the ledger, taxes, and compliance.
+      </p>
+      <ul>
+        <li>
+          Employees &amp; contractors (W-2 / 1099), pay schedules, gross-to-net
+          pay runs with <strong>tax withholding</strong>.
+        </li>
+        <li>
+          <strong>Ledger posting</strong> of wages, payroll-tax liabilities, and
+          net pay; remittance tracking; direct deposit; filings (941, W-2,
+          1099).
+        </li>
+        <li>
+          <strong>AI assist</strong> — anomaly checks and plain-English run
+          summaries.
+        </li>
+      </ul>
+      <div class="lead">
+        <em>Recommended:</em> API-backed tax tables &amp; filings, native ledger
+        posting — the fastest compliant path.
+      </div>
+
+      <h2>Roadmap — QuickBooks parity + AI differentiation</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Theme</th>
+            <th>Close the QuickBooks gap</th>
+            <th>The AI differentiator</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Receivables</td>
+            <td>
+              Estimates → invoice, recurring invoices,
+              <strong>sales-tax automation</strong>, ACH payments
+            </td>
+            <td>
+              AR automation: predict pay dates, auto-dunning, risk-ranked
+              collections
+            </td>
+          </tr>
+          <tr>
+            <td>Payables</td>
+            <td>
+              Vendor <strong>bill pay</strong>, purchase orders → 2/3-way match,
+              1099s
+            </td>
+            <td>
+              AP automation: read bills from email, OCR + PO match, schedule
+              payments
+            </td>
+          </tr>
+          <tr>
+            <td>Banking &amp; close</td>
+            <td>
+              Finish <strong>bank reconciliation</strong>, credit-card feeds,
+              budget vs actual
+            </td>
+            <td>
+              <strong>AI month-end close</strong>: auto-reconcile, propose
+              accruals/depreciation, write the summary
+            </td>
+          </tr>
+          <tr>
+            <td>Operations</td>
+            <td>Products / light inventory, project &amp; time tracking</td>
+            <td>
+              Anomaly + duplicate detection; receipt/invoice OCR auto-match
+            </td>
+          </tr>
+          <tr>
+            <td>Platform</td>
+            <td>Mobile app, multi-currency (FX), customizable reports</td>
+            <td>
+              Natural-language reporting; agentic "close my books / chase
+              overdue" (confirmable, never silent)
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="seq">
+        <strong>Suggested sequence:</strong> &nbsp;<b>Now</b> → finish Payroll.
+        &nbsp;<b>Next</b> → AI month-end close + AP/AR automation (biggest edge
+        over QuickBooks). &nbsp;<b>Then</b> → sales tax, recurring invoices,
+        bank reconciliation. &nbsp;<b>Later</b> → multi-currency, mobile,
+        projects/inventory, agentic copilot.
+      </div>
+
+      <div class="footer">
+        <span class="principle"
+          >The principle holds at every step: AI proposes, the ledger engine
+          posts.</span
+        >
+        <br />OpenBooks · Product Update &amp; Roadmap · 26 June 2026
+      </div>
+    </div>
+  </body>
+</html>

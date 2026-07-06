@@ -1,6 +1,6 @@
 import { decodeProtectedHeader, importJWK, jwtVerify, type JWK } from "jose";
 
-import { callPlaid } from "./plaid";
+import { callPlaid, type PlaidApiCredential } from "./plaid";
 
 type PlaidWebhookBody = {
   webhook_type?: unknown;
@@ -73,10 +73,14 @@ export function normalizePlaidWebhookEvent(body: PlaidWebhookBody): PlaidWebhook
 export async function verifyPlaidWebhookSignature({
   payload,
   verificationHeader,
+  credential,
   maxAgeMs = 5 * 60_000,
 }: {
   payload: string;
   verificationHeader: string | null;
+  // Workspace Plaid credential for the item this webhook targets. Required to
+  // call Plaid's verification-key endpoint when keys aren't in env vars.
+  credential?: PlaidApiCredential;
   maxAgeMs?: number;
 }) {
   if (!verificationHeader) {
@@ -102,7 +106,7 @@ export async function verifyPlaidWebhookSignature({
     return { ok: false as const, error: "missing_plaid_webhook_key_id" };
   }
 
-  const keyResponse = await callPlaid("/webhook_verification_key/get", { key_id: keyId });
+  const keyResponse = await callPlaid("/webhook_verification_key/get", { key_id: keyId }, credential);
   const key = keyResponse.key && typeof keyResponse.key === "object" ? keyResponse.key as JWK : null;
   if (!key) {
     return { ok: false as const, error: "plaid_webhook_key_missing" };

@@ -68,7 +68,21 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
+/* Quiet-futurism elevation: soft, layered shadows with a faintly cool tint (not
+   pure black) so surfaces lift like Linear/Mercury rather than sitting on hard
+   1px borders. Overrides Tailwind's default scale, so every `shadow-*` utility
+   app-wide (cards, dropdowns, dialogs, popovers) upgrades at once. */
+@theme {
+  --shadow-2xs: 0 1px 2px 0 oklch(0.2 0.03 264 / 0.04);
+  --shadow-xs: 0 1px 2px 0 oklch(0.2 0.03 264 / 0.05), 0 1px 1px -1px oklch(0.2 0.03 264 / 0.04);
+  --shadow-sm: 0 1px 3px 0 oklch(0.2 0.03 264 / 0.06), 0 1px 2px -1px oklch(0.2 0.03 264 / 0.05);
+  --shadow-md: 0 4px 14px -3px oklch(0.2 0.03 264 / 0.09), 0 2px 6px -2px oklch(0.2 0.03 264 / 0.06);
+  --shadow-lg: 0 14px 32px -8px oklch(0.2 0.03 264 / 0.13), 0 5px 12px -5px oklch(0.2 0.03 264 / 0.08);
+  --shadow-xl: 0 24px 50px -12px oklch(0.2 0.03 264 / 0.18);
+}
+
+@layer base {
+  :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -124,6 +138,56 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/* Dark theme (quiet futurism): refined cool-neutral surfaces with layered
+   elevation (card lifts above background), hairline translucent borders, and a
+   slightly brightened brand green so income/accents stay legible on dark. The
+   `ob-green-*` ramp and the printable invoice are intentionally NOT remapped —
+   the ramp is used as both fill and text, and the invoice is always paper-white. */
+.dark {
+  --background: oklch(0.18 0.006 264);
+  --foreground: oklch(0.96 0.003 264);
+  --card: oklch(0.215 0.007 264);
+  --card-foreground: oklch(0.96 0.003 264);
+  --popover: oklch(0.215 0.007 264);
+  --popover-foreground: oklch(0.96 0.003 264);
+  --primary: #3bbd29;
+  --primary-foreground: oklch(0.17 0.02 150);
+  --secondary: oklch(0.27 0.007 264);
+  --secondary-foreground: oklch(0.96 0.003 264);
+  --muted: oklch(0.255 0.007 264);
+  --muted-foreground: oklch(0.712 0.012 264);
+  --accent: oklch(0.29 0.008 264);
+  --accent-foreground: oklch(0.96 0.003 264);
+  --destructive: oklch(0.64 0.2 25);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: #3bbd29;
+  --positive: #3bbd29;
+  --warning: oklch(0.8 0.14 76);
+  --info: oklch(0.7 0.13 245);
+  --negative: oklch(0.68 0.19 25);
+  --negative-surface: oklch(0.27 0.07 25);
+  --positive-surface: oklch(0.27 0.06 152);
+  --warning-surface: oklch(0.28 0.06 80);
+  --info-surface: oklch(0.27 0.06 245);
+  --ai: #6cbb43;
+  --ai-surface: oklch(0.26 0.05 150);
+  --chart-1: #3bbd29;
+  --chart-2: oklch(0.7 0.12 190);
+  --chart-3: oklch(0.78 0.14 76);
+  --chart-4: oklch(0.66 0.04 250);
+  --chart-5: oklch(0.66 0.18 25);
+  --sidebar: oklch(0.165 0.006 264);
+  --sidebar-foreground: oklch(0.96 0.003 264);
+  --sidebar-primary: #3bbd29;
+  --sidebar-primary-foreground: oklch(0.17 0.02 150);
+  --sidebar-accent: oklch(0.27 0.007 264);
+  --sidebar-accent-foreground: oklch(0.96 0.003 264);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.6 0 0);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -134,6 +198,13 @@
   html {
     @apply font-sans;
   }
+  /* Tailwind v4 sets buttons to the default arrow cursor (the raw browser
+     default). Restore the pointer hand for all interactive buttons/role-buttons
+     app-wide; disabled controls keep the default cursor. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 .money-figures {
@@ -142,9 +213,67 @@
   letter-spacing: 0;
 }
 
+/* ---------------------------------------------------------------------------
+   Motion (quiet futurism): restrained, fast (≤220ms) entrance + interaction
+   easing. Everything here is gated behind `prefers-reduced-motion` so the OS
+   "reduce motion" setting fully disables it. Use `.ob-animate-in` on a surface
+   to fade-and-rise it into place on mount.
+   --------------------------------------------------------------------------- */
+@keyframes ob-fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ob-animate-in {
+  animation: ob-fade-rise 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-animate-in {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* E7-6: the register's keyboard-focused row (J/K navigation) gets a quiet inset
    ring so the owner can see where focus is without a heavy selection treatment. */
 [data-focused="true"] {
   box-shadow: inset 2px 0 0 0 var(--primary);
   background-color: color-mix(in oklch, var(--primary) 4%, transparent);
+}
+
+/* Printable invoice isolation. The `.invoice-print` document is portaled to
+   <body> and is display:none on screen (Tailwind `hidden`). When the owner
+   prints / saves as PDF we hide every OTHER direct child of <body> with
+   display:none — which collapses the app's height entirely — and show only the
+   invoice in normal flow. Using display (not visibility) means the page height
+   is just the invoice, so it never spills onto a second sheet, and the document
+   is never a `position:fixed` element that would repeat on every page. */
+@media print {
+  body > *:not(.invoice-print) {
+    display: none !important;
+  }
+  .invoice-print {
+    display: block !important;
+    margin: 0;
+    background: #ffffff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page {
+    margin: 14mm;
+  }
 }

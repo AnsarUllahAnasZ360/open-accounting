@@ -21,6 +21,7 @@ test("H3 — Settings AI shows the label-safe categorization eval result", async
   await page.getByTestId("app-sidebar").getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-nav-ai").click();
 
+  await visibleByTestId(page, "ai-diagnostics-trigger").click();
   const evalHistory = visibleByTestId(page, "ai-eval-history");
   await expect(evalHistory).toBeVisible({ timeout: 30000 });
   const latestRun = page.getByTestId("ai-eval-row").first();

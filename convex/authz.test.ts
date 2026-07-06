@@ -74,7 +74,7 @@ describe("workspace authorization", () => {
     await setupWorkspace(t);
     vi.stubEnv("OPENBOOKS_DEV_AUTH_BYPASS", "1");
     vi.stubEnv("OPENBOOKS_DEV_OWNER_EMAIL", "owner@example.com");
-    vi.stubEnv("SITE_URL", "http://localhost:3000");
+    vi.stubEnv("SITE_URL", "http://localhost:3100");
 
     const leads = await t.query(api.requestAccess.list, {});
 

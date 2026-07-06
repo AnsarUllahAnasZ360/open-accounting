@@ -118,12 +118,25 @@ function buildLanguageModel(): AgentLanguageModel {
   return buildModelForProvider({ providerId, modelId, credential }) as AgentLanguageModel;
 }
 
-export const openBooksAgent = new Agent(components.agent, {
-  name: AGENT_NAME,
-  languageModel: buildLanguageModel(),
-  instructions: OPENBOOKS_AGENT_INSTRUCTIONS,
-  tools: openBooksReadTools,
-  stopWhen: stepCountIs(5),
-});
+/**
+ * Build an Ask AI agent bound to a SPECIFIC language model. Used by the threaded
+ * chat to run on whatever provider/model the workspace configured in Settings →
+ * AI (bring-your-own key), resolved per request — so the chatbot works with any
+ * configured provider (OpenAI, Anthropic, OpenRouter via openai_compatible,
+ * Bedrock, …), not just Bedrock. The component DB (threads/messages) is shared;
+ * only the model/instructions/tools wrapper differs per request.
+ */
+export function createOpenBooksAgent(languageModel: AgentLanguageModel): Agent {
+  return new Agent(components.agent, {
+    name: AGENT_NAME,
+    languageModel,
+    instructions: OPENBOOKS_AGENT_INSTRUCTIONS,
+    tools: openBooksReadTools,
+    stopWhen: stepCountIs(5),
+  });
+}
 
+export const openBooksAgent = createOpenBooksAgent(buildLanguageModel());
+
+export type { AgentLanguageModel };
 export { AGENT_NAME };

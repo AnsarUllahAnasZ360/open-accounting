@@ -4,6 +4,8 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalQuery, type QueryCtx } from "./_generated/server";
 import { computeCfoSignals } from "./aiCfoAggregate";
+import { baseEquivalentMinor, FX_MICRO_SCALE } from "./payrollMath";
+import { resolveAccrualFxRateMicros } from "./payroll";
 
 /**
  * Internal, entity-scoped read queries backing the Ask AI agent's read tools.
@@ -199,10 +201,11 @@ export const getBalancesForEntity = internalQuery({
   args: { entityId: v.id("entities") },
   handler: async (ctx, args) => {
     const entity = await getEntityById(ctx, args.entityId);
-    const [bankAccounts, accounts] = await Promise.all([
+    const [bankAccountsRaw, accounts] = await Promise.all([
       ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
       ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
     ]);
+    const bankAccounts = bankAccountsRaw.filter((account) => !account.archived);
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
     const rows = bankAccounts.map((bankAccount) => {
       const account = accountsById.get(bankAccount.ledgerAccountId);
@@ -324,20 +327,58 @@ export const getPayrollRunsForEntity = internalQuery({
       ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(120),
       ctx.db.query("employees").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
     ]);
+    const baseCurrency = entity.currency;
+    const activeEmployees = employees.filter((employee) => employee.active);
+
+    // Resolve one FX rate per distinct currency (fetched-then-fallback, same as
+    // the payroll engine) so the AI can compare pay across currencies in the
+    // base currency instead of refusing to convert.
+    const rateByCurrency = new Map<string, number>();
+    for (const employee of activeEmployees) {
+      if (!rateByCurrency.has(employee.currency)) {
+        rateByCurrency.set(employee.currency, await resolveAccrualFxRateMicros(ctx, baseCurrency, employee.currency));
+      }
+    }
+    const monthlyBase = (employee: Doc<"employees">) =>
+      baseEquivalentMinor(employee.monthlySalaryMinor, rateByCurrency.get(employee.currency) ?? FX_MICRO_SCALE);
+
+    // Roster roll-ups so "highest-paying department / country" is answerable
+    // directly (no posted ledger required). Amounts are monthly, in base currency.
+    const rollUp = (keyOf: (e: Doc<"employees">) => string) => {
+      const map = new Map<string, { key: string; headcount: number; monthlyBaseMinor: number }>();
+      for (const employee of activeEmployees) {
+        const key = keyOf(employee);
+        const row = map.get(key) ?? { key, headcount: 0, monthlyBaseMinor: 0 };
+        row.headcount += 1;
+        row.monthlyBaseMinor += monthlyBase(employee);
+        map.set(key, row);
+      }
+      return [...map.values()].sort((a, b) => b.monthlyBaseMinor - a.monthlyBaseMinor);
+    };
 
     return {
       tool: "getPayrollRuns" as const,
       entity: entitySummary(entity),
-      activeEmployeeCount: employees.filter((employee) => employee.active).length,
-      employees: employees
-        .filter((employee) => employee.active)
+      baseCurrency,
+      activeEmployeeCount: activeEmployees.length,
+      // Total monthly roster cost in base currency (sum of active salaries).
+      monthlyRosterBaseMinor: activeEmployees.reduce((sum, e) => sum + monthlyBase(e), 0),
+      // Ranked breakdowns (highest cost first), in base currency.
+      byDepartment: rollUp((e) => (e.department?.trim() ? e.department.trim() : "Unassigned")),
+      byCountry: rollUp((e) => e.country || "—"),
+      byCurrency: rollUp((e) => e.currency),
+      employees: activeEmployees
         .slice(0, MAX_TOOL_ROWS)
         .map((employee) => ({
           id: employee._id,
           name: employee.name,
+          title: employee.title ?? null,
+          department: employee.department ?? null,
           country: employee.country,
+          city: employee.city ?? null,
           currency: employee.currency,
           monthlySalaryMinor: employee.monthlySalaryMinor,
+          monthlyBaseMinor: monthlyBase(employee),
         })),
       rows: runs
         .sort((left, right) => right.period.localeCompare(left.period))

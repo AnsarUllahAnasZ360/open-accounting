@@ -476,7 +476,6 @@ export function OnboardingScreen({
   // already edited the field. External-store sync, not a render-driven cascade.
   useEffect(() => {
     if (workspaceName && !workspaceNameTouched.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setWorkspaceNameInput(workspaceName);
     }
   }, [workspaceName]);
@@ -555,11 +554,13 @@ export function OnboardingScreen({
       rows.map((row) => (row.id === id ? { ...row, businessType } : row)),
     );
   }
-  function setRowLegalStructure(id: number, legalStructure: LegalStructure) {
-    setBusinesses((rows) =>
-      rows.map((row) => (row.id === id ? { ...row, legalStructure } : row)),
-    );
-  }
+  // Paired with the temporarily-hidden "Legal structure" selector below; restore
+  // alongside that block (see the commented JSX) when the field is re-enabled.
+  // function setRowLegalStructure(id: number, legalStructure: LegalStructure) {
+  //   setBusinesses((rows) =>
+  //     rows.map((row) => (row.id === id ? { ...row, legalStructure } : row)),
+  //   );
+  // }
   // Upload a logo for a business row: get an auth-only upload URL, POST the file,
   // then stash the storageId (sent to bootstrap) + a local preview URL. Errors
   // surface in the business-step error box rather than throwing to the field.
@@ -2068,8 +2069,8 @@ function OpeningBalancesStep({
             Opening balance booked from your bank
           </div>
           <p className="text-[12.5px] leading-5 text-muted-foreground">
-            OpenBooks recorded a balanced opening entry from your linked bank's
-            current balance. You'd only set this manually if you were starting
+            OpenBooks recorded a balanced opening entry from your linked bank&apos;s
+            current balance. You&apos;d only set this manually if you were starting
             from a CSV import or manual entries.
           </p>
         </div>

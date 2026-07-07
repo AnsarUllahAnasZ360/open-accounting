@@ -64,9 +64,7 @@ export function PlaidLinkScreen() {
       setPhase("no-session");
       return;
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSession({ linkToken: stored.linkToken, entityId: stored.entityId });
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPhase("opening");
   }, []);
 
@@ -169,7 +167,7 @@ export function PlaidLinkScreen() {
           {phase === "no-session" ? (
             <div className="rounded-[10px] border border-dashed p-4 text-sm text-muted-foreground">
               Session expired or this tab was opened directly. Return to OpenBooks and click
-              "Connect bank account" again to start a fresh Plaid Link session.
+              &quot;Connect bank account&quot; again to start a fresh Plaid Link session.
             </div>
           ) : null}
 

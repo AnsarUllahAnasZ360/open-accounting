@@ -184,7 +184,7 @@ export function AddBankSheet({
     } else {
       openPlaidTab();
     }
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   function updateAccount(plaidAccountId: string, patch: Partial<PreviewAccount>) {
     setPreviewAccounts((accounts) =>
@@ -308,7 +308,7 @@ export function AddBankSheet({
               />
               {!showExisting ? (
                 <p className="text-[11.5px] leading-5 text-muted-foreground">
-                  You'll map each connected account to a business after Plaid returns them.
+                  You&apos;ll map each connected account to a business after Plaid returns them.
                 </p>
               ) : null}
             </div>

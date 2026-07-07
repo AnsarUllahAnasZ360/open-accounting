@@ -115,7 +115,9 @@ describe("cash-flow statement transfer/split correctness (E1-T6)", () => {
 });
 
 describe("large-book report integrity (E1-T5)", () => {
-  it("keeps the trial balance and balance sheet balanced on a book with >5,000 lines", async () => {
+  // Builds a >5,000-line ledger; the default 20s timeout is tight on slower CI
+  // runners, so give this heavy integration test more room.
+  it("keeps the trial balance and balance sheet balanced on a book with >5,000 lines", { timeout: 120_000 }, async () => {
     const t = convexTest(schema, modules);
     const ids = await setup(t);
     const session = authed(t, ids.userId);

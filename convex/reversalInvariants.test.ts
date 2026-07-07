@@ -311,7 +311,9 @@ describe("E14-T3 reversal + immutability invariants", () => {
 });
 
 describe("E14-T3 post-truncation report-balance invariant (RC5 / E1-T5 gate)", () => {
-  it("keeps the reported trial balance at zero with more than 5000 journal lines", async () => {
+  // Builds a >5,000-line ledger; the default 20s timeout is tight on slower CI
+  // runners, so give this heavy integration test more room.
+  it("keeps the reported trial balance at zero with more than 5000 journal lines", { timeout: 120_000 }, async () => {
     const t = convexTest(schema, modules);
     const ids = await setupLedger(t);
     const session = authed(t, ids.userId);

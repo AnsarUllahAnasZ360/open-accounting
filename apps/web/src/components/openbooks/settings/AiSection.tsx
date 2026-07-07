@@ -24,18 +24,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { aiAutonomyOptions, frontendAiStatus, type AiAutonomyMode } from "@/lib/openbooks/ai";
+import { frontendAiStatus, type AiAutonomyMode } from "@/lib/openbooks/ai";
 import { cn } from "@/lib/utils";
 
 const CUSTOM_MODEL = "__custom__";
-
-// Plain-English consequence under each autonomy card. The threshold itself comes
-// from the shared backend constant via providerStatus.thresholds — never hard-coded.
-const AUTONOMY_CONSEQUENCE: Record<AiAutonomyMode, string> = {
-  suggest: "AI never posts on its own. Every transaction comes to your Inbox first.",
-  balanced: "Auto-posts when it's ≥90% sure. The rest waits for you. Recommended.",
-  autopilot: "Auto-posts at ≥75% and sends a weekly digest instead of per-item questions.",
-};
 
 export function AiSection({
   entityId,

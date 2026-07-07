@@ -30,6 +30,13 @@ env:
   VERCEL_CLI_VERSION: "50.28.0"
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  # Stable-alias config (both optional repo Variables):
+  #   PREVIEW_ALIAS_DOMAIN  — a wildcard custom domain on the Vercel project,
+  #     e.g. "preview.openbooks.app" -> alias becomes br-stage.preview.openbooks.app
+  #   PREVIEW_ALIAS_PREFIX  — prefix for the .vercel.app fallback (default "openbooks")
+  #     -> alias becomes openbooks-br-stage.vercel.app
+  PREVIEW_ALIAS_DOMAIN: ${{ vars.PREVIEW_ALIAS_DOMAIN }}
+  PREVIEW_ALIAS_PREFIX: ${{ vars.PREVIEW_ALIAS_PREFIX || 'openbooks' }}
 
 jobs:
   deploy:
@@ -66,6 +73,13 @@ jobs:
             // Convex + Vercel preview names: lowercase alphanumerics + hyphens.
             const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40);
 
+            // Deterministic, stable alias host for a preview key. Re-pointing this
+            // same host at each new deployment is what keeps the URL constant.
+            const aliasDomain = process.env.PREVIEW_ALIAS_DOMAIN;
+            const aliasPrefix = process.env.PREVIEW_ALIAS_PREFIX || 'openbooks';
+            const aliasHost = (key) =>
+              aliasDomain ? `${key}.${aliasDomain}` : `${aliasPrefix}-${key}.vercel.app`;
+
             if (context.eventName === 'issue_comment') {
               const prNumber = context.issue.number;
               const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
@@ -73,20 +87,24 @@ jobs:
                 core.setFailed(`PR #${prNumber} is not open.`);
                 return;
               }
+              const previewKey = `pr-${prNumber}`;
               core.setOutput('pr_number', String(prNumber));
               core.setOutput('branch', pr.head.ref);
               core.setOutput('checkout_ref', pr.head.sha);
               core.setOutput('sha', pr.head.sha);
-              core.setOutput('preview_key', `pr-${prNumber}`);
+              core.setOutput('preview_key', previewKey);
+              core.setOutput('alias_host', aliasHost(previewKey));
               return;
             }
 
             const branch = context.payload.inputs.branch;
             const { data: branchData } = await github.rest.repos.getBranch({ owner, repo, branch });
+            const previewKey = `br-${slug(branch)}`;
             core.setOutput('branch', branch);
             core.setOutput('checkout_ref', branchData.commit.sha);
             core.setOutput('sha', branchData.commit.sha);
-            core.setOutput('preview_key', `br-${slug(branch)}`);
+            core.setOutput('preview_key', previewKey);
+            core.setOutput('alias_host', aliasHost(previewKey));
 
       - uses: actions/checkout@v4
         with:
@@ -139,6 +157,14 @@ jobs:
           URL=$(echo "$URL" | tail -n 1)
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
+      # Re-point the stable alias at the deployment just created. The snapshot URL
+      # changes every run; this host does not, so links and env values stay valid.
+      - name: Point stable alias at this deployment
+        run: >-
+          vercel alias set "${{ steps.deploy.outputs.url }}"
+          "${{ steps.preview.outputs.alias_host }}"
+          --token=${{ secrets.VERCEL_TOKEN }}
+
       - name: Write job summary
         run: |
           {
@@ -146,7 +172,8 @@ jobs:
             echo ""
             echo "| Field | Value |"
             echo "|---|---|"
-            echo "| URL | ${{ steps.deploy.outputs.url }} |"
+            echo "| Stable URL | https://${{ steps.preview.outputs.alias_host }} |"
+            echo "| Snapshot URL | ${{ steps.deploy.outputs.url }} |"
             echo "| Convex preview | ${{ steps.preview.outputs.preview_key }} |"
             echo "| Branch | ${{ steps.preview.outputs.branch }} |"
             echo "| Commit | ${{ steps.preview.outputs.sha }} |"
@@ -157,7 +184,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const url = '${{ steps.deploy.outputs.url }}';
+            const stableUrl = 'https://${{ steps.preview.outputs.alias_host }}';
+            const snapshotUrl = '${{ steps.deploy.outputs.url }}';
             const sha = '${{ steps.preview.outputs.sha }}'.slice(0, 7);
             const branch = '${{ steps.preview.outputs.branch }}';
             const key = '${{ steps.preview.outputs.preview_key }}';
@@ -166,7 +194,8 @@ jobs:
               '',
               '| | |',
               '|---|---|',
-              `| **URL** | ${url} |`,
+              `| **Stable URL** | ${stableUrl} |`,
+              `| **Snapshot URL** | ${snapshotUrl} |`,
               `| **Convex** | \`${key}\` |`,
               `| **Commit** | \`${sha}\` |`,
               `| **Branch** | \`${branch}\` |`,
@@ -205,11 +234,29 @@ jobs:
       group: preview-cleanup-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     steps:
-      # Vercel automatically retires preview deployments for a PR once it is
-      # closed, and Convex `--preview-create` backends expire on their own, so
-      # this job only records what to check. Targeted teardown (deleting the
-      # exact Convex preview + its Vercel snapshots) needs the Convex management
-      # API and a per-key filter — ask if you want that helper script added.
+      - name: Install pinned Vercel CLI
+        run: npm i -g vercel@${VERCEL_CLI_VERSION}
+
+      - name: Resolve stable alias host
+        id: cleanup
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const aliasDomain = process.env.PREVIEW_ALIAS_DOMAIN;
+            const aliasPrefix = process.env.PREVIEW_ALIAS_PREFIX || 'openbooks';
+            const previewKey = `pr-${context.payload.pull_request.number}`;
+            core.setOutput(
+              'alias_host',
+              aliasDomain ? `${previewKey}.${aliasDomain}` : `${aliasPrefix}-${previewKey}.vercel.app`,
+            );
+
+      # Only PR previews are torn down here. Branch previews (e.g. stage) keep
+      # their alias on purpose so their URL stays live between deploys.
+      - name: Remove stable alias
+        run: >-
+          vercel alias remove "${{ steps.cleanup.outputs.alias_host }}"
+          --yes --token=${{ secrets.VERCEL_TOKEN }} || true
+
       - name: Note cleanup
         run: |
           {
@@ -217,6 +264,6 @@ jobs:
             echo ""
             echo "PR #${{ github.event.pull_request.number }} closed."
             echo ""
-            echo "- Vercel retires PR preview deployments automatically."
+            echo "- Removed stable alias \`${{ steps.cleanup.outputs.alias_host }}\`."
             echo "- Delete the \`pr-${{ github.event.pull_request.number }}\` Convex preview from the Convex dashboard if it lingers."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -8,7 +8,6 @@ import {
   Archive,
   ArrowDownLeft,
   ArrowUpRight,
-  BarChart2,
   Building2,
   CalendarDays,
   Download,
@@ -69,7 +68,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { useActiveEntity } from "@/lib/openbooks/active-entity";
-import { createAiRequestEvent, OPENBOOKS_AI_EVENT } from "@/lib/openbooks/ai";
+import { createAiRequestEvent } from "@/lib/openbooks/ai";
 import { cn } from "@/lib/utils";
 
 type ModuleData = FunctionReturnType<typeof api.moduleViews.overview>;

@@ -74,7 +74,10 @@ function assertCloudConvex(url) {
  * `pnpm dev:full` should run setup first so a self-hoster's first command works.
  */
 function needsSetup(fileEnv) {
-  if (!existsSync(envPath)) return true;
+  // A missing .env.local already yields an empty fileEnv (parseEnvFile returns
+  // {} for a nonexistent path), so the required-key check below covers that
+  // case. Keeping this a pure function of fileEnv — not the filesystem — lets it
+  // be unit-tested where no .env.local exists (e.g. CI).
   const required = ["JWT_PRIVATE_KEY", "JWKS", "CONVEX_DEPLOYMENT", "NEXT_PUBLIC_CONVEX_URL"];
   const hasEncryptionKey =
     fileEnv.OPENBOOKS_SECRET_ENCRYPTION_KEY || fileEnv.OPENBOOKS_TOKEN_ENCRYPTION_KEY;

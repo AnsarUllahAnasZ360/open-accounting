@@ -2,12 +2,12 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, stage]
   push:
-    branches: [main]
+    branches: [main, stage]
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -54,7 +54,8 @@ jobs:
 
   changeset:
     name: Changeset Check
-    if: github.event_name == 'pull_request'
+    # Only PRs targeting main need a changeset; stage integration doesn't.
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

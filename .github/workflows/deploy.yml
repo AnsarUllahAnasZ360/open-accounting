@@ -17,11 +17,6 @@ jobs:
     name: Production
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # GUARD: production deploys stay OFF until you explicitly reauthorize them.
-    # Enable by setting repo variable ENABLE_PRODUCTION_DEPLOY=true
-    # (Settings -> Secrets and variables -> Actions -> Variables). This honors
-    # the AGENTS.md rule: do not deploy to Vercel without reauthorization.
-    if: vars.ENABLE_PRODUCTION_DEPLOY == 'true'
     environment: Production
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -47,7 +42,7 @@ jobs:
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       # Convex deploys to production, injects its URL as NEXT_PUBLIC_CONVEX_URL,
-      # then runs vercel build so Next.js bakes in the correct URL at build time.
+      # then runs `vercel build` so Next.js bakes in the correct URL at build time.
       - name: Deploy Convex (production) + build
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}

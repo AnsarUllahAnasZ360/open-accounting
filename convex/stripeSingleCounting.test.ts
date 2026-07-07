@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -461,7 +462,9 @@ describe("E7.5 Stripe single-counting proof", () => {
         "UNIT-LEVEL ONLY. The live end-to-end proof still needs a hosted Plaid sandbox Link session plus a real Stripe payout webhook delivered to the cloud route (external/blocked per docs/finishing/whats-left.md). E7 proves single-counting deterministically at the unit level.",
     };
     const outPath = join(
-      dirname(new URL(import.meta.url).pathname),
+      // fileURLToPath handles Windows drive letters; new URL().pathname yields
+      // a leading-slash "/D:/…" that join() turns into a bogus "D:\D:\…".
+      dirname(fileURLToPath(import.meta.url)),
       "..",
       "docs",
       "finishing",

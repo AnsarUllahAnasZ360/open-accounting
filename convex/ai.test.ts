@@ -505,7 +505,9 @@ describe("M10 AI backend", () => {
       mode: "degraded",
       activeProvider: null,
       model: null,
-      autonomy: "balanced",
+      // Autonomy is locked to "autopilot" (ai.ts DEFAULT_AI_AUTONOMY); the
+      // Balanced/Suggest selector was removed from the UI.
+      autonomy: "autopilot",
       thresholds: { suggest: null, balanced: 0.9, autopilot: 0.75 },
     });
   });

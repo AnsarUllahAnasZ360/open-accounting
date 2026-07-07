@@ -1,9 +1,10 @@
 name: Preview Deploy
 
-# Ephemeral, on-demand previews. Two ways to trigger:
-#   1. Comment "/preview" on an open PR  -> deploys that PR's head commit.
-#   2. Actions -> "Preview Deploy" -> Run workflow  -> deploys a named branch.
-# A closed PR triggers best-effort cleanup of its Vercel preview.
+# On-demand + persistent previews. Triggers:
+#   1. Comment "/preview" on an open PR   -> ephemeral preview of that PR's head.
+#   2. Actions -> "Preview Deploy" -> Run -> preview of a named branch.
+#   3. Merge a PR into `stage`             -> refresh the persistent stage preview.
+# A closed PR triggers best-effort cleanup of its own preview alias.
 #
 # Required repo secrets:
 #   CONVEX_PREVIEW_DEPLOY_KEY  (Convex "Preview" deploy key)
@@ -47,9 +48,13 @@ jobs:
       (github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
         contains(github.event.comment.body, '/preview')) ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+        github.event.action == 'closed' &&
+        github.event.pull_request.merged == true &&
+        github.event.pull_request.base.ref == 'stage')
     concurrency:
-      group: preview-deploy-${{ github.event.issue.number || github.event.inputs.branch }}
+      group: preview-deploy-${{ github.event.issue.number || github.event.inputs.branch || github.event.pull_request.base.ref }}
       cancel-in-progress: true
     steps:
       - name: React to preview comment
@@ -97,7 +102,12 @@ jobs:
               return;
             }
 
-            const branch = context.payload.inputs.branch;
+            // Branch preview: an explicitly chosen branch (workflow_dispatch) or
+            // a PR merged into stage (auto persistent stage preview).
+            const branch =
+              context.eventName === 'workflow_dispatch'
+                ? context.payload.inputs.branch
+                : context.payload.pull_request.base.ref;
             const { data: branchData } = await github.rest.repos.getBranch({ owner, repo, branch });
             const previewKey = `br-${slug(branch)}`;
             core.setOutput('branch', branch);

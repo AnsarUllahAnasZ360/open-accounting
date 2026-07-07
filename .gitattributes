@@ -1,0 +1,34 @@
+# Normalize line endings for source & config. This repo is authored with LF.
+# Without this, a Windows checkout with core.autocrlf=true rewrites tracked files
+# to CRLF, which breaks tooling — notably esbuild/vitest choke on a shebang line
+# that ends in \r, throwing "SyntaxError: Invalid or unexpected token" when a
+# test imports a scripts/*.mjs. Pinning eol=lf keeps checkouts consistent with CI.
+*.mjs  text eol=lf
+*.cjs  text eol=lf
+*.js   text eol=lf
+*.jsx  text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.sh   text eol=lf
+
+# Binary assets must never be line-ending normalized.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.pdf   binary
+*.zip   binary
+*.mp4   binary
+*.riv   binary

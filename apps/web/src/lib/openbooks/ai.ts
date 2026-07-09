@@ -159,7 +159,11 @@ export function frontendAiStatus(status?: BackendAiStatus): AiStatus {
     configured: false,
     mode: "degraded",
     label: "AI is off",
-    detail: status?.degradedReason ?? "AI is off, but rules, bank priors, reports, and manual review still work.",
+    // App-first prompt: point owners at Settings → AI (their own key wins), with
+    // the server env noted only as a fallback. The raw env `degradedReason` is
+    // intentionally not surfaced here — it's a technical detail, not user copy.
+    detail:
+      "AI isn't set up yet. Add a provider and key in Settings → AI (or configure it via your server environment). Rules, bank priors, reports, and manual review still work.",
     provider: "None connected",
     chatModel: "Unavailable",
   };

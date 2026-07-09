@@ -61,6 +61,9 @@ import { getSectionSubtabs } from "@/lib/openbooks/section-subtabs";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_STORAGE_KEY = "ob:sidebar-collapsed";
+// Per-session dismissal of the "set up AI" dashboard nudge. sessionStorage (not
+// localStorage) so the reminder returns next session until AI is configured.
+const AI_BANNER_STORAGE_KEY = "ob:ai-setup-banner-dismissed";
 const ACTIVE_ENTITY_STORAGE_KEY = "ob:active-entity-id";
 // Portfolio scope persistence (Epic E5-T2). Stores "all" or an entity id so the
 // 'All businesses' choice survives a reload, independently of the single-entity
@@ -296,6 +299,28 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
       }
     } catch {
       // ignore storage access errors (private mode etc.)
+    }
+  }, []);
+  // "Set up AI" dashboard nudge — dismissible for the session. Starts visible so
+  // SSR matches the client's first render; the stored dismissal is applied after
+  // mount (sessionStorage sync, the rule's documented exception).
+  const [aiBannerDismissed, setAiBannerDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      if (window.sessionStorage.getItem(AI_BANNER_STORAGE_KEY) === "1") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of dismissal from sessionStorage after hydration (external-system sync)
+        setAiBannerDismissed(true);
+      }
+    } catch {
+      // ignore storage access errors (private mode etc.)
+    }
+  }, []);
+  const dismissAiBanner = useCallback(() => {
+    setAiBannerDismissed(true);
+    try {
+      window.sessionStorage.setItem(AI_BANNER_STORAGE_KEY, "1");
+    } catch {
+      // ignore storage access errors
     }
   }, []);
   const [aiOpen, setAiOpen] = useState(false);
@@ -803,6 +828,43 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
                     onAskAiPage ? "h-[calc(100dvh-3.5rem)] overflow-hidden" : "px-4 py-4 lg:px-6",
                   )}
                 >
+                  {aiStatus.mode === "degraded" &&
+                  !aiBannerDismissed &&
+                  canViewBooks &&
+                  pathname === "/dashboard" ? (
+                    <div
+                      className="mb-4 flex items-start gap-3 rounded-[12px] border bg-card px-4 py-3 shadow-xs"
+                      data-testid="ai-setup-banner"
+                      role="status"
+                    >
+                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-[9px] bg-ob-green-50 text-ob-green-700">
+                        <Sparkles className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-semibold">Set up AI to auto-categorize your transactions</div>
+                        <div className="mt-0.5 text-[12px] text-muted-foreground">
+                          Add your own provider and key in{" "}
+                          <Link
+                            href="/settings/ai"
+                            className="font-medium text-primary underline-offset-2 hover:underline"
+                          >
+                            Settings → AI
+                          </Link>
+                          , or configure it through your server environment. Until then, bank rules, the Inbox, and reports still work.
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0"
+                        aria-label="Dismiss"
+                        data-testid="ai-setup-banner-dismiss"
+                        onClick={dismissAiBanner}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </div>
+                  ) : null}
                   {restrictedBlocked ? (
                     <div className="flex min-h-[60vh] items-center justify-center text-sm text-muted-foreground">
                       Taking you to Payroll…

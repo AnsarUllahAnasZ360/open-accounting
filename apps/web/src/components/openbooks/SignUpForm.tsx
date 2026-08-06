@@ -153,7 +153,7 @@ export function SignUpForm({
           />
           {!passwordsMatch && (
             <div className="text-xs text-destructive">
-              Passwords don't match.
+              Passwords don&apos;t match.
             </div>
           )}
         </div>

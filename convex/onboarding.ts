@@ -405,16 +405,9 @@ export const bootstrapWorkspace = mutation({
         });
       }
       // Existing-workspace idempotency: never duplicate entities on re-run.
-      // IMPORTANT: Only skip to dashboard if onboarding is actually COMPLETE.
-      // If user is in the middle of onboarding (phase = "setup" or "ai-bulk-setup"),
-      // they should continue with the wizard, not jump to dashboard.
-      const checklist = await ctx.db
-        .query("onboardingChecklists")
-        .withIndex("by_workspace", (q) => q.eq("workspaceId", existingMembership.workspaceId))
-        .unique();
-      const isOnboardingComplete = checklist?.phase === "done";
-
-      if ((await activeBusinessCount(ctx, existingMembership.workspaceId)) > 0 && isOnboardingComplete) {
+      // If businesses already exist, return without creating duplicates.
+      // The wizard can still run if onboarding is incomplete.
+      if ((await activeBusinessCount(ctx, existingMembership.workspaceId)) > 0) {
         return {
           workspaceId: existingMembership.workspaceId,
           entityId: null,

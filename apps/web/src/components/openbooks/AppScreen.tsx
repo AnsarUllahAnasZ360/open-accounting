@@ -6,7 +6,6 @@ import { ContactsScreen } from "@/components/openbooks/ContactsScreen";
 import { ExpensesScreen } from "@/components/openbooks/ExpensesScreen";
 import { IncomeScreen } from "@/components/openbooks/IncomeScreen";
 import { IncomeStreamsInsightsScreen } from "@/components/openbooks/IncomeStreamsInsightsScreen";
-import { RevenueStreamsScreen } from "@/components/openbooks/RevenueStreamsScreen";
 import { EmptyState } from "@/components/openbooks/primitives";
 import { SectionInsights } from "@/components/openbooks/InsightsScreen";
 import { ReportsScreen } from "@/components/openbooks/ReportsScreen";

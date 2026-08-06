@@ -33,8 +33,7 @@ export default function SignInPage() {
             Your books stay private from day one.
           </h1>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-            Create a workspace as the owner, or join one from a teammate invite. Hosted-demo requests are captured from
-            the landing page without blocking the open-source app.
+            Sign in with your existing account. New users can join a workspace with an invite from the owner or team members.
           </p>
         </div>
         {convexConfigured ? (

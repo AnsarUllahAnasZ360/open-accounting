@@ -54,7 +54,8 @@ export const SECTION_SUBTABS: ReadonlyArray<SectionSubtabConfig> = [
         isDefault: true,
       },
       { id: "invoices", label: "Invoices", subtitle: "Accounts receivable", kind: "ledger" },
-      { id: "insights", label: "Insights", kind: "insights" },
+      { id: "streams-insights", label: "Streams", subtitle: "By revenue stream", kind: "insights" },
+      { id: "insights", label: "Breakdown", subtitle: "By category", kind: "insights" },
     ],
   },
   {
@@ -86,14 +87,6 @@ export const SECTION_SUBTABS: ReadonlyArray<SectionSubtabConfig> = [
       { id: "people", label: "People", subtitle: "Team roster", kind: "ledger" },
       { id: "statements", label: "Statements", subtitle: "Payroll reports", kind: "ledger" },
       { id: "insights", label: "Insights", kind: "insights" },
-    ],
-  },
-  {
-    section: "revenue-streams",
-    subtabs: [
-      { id: "revenue-streams", label: "Insights", kind: "cash-movement", isDefault: true },
-      { id: "needs-review", label: "Needs Review", subtitle: "AI suggestions", kind: "ledger" },
-      { id: "manage", label: "Manage", subtitle: "Streams & rules", kind: "ledger" },
     ],
   },
 ];

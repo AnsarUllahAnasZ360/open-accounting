@@ -5,7 +5,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { action, internalAction, internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
-import { postLedgerEntryCore } from "./ledger";
+import { postLedgerEntryCore, type LedgerLineInput } from "./ledger";
 import { assertNonNegativeMinorUnit } from "./money";
 import { ensureSystemSyncActor } from "./systemActors";
 
@@ -2821,5 +2821,128 @@ export const sendInvoiceViaStripe = action({
         currency: string;
       },
     };
+  },
+});
+
+const DRIFT_TOLERANCE_MINOR = Math.round(0.05 * 100 * 100); // 5% tolerance for drift
+
+/**
+ * Process an incoming Stripe payout.paid webhook event.
+ * Creates a payout record in the database for later matching to bank transactions.
+ */
+export const processPayoutWebhook = internalMutation({
+  args: {
+    entityId: v.id("entities"),
+    payoutId: v.string(),
+    amountMinor: v.number(),
+    arrivalDate: v.number(), // Unix timestamp
+    currency: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) throw new Error("Entity not found.");
+
+    // Check if this payout already exists
+    const existing = await ctx.db
+      .query("stripePayouts")
+      .withIndex("by_entity", (q) => q.eq("entityId", args.entityId))
+      .filter((q) => q.eq(q.field("payoutId"), args.payoutId))
+      .first();
+
+    if (existing) {
+      return { status: "duplicate", payoutId: existing._id };
+    }
+
+    // Format arrival date as ISO string
+    const arrivalDateStr = new Date(args.arrivalDate * 1000).toISOString().slice(0, 10);
+
+    // Create payout record with "pending" status
+    const payoutRecord = await ctx.db.insert("stripePayouts", {
+      entityId: args.entityId,
+      payoutId: args.payoutId,
+      amountMinor: args.amountMinor,
+      grossMinor: args.amountMinor,
+      feesMinor: 0,
+      arrivalDate: arrivalDateStr,
+      status: "pending",
+      entryIds: [],
+      currency: args.currency.toUpperCase(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return { status: "created", payoutId: payoutRecord };
+  },
+});
+
+/**
+ * Confirm a payout settlement with drift handling.
+ * Posts ledger entries for the net payout and any drift variance.
+ */
+export const confirmDriftSettlement = internalMutation({
+  args: {
+    payoutId: v.id("stripePayouts"),
+    driftMinor: v.number(),
+    driftCategoryId: v.optional(v.id("ledgerAccounts")),
+    bankTxnId: v.optional(v.id("transactions")),
+  },
+  handler: async (ctx, args) => {
+    const payout = await ctx.db.get(args.payoutId);
+    if (!payout) throw new Error("Payout not found.");
+
+    const entity = await ctx.db.get(payout.entityId);
+    if (!entity) throw new Error("Entity not found.");
+
+    // Build ledger lines
+    const lines: LedgerLineInput[] = [];
+
+    // Main payout: debit Stripe Clearing
+    const stripeClearing = await ctx.db
+      .query("ledgerAccounts")
+      .withIndex("by_entity_and_number", (q) => q.eq("entityId", payout.entityId).eq("number", "1150"))
+      .unique();
+
+    if (!stripeClearing) throw new Error("Stripe Clearing account not found.");
+
+    lines.push({
+      accountId: stripeClearing._id,
+      debitMinor: payout.amountMinor,
+      creditMinor: 0,
+      currency: entity.currency,
+    });
+
+    // Drift variance
+    if (Math.abs(args.driftMinor) > 0 && args.driftCategoryId) {
+      lines.push({
+        accountId: args.driftCategoryId,
+        debitMinor: Math.max(0, args.driftMinor),
+        creditMinor: Math.max(0, -args.driftMinor),
+        currency: entity.currency,
+      });
+    }
+
+    // Post the journal entry
+    const entry = await postLedgerEntryCore(ctx, {
+      entity,
+      userId: "system" as unknown as Id<"users">,
+      date: payout.arrivalDate,
+      memo: `Stripe payout settlement: ${payout.payoutId}${Math.abs(args.driftMinor) > 0 ? ` (drift: ${(args.driftMinor / 100).toFixed(2)})` : ""}`,
+      source: "stripe",
+      sourceId: payout.payoutId,
+      lines,
+    });
+
+    // Update payout
+    await ctx.db.patch(args.payoutId, {
+      status: "reconciled",
+      bankTxnId: args.bankTxnId,
+      driftMinor: args.driftMinor,
+      driftCategoryId: args.driftCategoryId,
+      driftStatus: "auto_matched",
+      entryIds: [entry.entryId],
+      updatedAt: Date.now(),
+    });
+
+    return { status: "settled", entryId: entry.entryId };
   },
 });

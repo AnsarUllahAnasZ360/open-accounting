@@ -11,10 +11,10 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { requireAnyWorkspacePermission, requireWorkspacePermission, roleHasPermission } from "./authz";
+import { requireAnyWorkspacePermission, requireWorkspacePermission, requireWorkspaceRole, roleHasPermission } from "./authz";
 import { assertNotDemoWrite } from "./demoWorkspace";
 import { resolveDefaultEntity } from "./entityScope";
-import { postLedgerEntryCore } from "./ledger";
+import { postLedgerEntryCore, type LedgerLineInput } from "./ledger";
 import { notifyRoleHolders, notifyUser } from "./notifications";
 import {
   baseEquivalentMinor,
@@ -1787,5 +1787,106 @@ export const importPayrollRows = mutation({
     });
 
     return { runId, linesCreated: args.rows.length, employeesCreated, employeesUpdated };
+  },
+});
+
+/**
+ * Owner confirms the payroll settlement proposal. Posts all splits
+ * to the ledger and marks the run as settled.
+ */
+export const confirmPayrollSettlement = mutation({
+  args: {
+    payrollRunId: v.id("payrollRuns"),
+    transactionId: v.id("transactions"),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.payrollRunId);
+    const txn = await ctx.db.get(args.transactionId);
+
+    if (!run || !txn) throw new Error("Payroll run or transaction not found.");
+
+    const entity = await ctx.db.get(run.entityId);
+    if (!entity) throw new Error("Entity not found.");
+
+    // Authorization check: owner or accountant
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) throw new Error("Not authenticated.");
+
+    await requireWorkspaceRole(ctx, entity.workspaceId, "accountant");
+
+    if (run.reconciliationStatus !== "match_proposed") {
+      throw new Error("Payroll run is not in a proposed state.");
+    }
+
+    if (txn.payrollReconciliationStatus !== "proposed") {
+      throw new Error("Transaction does not have a proposed settlement.");
+    }
+
+    if (!txn.payrollSplits || txn.payrollSplits.length === 0) {
+      throw new Error("Transaction has no split categories.");
+    }
+
+    // Post the settlement entry
+    const lines: LedgerLineInput[] = [];
+
+    for (const split of txn.payrollSplits) {
+      lines.push({
+        accountId: split.categoryAccountId,
+        debitMinor: split.category === "payroll" || split.category.includes("fee") ? Math.abs(split.amountMinor) : 0,
+        creditMinor: split.category === "payroll" || split.category.includes("fee") ? 0 : Math.abs(split.amountMinor),
+        currency: entity.currency,
+      });
+    }
+
+    // Add the bank account as a credit for the outflow
+    if (txn.bankAccountId) {
+      const bankAccount = await ctx.db.get(txn.bankAccountId);
+      if (bankAccount) {
+        const totalAmount = txn.payrollSplits.reduce((sum, s) => sum + s.amountMinor, 0);
+        lines.push({
+          accountId: bankAccount.ledgerAccountId,
+          debitMinor: 0,
+          creditMinor: Math.abs(totalAmount),
+          currency: entity.currency,
+        });
+      }
+    }
+
+    const formatMoney = (amountMinor: number): string => {
+      return `$${(Math.abs(amountMinor) / 100).toFixed(2)}`;
+    };
+
+    const settlementEntry = await postLedgerEntryCore(ctx, {
+      entity,
+      userId: user.subject as unknown as Id<"users">,
+      date: txn.date,
+      memo: `Payroll settlement for ${run.period}; bank outflow ${formatMoney(Math.abs(txn.amountMinor))}`,
+      source: "payroll",
+      sourceId: `${run._id}:settlement`,
+      lines,
+    });
+
+    // Link transaction to run and mark confirmed
+    await ctx.db.patch(args.transactionId, {
+      status: "posted",
+      payrollRunId: args.payrollRunId,
+      payrollReconciliationStatus: "confirmed",
+      entryId: settlementEntry.entryId,
+      decidedBy: "match",
+      confidence: 0.95,
+      reasoning: `Matched to payroll run ${run.period} and settled to bank; settlement entry ${settlementEntry.entryId} posted.`,
+      updatedAt: Date.now(),
+    });
+
+    // Mark run as settled
+    await ctx.db.patch(args.payrollRunId, {
+      reconciliationStatus: "match_confirmed",
+      settlementTxnId: args.transactionId,
+      settledTotalMinor: Math.abs(txn.amountMinor),
+      entryIds: [...run.entryIds, settlementEntry.entryId],
+      updatedAt: Date.now(),
+    });
+
+    return { status: "confirmed", entryId: settlementEntry.entryId };
   },
 });

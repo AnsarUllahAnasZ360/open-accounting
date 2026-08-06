@@ -70,6 +70,7 @@ import type * as onboardingProposals from "../onboardingProposals.js";
 import type * as payroll from "../payroll.js";
 import type * as payrollEmail from "../payrollEmail.js";
 import type * as payrollMath from "../payrollMath.js";
+import type * as payrollSettlement from "../payrollSettlement.js";
 import type * as performance from "../performance.js";
 import type * as pipeline from "../pipeline.js";
 import type * as plaid from "../plaid.js";
@@ -179,6 +180,7 @@ declare const fullApi: ApiFromModules<{
   payroll: typeof payroll;
   payrollEmail: typeof payrollEmail;
   payrollMath: typeof payrollMath;
+  payrollSettlement: typeof payrollSettlement;
   performance: typeof performance;
   pipeline: typeof pipeline;
   plaid: typeof plaid;

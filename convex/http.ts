@@ -209,6 +209,26 @@ http.route({
       );
     }
 
+    // Handle payout.paid events specially
+    if (event.type === "payout.paid" && matchedCredential) {
+      try {
+        const parsed = JSON.parse(payload) as any;
+        const payout = parsed.data.object;
+        if (payout && payout.id) {
+          await ctx.runMutation(internal.stripe.processPayoutWebhook, {
+            entityId: matchedCredential.entityId,
+            payoutId: payout.id,
+            amountMinor: payout.amount ?? 0,
+            arrivalDate: payout.arrival_date ?? Math.floor(Date.now() / 1000),
+            currency: payout.currency ?? "usd",
+          });
+        }
+      } catch (error) {
+        console.error("Payout webhook processing error:", error);
+        // Continue to record the event even if processing fails
+      }
+    }
+
 	    const result: { status: "received" | "ignored" | "duplicate"; eventId: string } = await ctx.runMutation(
 	      internal.stripeWebhook.recordEvent,
 	      {

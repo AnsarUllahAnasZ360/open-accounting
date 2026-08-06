@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up & Sign In Implementation</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #f5f5f5;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #1a1a1a; color: #e0e0e0; }
+      .container { background: #0d0d0d; border-color: #333; }
+      .flow-box { background: #1a1a1a; border-color: #333; }
+      .success { background: #0d3d0d; border-color: #2d5a2d; color: #8FD58F; }
+      .error { background: #3d0d0d; border-color: #5a2d2d; color: #FF6B6B; }
+      .input-field { background: #2a2a2a; color: #e0e0e0; border-color: #333; }
+      h1, h2, h3 { color: #fff; }
+      code { background: #2a2a2a; color: #e0e0e0; }
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+      background: white;
+      border-radius: 8px;
+    }
+    h1 { font-size: 2.5rem; margin-bottom: 1rem; color: #2ca01c; }
+    h2 { font-size: 1.8rem; margin-top: 2rem; margin-bottom: 1rem; border-bottom: 2px solid #2ca01c; padding-bottom: 0.5rem; }
+    h3 { font-size: 1.2rem; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #17540f; }
+    .summary { background: #f1f8ee; border-left: 4px solid #2ca01c; padding: 1rem; margin-bottom: 2rem; border-radius: 4px; }
+    .flow-box {
+      background: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .flow-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .flow-icon { font-size: 1.5rem; }
+    .flow-step { margin-left: 2rem; margin-bottom: 0.75rem; }
+    .flow-step:before { content: "→ "; color: #2ca01c; font-weight: bold; margin-right: 0.5rem; }
+    .files-created, .files-modified {
+      background: #f9f9f9;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .file-item {
+      font-family: monospace;
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+      background: white;
+      border-left: 3px solid #2ca01c;
+      border-radius: 3px;
+    }
+    .file-new { border-left-color: #4CAF50; }
+    .file-modified { border-left-color: #FF9800; }
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .check-item { padding: 0.75rem; background: white; border: 1px solid #e0e0e0; border-radius: 4px; }
+    .check-item input { margin-right: 0.5rem; }
+    .success { background: #e8f5e9; border: 1px solid #4CAF50; padding: 1rem; border-radius: 4px; margin: 1rem 0; color: #2e7d32; }
+    .error { background: #ffebee; border: 1px solid #ef5350; padding: 1rem; border-radius: 4px; margin: 1rem 0; color: #c62828; }
+    .code-block {
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 1rem;
+      margin: 1rem 0;
+      overflow-x: auto;
+    }
+    code { font-family: "Courier New", monospace; font-size: 0.9rem; }
+    .highlight { background: #fff3cd; padding: 0.2rem 0.4rem; border-radius: 2px; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #2ca01c; color: white; }
+    tr:hover { background: #f9f9f9; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔐 Sign Up & Sign In Implementation</h1>
+
+    <div class="summary">
+      <strong>✅ Status:</strong> Complete and committed to <code>ehsan-dev</code> branch
+      <br><strong>Commit:</strong> feat: implement separate signup and signin flows with proper error handling
+      <br><strong>Changes:</strong> 2 new components, 2 new pages, 3 components updated, comprehensive error handling
+    </div>
+
+    <h2>Problem Fixed</h2>
+    <p>
+      Previously, the single sign-in/sign-up form tried both signin and signup in sequence. Non-existent users saw:
+    </p>
+    <div class="error">
+      ❌ "Workspace unavailable - Your last workspace was suspended or deleted..."
+    </div>
+    <p style="margin-top: 1rem;">
+      This was confusing because it didn't explain the actual issue: the user account didn't exist.
+    </p>
+
+    <h2>Solution Implemented</h2>
+    <p>
+      Separated signup and signin into <strong>two distinct flows</strong> with proper error messages, validation, and user guidance.
+    </p>
+
+    <h2>Files Created</h2>
+    <div class="files-created">
+      <div class="file-item file-new">
+        📄 <code>apps/web/src/components/openbooks/SignUpForm.tsx</code>
+        <div style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">
+          Dedicated signup form with email, password validation (8+ chars), confirm password matching, optional name
+        </div>
+      </div>
+      <div class="file-item file-new">
+        📄 <code>apps/web/src/app/sign-up/page.tsx</code>
+        <div style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">
+          New signup landing page with SignUpForm and link to signin
+        </div>
+      </div>
+    </div>
+
+    <h2>Files Modified</h2>
+    <div class="files-modified">
+      <div class="file-item file-modified">
+        ✏️ <code>apps/web/src/components/openbooks/SignInForm.tsx</code>
+        <div style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">
+          Removed auto-signup fallback. Now only handles signin. Removed name field. Better error messages.
+        </div>
+      </div>
+      <div class="file-item file-modified">
+        ✏️ <code>apps/web/src/app/sign-in/page.tsx</code>
+        <div style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">
+          Added signup link card. Updated help text. Added visual spacing for login form.
+        </div>
+      </div>
+      <div class="file-item file-modified">
+        ✏️ <code>apps/web/src/components/openbooks/InviteAcceptScreen.tsx</code>
+        <div style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">
+          Changed from SignInForm to SignUpForm (invited users create new accounts). Email pre-filled and locked.
+        </div>
+      </div>
+    </div>
+
+    <h2>User Flows</h2>
+
+    <div class="flow-box">
+      <div class="flow-title"><span class="flow-icon">👤</span> New User Creating Account</div>
+      <div class="flow-step">Visit <code>/sign-up</code></div>
+      <div class="flow-step">Enter email (required)</div>
+      <div class="flow-step">Enter password (8+ characters)</div>
+      <div class="flow-step">Confirm password (must match)</div>
+      <div class="flow-step">Enter name (optional)</div>
+      <div class="flow-step">Submit → <span class="highlight">redirect to /dashboard</span></div>
+      <div class="success">✅ Account created successfully</div>
+    </div>
+
+    <div class="flow-box">
+      <div class="flow-title"><span class="flow-icon">🔑</span> Existing User Signing In</div>
+      <div class="flow-step">Visit <code>/sign-in</code></div>
+      <div class="flow-step">Enter email (required)</div>
+      <div class="flow-step">Enter password (required)</div>
+      <div class="flow-step">Submit → <span class="highlight">redirect to /dashboard</span></div>
+      <div class="success">✅ Signed in successfully</div>
+      <p style="margin-top: 1rem; font-size: 0.9rem;">If credentials invalid: <code>❌ Invalid email or password. If you don't have an account yet, please sign up.</code></p>
+    </div>
+
+    <div class="flow-box">
+      <div class="flow-title"><span class="flow-icon">📧</span> Invited User Joining Workspace</div>
+      <div class="flow-step">Receive invite link with token</div>
+      <div class="flow-step">Visit <code>/invite/[token]</code></div>
+      <div class="flow-step">See workspace details and access level</div>
+      <div class="flow-step">Email pre-filled (locked) and readonly</div>
+      <div class="flow-step">Create password, confirm password, optional name</div>
+      <div class="flow-step">Submit → <span class="highlight">account created + invite accepted</span></div>
+      <div class="flow-step">Redirect to <code>/dashboard</code></div>
+      <div class="success">✅ Workspace membership activated</div>
+    </div>
+
+    <h2>Error Handling</h2>
+    <table>
+      <tr>
+        <th>Scenario</th>
+        <th>Error Message</th>
+        <th>Where Shown</th>
+      </tr>
+      <tr>
+        <td>Empty email field</td>
+        <td><code>Email is required</code></td>
+        <td>Browser validation</td>
+      </tr>
+      <tr>
+        <td>Password < 8 characters</td>
+        <td><code>Password must be at least 8 characters</code></td>
+        <td>SignUpForm field error</td>
+      </tr>
+      <tr>
+        <td>Passwords don't match</td>
+        <td><code>Passwords don't match</code></td>
+        <td>SignUpForm confirmation error</td>
+      </tr>
+      <tr>
+        <td>Email already has account</td>
+        <td><code>Unable to create account. The email may already be in use...</code></td>
+        <td>SignUpForm error card</td>
+      </tr>
+      <tr>
+        <td>Invalid credentials (signin)</td>
+        <td><code>Invalid email or password. If you don't have an account yet, please sign up.</code></td>
+        <td>SignInForm error card</td>
+      </tr>
+    </table>
+
+    <h2>Testing Checklist</h2>
+    <div class="checklist">
+      <div class="check-item">
+        <input type="checkbox"> <label>Sign up at <code>/sign-up</code> with valid data</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Password validation (must be 8+ chars)</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Confirm password matching</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Sign in at <code>/sign-in</code> with valid account</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Try signin with non-existent email</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Try signin with wrong password</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Signup link visible on signin page</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Signin link visible on signup page</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Invited user flow (pre-filled email)</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Admin dev bypass still works (if enabled)</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Post-auth redirect to /dashboard</label>
+      </div>
+      <div class="check-item">
+        <input type="checkbox"> <label>Demo clone flag (?demo=1) passes through</label>
+      </div>
+    </div>
+
+    <h2>Key Improvements</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 1.5rem 0;">
+      <div style="background: #e8f5e9; padding: 1rem; border-radius: 4px; border-left: 4px solid #4CAF50;">
+        <strong>Clear Separation</strong>
+        <p style="font-size: 0.9rem; margin-top: 0.5rem;">Signup and signin are now distinct flows with separate URLs and forms</p>
+      </div>
+      <div style="background: #e8f5e9; padding: 1rem; border-radius: 4px; border-left: 4px solid #4CAF50;">
+        <strong>Better Error Messages</strong>
+        <p style="font-size: 0.9rem; margin-top: 0.5rem;">"Invalid password" vs "User doesn't exist" - users know what went wrong</p>
+      </div>
+      <div style="background: #e8f5e9; padding: 1rem; border-radius: 4px; border-left: 4px solid #4CAF50;">
+        <strong>Invited User Experience</strong>
+        <p style="font-size: 0.9rem; margin-top: 0.5rem;">Pre-filled email (locked), clear instructions, single password setup</p>
+      </div>
+      <div style="background: #e8f5e9; padding: 1rem; border-radius: 4px; border-left: 4px solid #4CAF50;">
+        <strong>Validation Before Submit</strong>
+        <p style="font-size: 0.9rem; margin-top: 0.5rem;">Password length & matching checked before submission, submit button disabled if invalid</p>
+      </div>
+      <div style="background: #e8f5e9; padding: 1rem; border-radius: 4px; border-left: 4px solid #4CAF50;">
+        <strong>No Confusion</strong>
+        <p style="font-size: 0.9rem; margin-top: 0.5rem;">No more "workspace unavailable" errors for new users - clear guidance at each step</p>
+      </div>
+      <div style="background: #e8f5e9; padding: 1rem; border-radius: 4px; border-left: 4px solid #4CAF50;">
+        <strong>Consistent Design</strong>
+        <p style="font-size: 0.9rem; margin-top: 0.5rem;">Both pages follow OpenBooks design system (green #2ca01c, Geist fonts, shadcn/ui)</p>
+      </div>
+    </div>
+
+    <h2>Next Steps</h2>
+    <ol style="margin-left: 2rem;">
+      <li><strong>Test the flows</strong> - verify signup, signin, and invited user experiences work end-to-end</li>
+      <li><strong>Verify error messages</strong> - make sure the right error is shown for each failure case</li>
+      <li><strong>Check redirects</strong> - confirm post-auth redirect to /dashboard works</li>
+      <li><strong>Review mobile UX</strong> - test on mobile devices (form should be responsive)</li>
+      <li><strong>Deploy when ready</strong> - no backend schema changes, safe to deploy</li>
+    </ol>
+
+    <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 1rem; border-radius: 4px; margin-top: 2rem;">
+      <strong>💡 Note:</strong> This implementation doesn't include email verification or additional security measures. Those can be added as follow-up features. The current implementation focuses on fixing the immediate UX issue of separated, clear signup vs signin flows.
+    </div>
+  </div>
+</body>
+</html>

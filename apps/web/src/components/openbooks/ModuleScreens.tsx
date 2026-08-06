@@ -42,6 +42,7 @@ import { toast } from "sonner";
 
 import { Amount, AgingMiniBar, BarChart, CategoryChip, EmptyState, formatMinorMoney } from "@/components/openbooks/primitives";
 import { ContactsScreen } from "@/components/openbooks/ContactsScreen";
+import { PayrollSettlementEditor } from "@/components/openbooks/PayrollSettlementEditor";
 import {
   type BillRow,
   type InvoiceRow,
@@ -4050,6 +4051,16 @@ export function PayrollRunPage({ runId }: { runId: string }) {
           ) : null}
           {error ? <p className="text-sm text-negative" data-testid="payroll-error">{error}</p> : null}
         </div>
+
+        {/* Settlement & Reconciliation — appears when run is approved */}
+        {isApproved && (
+          <PayrollSettlementEditor
+            run={detail.run}
+            onSettlementConfirmed={() => {
+              toast.success("Settlement confirmed! The payroll run is now settled.");
+            }}
+          />
+        )}
 
         {/* Grid / Statement tabs */}
         <Tabs defaultValue="grid">

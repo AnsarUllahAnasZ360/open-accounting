@@ -7,12 +7,10 @@ import { toast } from "sonner";
 
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
-import { Amount, formatMinorMoney } from "@/components/openbooks/primitives";
+import { formatMinorMoney } from "@/components/openbooks/primitives";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { getErrorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
 
 type PayrollRun = {
   id: Id<"payrollRuns">;
@@ -84,19 +82,6 @@ export function PayrollSettlementEditor({
     }
   };
 
-  const getCategoryBadgeColor = (category: string) => {
-    switch (category) {
-      case "payroll":
-        return "bg-ob-green-50 text-ob-green-800 border-ob-green-200";
-      case "payroll_fee":
-      case "bank_fee":
-        return "bg-orange-50 text-orange-800 border-orange-200";
-      case "tax_withholding":
-        return "bg-blue-50 text-blue-800 border-blue-200";
-      default:
-        return "bg-gray-50 text-gray-800 border-gray-200";
-    }
-  };
 
   return (
     <Card>
@@ -127,7 +112,7 @@ export function PayrollSettlementEditor({
         {/* Info text */}
         <p className="text-sm text-muted-foreground">
           When a matching bank outflow is detected, the system will calculate splits for payroll, fees, and taxes.
-          You'll be able to review and confirm the settlement here.
+          You&apos;ll be able to review and confirm the settlement here.
         </p>
 
         {/* Action Button */}

@@ -2,7 +2,6 @@
 
 import { useAuthActions, useConvexAuth } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
-import { getErrorMessage } from "@/lib/errors";
 import { mapAuthError } from "@/lib/auth-errors";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { FormEvent, useState } from "react";

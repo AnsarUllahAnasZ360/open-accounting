@@ -10,7 +10,6 @@ import {
   Copy,
   CreditCard,
   ExternalLink,
-  Image as ImageIcon,
   Inbox,
   Landmark,
   LayoutDashboard,
@@ -25,7 +24,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -430,8 +429,10 @@ export function OnboardingScreen({
     workspaceId ? { workspaceId } : "skip",
   );
 
-  const businessRows =
-    entities?.rows.filter((entity) => !entity.archived) ?? [];
+  const businessRows = useMemo(
+    () => entities?.rows.filter((entity) => !entity.archived) ?? [],
+    [entities]
+  );
   const firstEntityId = (businessRows[0]?.id ?? null) as Id<"entities"> | null;
   const connectionBusinesses = businessRows.map((entity) => ({
     id: String(entity.id),
@@ -463,23 +464,24 @@ export function OnboardingScreen({
   const [stepIndex, setStepIndex] = useState(0);
   const [started, setStarted] = useState(false);
   const [businesses, setBusinesses] = useState(() => [newBusinessRow()]);
+  const businessesLoadedRef = useRef(false);
 
-  // When existing businesses load from DB, populate the form with them
+  // When existing businesses load from DB, populate the form with them once
   // This ensures users see their previously saved businesses when returning to Business step
-  useEffect(() => {
-    if (businessRows.length > 0 && stepIndex === 0 && businesses.length === 1 && businesses[0].name === "") {
-      // Only populate if we're still on the initial empty row (haven't edited yet)
-      setBusinesses(
-        businessRows.map((entity, index) => ({
-          id: index + 1, // Use stable index-based ID
-          _id: entity.id, // Store DB ID for archiving/updating
-          name: entity.name,
-          businessType: (entity.businessType as BusinessType) || "services",
-          logoStorageId: entity.logoStorageId,
-          logoPreview: entity.logoUrl,
-        }))
-      );
-    }
+  useLayoutEffect(() => {
+    if (businessesLoadedRef.current) return;
+    if (businessRows.length === 0) return;
+    if (stepIndex !== 0) return;
+
+    businessesLoadedRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBusinesses(
+      businessRows.map((entity, index) => ({
+        id: index + 1,
+        name: entity.name,
+        businessType: (entity.businessType as BusinessType) || "services",
+      }))
+    );
   }, [businessRows, stepIndex]);
   // Owner-chosen workspace name (the whole account's display name). Seeded from
   // the current workspace name once it resolves, unless the owner has typed.

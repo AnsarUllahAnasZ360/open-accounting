@@ -6,7 +6,7 @@ import { CheckCircle2, ShieldCheck, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { api } from "../../../../../convex/_generated/api";
-import { SignInForm } from "@/components/openbooks/SignInForm";
+import { SignUpForm } from "@/components/openbooks/SignUpForm";
 import { Button } from "@/components/ui/button";
 
 export function InviteAcceptScreen({ token }: { token: string }) {
@@ -89,7 +89,7 @@ export function InviteAcceptScreen({ token }: { token: string }) {
             </div>
           </div>
         </div>
-        <SignInForm
+        <SignUpForm
           defaultEmail={invite.email}
           lockEmail
           submitLabel="Create invited account"

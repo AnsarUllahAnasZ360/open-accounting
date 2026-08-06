@@ -5,7 +5,7 @@ import { PayrollScreen } from "@/components/openbooks/ModuleScreens";
 import { ContactsScreen } from "@/components/openbooks/ContactsScreen";
 import { ExpensesScreen } from "@/components/openbooks/ExpensesScreen";
 import { IncomeScreen } from "@/components/openbooks/IncomeScreen";
-import { RevenueStreamsScreen } from "@/components/openbooks/RevenueStreamsScreen";
+import { IncomeStreamsInsightsScreen } from "@/components/openbooks/IncomeStreamsInsightsScreen";
 import { EmptyState } from "@/components/openbooks/primitives";
 import { SectionInsights } from "@/components/openbooks/InsightsScreen";
 import { ReportsScreen } from "@/components/openbooks/ReportsScreen";
@@ -30,6 +30,8 @@ export type ScreenRoute = {
 
 // Bills (AP) is NOT a top-level route — it lives as the Expenses → Bills sub-tab
 // and the bare /bills URL server-redirects to /expenses/bills (app/bills/page).
+// Revenue Streams is NOT a top-level route — it now lives as Income → Streams sub-tab
+// and the bare /revenue-streams URL server-redirects to /income/streams-insights (app/revenue-streams/page).
 const KNOWN_ROUTES = [
   "/dashboard",
   "/inbox",
@@ -39,7 +41,6 @@ const KNOWN_ROUTES = [
   "/contacts",
   "/payroll",
   "/reports",
-  "/revenue-streams",
   "/settings",
 ];
 
@@ -65,8 +66,6 @@ function SectionDefaultScreen({ section, subsection }: { section: string; subsec
       return <PayrollScreen subsection={subsection} />;
     case "reports":
       return <ReportsScreen />;
-    case "revenue-streams":
-      return <RevenueStreamsScreen subsection={subsection} />;
     default:
       return null;
   }
@@ -96,6 +95,7 @@ export function AppScreen({
   const defaultTab = defaultSubtabId(section);
   const activeSubtab = subsection ?? defaultTab ?? section;
   const isInsightsTab = activeSubtab === "insights";
+  const isStreamsInsightsTab = section === "income" && activeSubtab === "streams-insights";
 
   // Portfolio guard (E5-T8): a section that can't aggregate across businesses
   // must not render a single entity's data while the switcher reads "All
@@ -117,6 +117,8 @@ export function AppScreen({
       title="Pick a business to see this"
       description={`"${route.label}" shows one business at a time. Switch from "All businesses" to a single business — or open the Dashboard or Reports for the combined portfolio view.`}
     />
+  ) : isStreamsInsightsTab ? (
+    <IncomeStreamsInsightsScreen />
   ) : isInsightsTab ? (
     <SectionInsights section={section} />
   ) : (

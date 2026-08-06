@@ -596,7 +596,7 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     return (
       <WorkspaceUnavailableScreen
         userEmail={viewer.user?.email ?? undefined}
-        onSignOut={() => void signOut()}
+        onSignOut={handleSignOut}
       />
     );
   }
@@ -629,10 +629,9 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
     (workspaceReady && activeBusinessRows.length === 0) ||
     ownerMidOnboarding
   ) {
-    // Onboarding is owner-only (it reads owner-scoped connection settings). A
-    // non-owner who lands here has no usable workspace — show the calm
-    // "unavailable" screen instead of rendering the wizard, which would fire
-    // owner-only queries their role can't access.
+    // Owners and invited users go through onboarding. Onboarding is owner-only
+    // (it reads owner-scoped connection settings), so invited users see the wizard
+    // but with read-only/limited capabilities.
     if (rawRole === "owner" || viewer.joinedViaInvite) {
       return (
         <OnboardingScreen
@@ -643,10 +642,13 @@ function AuthenticatedAppShell({ children }: { children: ReactNode }) {
         />
       );
     }
+    // Non-owner, non-invited users have no accessible workspace. This happens when
+    // a non-owner joins but the workspace/businesses are not set up yet. They should
+    // contact the owner or request access again.
     return (
       <WorkspaceUnavailableScreen
         userEmail={viewer.user?.email ?? undefined}
-        onSignOut={() => void signOut()}
+        onSignOut={handleSignOut}
       />
     );
   }

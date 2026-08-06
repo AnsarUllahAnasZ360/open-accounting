@@ -163,7 +163,10 @@ function InfoTip({ text }: { text: string }) {
           <Info className="size-3.5" />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-64 text-xs leading-relaxed">
+      <TooltipContent
+        side="bottom"
+        className="max-w-64 text-xs leading-relaxed"
+      >
         {text}
       </TooltipContent>
     </Tooltip>
@@ -351,18 +354,28 @@ function StreamRevenueDonutCard({
 }) {
   const now = new Date();
   const startDate = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
-  const endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
+  const endDate = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0),
+  )
     .toISOString()
     .slice(0, 10);
-  const data = useQuery(api.streamViews.streamPnl, { entityId, startDate, endDate });
+  const data = useQuery(api.streamViews.streamPnl, {
+    entityId,
+    startDate,
+    endDate,
+  });
 
   const slices = (data?.streams ?? [])
     .filter((stream) => stream.revenueMinor > 0)
-    .map((stream) => ({ name: stream.stream, amountMinor: stream.revenueMinor }))
+    .map((stream) => ({
+      name: stream.stream,
+      amountMinor: stream.revenueMinor,
+    }))
     .sort((a, b) => b.amountMinor - a.amountMinor);
   const total = slices.reduce((sum, slice) => sum + slice.amountMinor, 0);
   const top = slices[0] ?? null;
-  const topSharePct = top && total > 0 ? Math.round((top.amountMinor / total) * 100) : 0;
+  const topSharePct =
+    top && total > 0 ? Math.round((top.amountMinor / total) * 100) : 0;
 
   return (
     <div
@@ -374,7 +387,12 @@ function StreamRevenueDonutCard({
           <h2 className="text-sm font-semibold">Revenue by stream</h2>
           <InfoTip text="Income grouped by revenue stream (e.g. Web Dev, Marketing). Tag payments, invoices, or bills to a stream to populate this." />
         </div>
-        <Button asChild size="sm" variant="outline" className="h-7 px-2 text-xs">
+        <Button
+          asChild
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 text-xs"
+        >
           <Link href="/revenue-streams">
             Detail
             <ArrowUpRight className="ml-0.5 size-3" />
@@ -402,7 +420,10 @@ function StreamRevenueDonutCard({
       ) : (
         <p className="text-sm text-muted-foreground">
           Tag payments to a revenue stream to see this.{" "}
-          <Link href="/revenue-streams" className="text-primary hover:underline">
+          <Link
+            href="/revenue-streams"
+            className="text-primary hover:underline"
+          >
             Set up
           </Link>
         </p>
@@ -423,6 +444,7 @@ function SingleBusinessDashboard() {
   // workbench opens carrying the dashboard's active period (report 6.1).
   const { activeEntity, scope } = useActiveEntity();
   const [period, setPeriod] = useState<string | null>(null);
+  const [showAllAccountsModal, setShowAllAccountsModal] = useState(false);
   // E4-T9: when the owner just finished onboarding the finish handler routes here
   // with ?setup=1 while the AI bulk categorize/post pass runs. Show a transient
   // "your books are being set up" banner; it auto-dismisses once posted items
@@ -681,15 +703,13 @@ function SingleBusinessDashboard() {
             ))}
             {hiddenBankBalanceCount > 0 ? (
               <Button
-                asChild
                 size="sm"
                 variant="outline"
                 className="h-10 shrink-0 rounded-[10px] px-3"
+                onClick={() => setShowAllAccountsModal(true)}
               >
-                <Link href={`/transactions?${periodQuery}`}>
-                  Show all {dashboard.bankBalances.length}
-                  <ArrowRight data-icon="inline-end" />
-                </Link>
+                Show all {dashboard.bankBalances.length}
+                <ArrowRight data-icon="inline-end" />
               </Button>
             ) : null}
           </div>
@@ -1271,6 +1291,53 @@ function SingleBusinessDashboard() {
           <p className="text-sm text-muted-foreground">No recent activity.</p>
         )}
       </section>
+
+      {/* All accounts modal */}
+      <Dialog
+        open={showAllAccountsModal}
+        onOpenChange={setShowAllAccountsModal}
+      >
+        <DialogContent className="!max-w-none w-[65vw] md:w-[60vw] lg:w-[55vw]">
+          <DialogHeader>
+            <DialogTitle>All Bank Accounts</DialogTitle>
+            <DialogDescription>
+              Click on an account to view its transactions
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {dashboard.bankBalances
+              .sort((a, b) => b.amountMinor - a.amountMinor)
+              .map((account) => (
+                <Link
+                  key={account.id}
+                  href={`/transactions?account=${account.id}&${periodQuery}`}
+                  onClick={() => setShowAllAccountsModal(false)}
+                  className="flex min-w-0 flex-col gap-2 rounded-[10px] border border-border bg-muted/40 px-3 py-3 transition-colors hover:bg-muted/60"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-foreground/85 text-[11px] font-semibold uppercase text-background">
+                      {account.name.slice(0, 2)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">
+                        {account.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        ····{account.mask}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <Amount
+                      amountMinor={account.amountMinor}
+                      className="text-sm font-semibold"
+                    />
+                  </div>
+                </Link>
+              ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -3827,9 +3894,11 @@ export function TransactionsScreen() {
       // E7-5: secondary field — expand-only on the mobile card.
       mobileHidden: true,
       cell: (row) => (
-        <span className="truncate text-sm text-muted-foreground">
-          {row.contactName ?? "—"}
-        </span>
+        <div className="min-w-0">
+          <span className="truncate text-sm text-muted-foreground block">
+            {row.contactName ?? "—"}
+          </span>
+        </div>
       ),
     },
     {
@@ -3840,9 +3909,11 @@ export function TransactionsScreen() {
       // E7-5: secondary field — expand-only on the mobile card.
       mobileHidden: true,
       cell: (row) => (
-        <span className="truncate text-sm text-muted-foreground">
-          {row.bankAccountName}
-        </span>
+        <div className="min-w-0">
+          <span className="truncate text-sm text-muted-foreground block">
+            {row.bankAccountName}
+          </span>
+        </div>
       ),
     },
     {
@@ -4964,7 +5035,12 @@ function ImportDialog({
   // textarea by hand so the "Loaded <file>" hint never goes stale.
   const [fileName, setFileName] = useState<string | null>(null);
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!pending) onOpenChange(next); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!pending) onOpenChange(next);
+      }}
+    >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Import transactions</DialogTitle>
@@ -5039,12 +5115,17 @@ function ImportDialog({
           <div className="flex items-center gap-2.5 rounded-[10px] bg-muted/60 px-3 py-2.5 text-sm text-muted-foreground">
             <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
             <span>
-              Importing {csvRowCount} {csvRowCount === 1 ? "row" : "rows"} — please wait…
+              Importing {csvRowCount} {csvRowCount === 1 ? "row" : "rows"} —
+              please wait…
             </span>
           </div>
         ) : null}
         <DialogFooter>
-          <Button variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            disabled={pending}
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
           <Button
@@ -5053,7 +5134,10 @@ function ImportDialog({
             disabled={pending || !canImport}
           >
             {pending ? (
-              <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
+              <Loader2
+                className="size-4 animate-spin"
+                data-icon="inline-start"
+              />
             ) : (
               <FileUp data-icon="inline-start" />
             )}

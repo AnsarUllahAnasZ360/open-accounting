@@ -672,6 +672,38 @@ export default defineSchema({
     // it (for the Needs Review queue + confidence learning).
     streamRuleId: v.optional(v.id("streamRules")),
     streamReview: v.optional(v.union(v.literal("auto"), v.literal("confirmed"), v.literal("needs_review"))),
+
+    // Payroll settlement splits (E7-T2). Parallel to streams field for categorizing
+    // a single bank outflow across payroll + fees + taxes. Splits sum to amountMinor
+    // (validated on write via normalizeSplits). Optional so legacy 1:1 payroll
+    // matches read as unsplit.
+    payrollSplits: v.optional(v.array(v.object({
+      category: v.union(
+        v.literal("payroll"),
+        v.literal("payroll_fee"),
+        v.literal("bank_fee"),
+        v.literal("tax_withholding"),
+        v.literal("other")
+      ),
+      categoryAccountId: v.id("ledgerAccounts"),
+      amountMinor: v.number(),
+      description: v.optional(v.string()),
+    }))),
+
+    // Payroll run link (E7-T2). Which payroll run this transaction settles.
+    payrollRunId: v.optional(v.id("payrollRuns")),
+
+    // Reconciliation status for payroll settlement workflow.
+    payrollReconciliationStatus: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("proposed"),
+      v.literal("confirmed"),
+      v.literal("error")
+    )),
+
+    // Error message if reconciliation failed.
+    payrollReconciliationError: v.optional(v.string()),
+
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -1001,6 +1033,25 @@ export default defineSchema({
     // Period this run posts against (last day of the month). Defaults derived
     // from `period` when absent so legacy seeded runs still read.
     postingDate: v.optional(v.string()),
+
+    // Settlement tracking (E7-T2). Expected vs. actual settlement amounts.
+    // expectedTotalMinor = sum of employee base equivalents.
+    expectedTotalMinor: v.optional(v.number()),
+    // Actual amount wired (set when settlement is confirmed).
+    settledTotalMinor: v.optional(v.number()),
+    // Bank transaction that settled this run.
+    settlementTxnId: v.optional(v.id("transactions")),
+    // If wired amount != expected, this holds the variance account posting ID.
+    varianceEntryId: v.optional(v.id("journalEntries")),
+
+    // Reconciliation workflow state.
+    reconciliationStatus: v.optional(v.union(
+      v.literal("unmatched"),       // No bank transaction found yet
+      v.literal("match_proposed"),  // Auto-matcher found a candidate
+      v.literal("match_confirmed"), // Manual or auto confirmation
+      v.literal("error")            // Reconciliation failed
+    )),
+
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_entity", ["entityId"]),
@@ -1239,6 +1290,14 @@ export default defineSchema({
     // Currency the payout settles in. Optional so legacy rows read; the matcher
     // requires same-currency to pair a deposit to a payout.
     currency: v.optional(v.string()),
+    // Drift detection: amount difference between expected and actual payout (actual - expected).
+    // Stored in minor units. Populated when drift is detected during webhook processing.
+    driftMinor: v.optional(v.number()),
+    // Auto-assigned category for drift amount. Stored category ID if drift is small enough for auto-categorization.
+    driftCategoryId: v.optional(v.id("ledgerAccounts")),
+    // Drift handling status: pending_review (needs manual action), auto_matched (drift auto-categorized),
+    // manual_review (user intervention required)
+    driftStatus: v.optional(v.union(v.literal("pending_review"), v.literal("auto_matched"), v.literal("manual_review"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

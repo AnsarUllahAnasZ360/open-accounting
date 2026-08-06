@@ -405,6 +405,8 @@ export const bootstrapWorkspace = mutation({
         });
       }
       // Existing-workspace idempotency: never duplicate entities on re-run.
+      // If businesses already exist, return without creating duplicates.
+      // The wizard can still run if onboarding is incomplete.
       if ((await activeBusinessCount(ctx, existingMembership.workspaceId)) > 0) {
         return {
           workspaceId: existingMembership.workspaceId,

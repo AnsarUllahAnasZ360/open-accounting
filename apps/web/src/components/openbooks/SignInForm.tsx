@@ -1,11 +1,13 @@
 "use client";
 
-import { useAuthActions } from "@convex-dev/auth/react";
-import { getErrorMessage } from "@/lib/errors";
+import { useAuthActions, useConvexAuth } from "@convex-dev/auth/react";
+import { useQuery } from "convex/react";
+import { mapAuthError } from "@/lib/auth-errors";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { api } from "../../../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,7 +27,9 @@ export function SignInForm({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { signIn } = useAuthActions();
+  const { signIn, signOut } = useAuthActions();
+  const { isAuthenticated } = useConvexAuth();
+  const viewer = useQuery(api.session.viewer, isAuthenticated ? {} : "skip");
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState("");
   const resetCode = searchParams.get("code");
@@ -55,8 +59,8 @@ export function SignInForm({
       });
       router.push("/dashboard");
     } catch (caught) {
-      const message = getErrorMessage(caught, "");
-      setError(message || "Could not reset this password. Request a fresh reset email.");
+      const message = mapAuthError(caught);
+      setError(message);
       setState("error");
     }
   }
@@ -69,29 +73,25 @@ export function SignInForm({
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email") ?? "").trim().toLowerCase();
     const password = String(form.get("password") ?? "");
-    const name = String(form.get("name") ?? "").trim();
 
     try {
+      // If user is already authenticated with a different email, sign out first
+      const currentEmail = viewer?.user?.email ? String(viewer.user.email).trim().toLowerCase() : null;
+      if (isAuthenticated && currentEmail && currentEmail !== email) {
+        // Sign out the previous session before signing in with the new account
+        await signOut();
+      }
+
       await signIn("password", {
         email,
         password,
         flow: "signIn",
       });
       router.push(postAuthRoute);
-    } catch {
-      try {
-        await signIn("password", {
-          email,
-          password,
-          name,
-          flow: "signUp",
-        });
-        router.push(postAuthRoute);
-      } catch (caught) {
-        const message = getErrorMessage(caught, "");
-        setError(message || "Check your email and password, or create a new OpenBooks account.");
-        setState("error");
-      }
+    } catch (caught) {
+      const message = mapAuthError(caught);
+      setError(message);
+      setState("error");
     }
   }
 
@@ -139,7 +139,7 @@ export function SignInForm({
         <div>
           <h1 className="text-xl font-semibold">Sign in to OpenBooks</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Start a workspace or join one with an invite.
+            Enter your email and password to access your workspace.
           </p>
         </div>
       </div>
@@ -175,10 +175,6 @@ export function SignInForm({
         <div className="grid gap-1.5">
           <Label htmlFor="password">Password</Label>
           <Input id="password" name="password" type="password" autoComplete="current-password" required />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="name">Name</Label>
-          <Input id="name" name="name" autoComplete="name" />
         </div>
       </div>
       <Button className="mt-4 w-full" disabled={state === "submitting"} type="submit">

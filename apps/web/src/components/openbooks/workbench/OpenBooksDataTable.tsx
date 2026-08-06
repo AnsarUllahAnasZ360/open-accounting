@@ -502,7 +502,7 @@ export function OpenBooksDataTable<Row>({
           of forcing a bottom horizontal scrollbar. */}
       <div
         className={cn(
-          "hidden overflow-x-auto overflow-y-auto rounded-[14px] ring-1 ring-foreground/10 shadow-xs md:block",
+          "hidden overflow-x-auto overflow-y-auto rounded-[14px] ring-1 ring-foreground/10 shadow-xs sm:block",
           tableContainerClassName,
         )}
       >
@@ -656,7 +656,7 @@ export function OpenBooksDataTable<Row>({
       </div>
 
       {/* Mobile: stacked card list of the same columns — never a squeezed table. */}
-      <div className={cn("flex flex-col gap-2 md:hidden", mobileListClassName)}>
+      <div className={cn("flex flex-col gap-2 sm:hidden", mobileListClassName)}>
         {pageRows.map((row) => {
           const id = getRowId(row);
           const selected = selectedIds.includes(id);

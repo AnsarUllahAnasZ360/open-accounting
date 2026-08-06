@@ -10,7 +10,6 @@ import {
   Copy,
   CreditCard,
   ExternalLink,
-  Image as ImageIcon,
   Inbox,
   Landmark,
   LayoutDashboard,
@@ -25,7 +24,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -233,26 +232,43 @@ function OnboardingLogoField({
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   return (
-    <div className="flex shrink-0 flex-col items-center gap-1.5">
-      <div className="flex size-14 items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
-        {logoPreview ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logoPreview} alt="Business logo preview" className="size-full object-contain" />
-        ) : (
-          <ImageIcon className="size-5 text-muted-foreground" />
-        )}
+    <div className="flex shrink-0 flex-col items-center gap-2">
+      <div className="relative">
+        {/* Dashed border upload box */}
+        <div
+          onClick={() => inputRef.current?.click()}
+          className="flex size-24 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 transition-all hover:border-primary/50 hover:bg-primary/10"
+          data-testid="onboarding-logo-placeholder"
+        >
+          {logoPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoPreview}
+              alt="Business logo preview"
+              className="size-full object-contain rounded-lg"
+            />
+          ) : (
+            <div className="flex size-14 items-center justify-center rounded-full bg-primary/10">
+              <Building2 className="size-7 text-primary" />
+            </div>
+          )}
+        </div>
+
+        {/* Green "+" button overlay - only show when no logo is uploaded */}
+        {!logoPreview ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => inputRef.current?.click()}
+            className="absolute bottom-4 right-4 flex size-5 items-center justify-center rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+            aria-label="Upload logo"
+            data-testid="onboarding-logo-upload"
+          >
+            <Plus className="size-4 font-bold" />
+          </button>
+        ) : null}
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-auto px-2 py-1 text-xs text-muted-foreground"
-        disabled={busy}
-        data-testid="onboarding-logo-upload"
-        onClick={() => inputRef.current?.click()}
-      >
-        {busy ? "Uploading…" : logoPreview ? "Replace" : "Upload"}
-      </Button>
+
       {logoPreview ? (
         <Button
           type="button"
@@ -260,11 +276,13 @@ function OnboardingLogoField({
           size="sm"
           className="h-auto px-2 py-1 text-xs text-muted-foreground"
           disabled={busy}
+          data-testid="onboarding-logo-remove"
           onClick={onRemove}
         >
           Remove
         </Button>
       ) : null}
+
       <input
         ref={inputRef}
         type="file"
@@ -379,7 +397,10 @@ export function OnboardingScreen({
   const setPhase = useMutation(api.onboarding.setPhase);
   const finishOnboarding = useMutation(api.onboarding.finishOnboarding);
   const inviteTeammate = useMutation(api.team.invite);
-  const generateLogoUploadUrl = useMutation(api.onboarding.generateLogoUploadUrl);
+  const generateLogoUploadUrl = useMutation(
+    api.onboarding.generateLogoUploadUrl,
+  );
+  const archiveEntity = useMutation(api.entities.archive);
 
   // Live workspace context — populated once the business step bootstraps the
   // workspace, so the integration steps can do real work. These queries require
@@ -408,8 +429,10 @@ export function OnboardingScreen({
     workspaceId ? { workspaceId } : "skip",
   );
 
-  const businessRows =
-    entities?.rows.filter((entity) => !entity.archived) ?? [];
+  const businessRows = useMemo(
+    () => entities?.rows.filter((entity) => !entity.archived) ?? [],
+    [entities]
+  );
   const firstEntityId = (businessRows[0]?.id ?? null) as Id<"entities"> | null;
   const connectionBusinesses = businessRows.map((entity) => ({
     id: String(entity.id),
@@ -423,7 +446,8 @@ export function OnboardingScreen({
   // A live Plaid bank link books its own opening balance automatically, so the
   // manual opening-balance step is only relevant for CSV/demo/manual setups.
   const plaidBankConnected = (connectionsData?.bankAccounts ?? []).some(
-    (account) => Boolean(account.plaidItemId) && account.itemStatus !== "disconnected",
+    (account) =>
+      Boolean(account.plaidItemId) && account.itemStatus !== "disconnected",
   );
   const connectedStripeCount =
     connectionsData?.connections?.filter(
@@ -440,9 +464,30 @@ export function OnboardingScreen({
   const [stepIndex, setStepIndex] = useState(0);
   const [started, setStarted] = useState(false);
   const [businesses, setBusinesses] = useState(() => [newBusinessRow()]);
+  const businessesLoadedRef = useRef(false);
+
+  // When existing businesses load from DB, populate the form with them once
+  // This ensures users see their previously saved businesses when returning to Business step
+  useLayoutEffect(() => {
+    if (businessesLoadedRef.current) return;
+    if (businessRows.length === 0) return;
+    if (stepIndex !== 0) return;
+
+    businessesLoadedRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBusinesses(
+      businessRows.map((entity, index) => ({
+        id: index + 1,
+        name: entity.name,
+        businessType: (entity.businessType as BusinessType) || "services",
+      }))
+    );
+  }, [businessRows, stepIndex]);
   // Owner-chosen workspace name (the whole account's display name). Seeded from
   // the current workspace name once it resolves, unless the owner has typed.
-  const [workspaceNameInput, setWorkspaceNameInput] = useState(workspaceName ?? "");
+  const [workspaceNameInput, setWorkspaceNameInput] = useState(
+    workspaceName ?? "",
+  );
   const workspaceNameTouched = useRef(false);
 
   // Resume support (Epic E4-T1): if the wizard is (re)mounted with a workspace
@@ -577,18 +622,27 @@ export function OnboardingScreen({
       const preview = URL.createObjectURL(file);
       setBusinesses((rows) =>
         rows.map((row) =>
-          row.id === id ? { ...row, logoStorageId: storageId, logoPreview: preview } : row,
+          row.id === id
+            ? { ...row, logoStorageId: storageId, logoPreview: preview }
+            : row,
         ),
       );
     } catch (caught) {
       setStatus("error");
-      setError(getErrorMessage(caught, "Could not upload that logo. Try a PNG or JPG."));
+      setError(
+        getErrorMessage(
+          caught,
+          "Could not upload that logo. Try a PNG or JPG.",
+        ),
+      );
     }
   }
   function clearRowLogo(id: number) {
     setBusinesses((rows) =>
       rows.map((row) =>
-        row.id === id ? { ...row, logoStorageId: undefined, logoPreview: undefined } : row,
+        row.id === id
+          ? { ...row, logoStorageId: undefined, logoPreview: undefined }
+          : row,
       ),
     );
   }
@@ -623,20 +677,96 @@ export function OnboardingScreen({
   }
 
   // Step 0 -> create the workspace + businesses NOW so every later step does real
-  // work (Epic E4-T4). Idempotent: bootstrapWorkspace no-ops on an existing
-  // workspace, so re-entering the business step never duplicates.
+  // work (Epic E4-T4). If businesses already exist (returning user), just mark step
+  // complete and continue without recreating.
   async function continueFromBusiness() {
     setStatus("submitting");
     setError("");
     try {
+      // UPDATE MODE: Businesses already exist (returning user)
+      // Handle: archiving removed businesses + creating new businesses they just added
+      if (businessRows.length > 0) {
+        const currentBusinessNames = new Set(
+          businesses.map((b) => b.name.trim()).filter((name) => name)
+        );
+        const existingBusinessNames = new Set(businessRows.map((b) => b.name));
+
+        // Step 1: Archive removed businesses
+        // Only archive businesses that exist in the database (businessRows)
+        for (const dbBusiness of businessRows) {
+          if (!currentBusinessNames.has(dbBusiness.name)) {
+            try {
+              console.log(
+                `Archiving business: ${dbBusiness.name} with ID: ${dbBusiness.id}`
+              );
+              await archiveEntity({ entityId: dbBusiness.id });
+            } catch (error) {
+              console.error(
+                `Failed to archive business ${dbBusiness.name}:`,
+                error
+              );
+            }
+          }
+        }
+
+        // Step 2: Update local businesses state to remove archived ones
+        // This ensures the UI doesn't show removed businesses if user comes back
+        setBusinesses((prevBusinesses) =>
+          prevBusinesses.filter((b) =>
+            currentBusinessNames.has(b.name.trim())
+          )
+        );
+
+        // Step 3: Create NEW businesses (ones in form but not in DB yet)
+        const newBusinesses = businesses.filter(
+          (b) => b.name.trim() && !existingBusinessNames.has(b.name.trim())
+        );
+
+        if (newBusinesses.length > 0) {
+          // Create the new businesses using bootstrapWorkspace
+          try {
+            await bootstrapWorkspace({
+              businesses: newBusinesses.map((b) => ({
+                name: b.name.trim(),
+                businessType: b.businessType,
+                ...(b.logoStorageId ? { logoStorageId: b.logoStorageId } : {}),
+              })),
+            });
+          } catch (error) {
+            console.error("Failed to create new businesses:", error);
+            setError(
+              getErrorMessage(
+                error,
+                "Could not add new businesses. Please try again."
+              )
+            );
+            setStatus("error");
+            return;
+          }
+        }
+
+        await persistStepState("business", "complete");
+        await setPhase({ phase: "setup" });
+        setStatus("idle");
+        next();
+        return;
+      }
+
+      // First time: create new businesses and workspace
       const result = await bootstrapWorkspace({
-        ...(workspaceNameInput.trim() ? { workspaceName: workspaceNameInput.trim() } : {}),
+        ...(workspaceNameInput.trim()
+          ? { workspaceName: workspaceNameInput.trim() }
+          : {}),
         businesses: namedBusinesses.map((b) => ({
           name: b.name.trim(),
           businessType: b.businessType,
           ...(b.logoStorageId ? { logoStorageId: b.logoStorageId } : {}),
           ...(b.legalStructure
-            ? { entityType: legalStructures.find((l) => l.value === b.legalStructure)?.entityTypeLabel }
+            ? {
+                entityType: legalStructures.find(
+                  (l) => l.value === b.legalStructure,
+                )?.entityTypeLabel,
+              }
             : {}),
         })),
       });
@@ -874,8 +1004,13 @@ export function OnboardingScreen({
                 </p>
               </div>
 
-              <p className="text-sm text-muted-foreground" data-testid="onboarding-currency">
-                <span className="font-medium text-foreground">Currency: USD</span>
+              <p
+                className="text-sm text-muted-foreground"
+                data-testid="onboarding-currency"
+              >
+                <span className="font-medium text-foreground">
+                  Currency: USD
+                </span>
                 {" · "}More currencies coming soon.
               </p>
 
@@ -929,6 +1064,9 @@ export function OnboardingScreen({
                           }
                           placeholder="Acme Studio LLC"
                         />
+                        <p className="text-[11.5px] leading-5 text-muted-foreground mt-[-5px]">
+                          Upload logo & your business name here
+                        </p>
                       </div>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
@@ -1030,7 +1168,11 @@ export function OnboardingScreen({
                   onClick={continueFromBusiness}
                 >
                   {status === "submitting"
-                    ? "Creating your books"
+                    ? businessRows.length > 0
+                      ? "Updating your books"
+                      : "Creating your books"
+                    : businessRows.length > 0
+                    ? "Update & continue"
                     : "Create & continue"}
                   <ArrowRight className="size-4" />
                 </Button>
@@ -1621,7 +1763,11 @@ function PlaidOnboardingStep({
     if (!clientId.trim() || !secret.trim()) return;
     setSaving(true);
     try {
-      await saveApp({ clientId: clientId.trim(), secret: secret.trim(), environment });
+      await saveApp({
+        clientId: clientId.trim(),
+        secret: secret.trim(),
+        environment,
+      });
       toast.success("Plaid app saved. You can now connect your bank.");
       setClientId("");
       setSecret("");
@@ -1658,8 +1804,12 @@ function PlaidOnboardingStep({
         <div className="grid gap-4">
           <ol className="grid gap-1.5 rounded-lg border bg-card p-4 text-[12.5px] text-muted-foreground">
             <li className="font-medium text-foreground">Set up in 3 steps</li>
-            <li>1. Copy the URLs below and register them in your Plaid dashboard.</li>
-            <li>2. In Plaid → Developers → Keys, copy your Client ID and secret.</li>
+            <li>
+              1. Copy the URLs below and register them in your Plaid dashboard.
+            </li>
+            <li>
+              2. In Plaid → Developers → Keys, copy your Client ID and secret.
+            </li>
             <li>3. Paste them here and save — then connect your bank.</li>
             <li className="pt-0.5">
               <a
@@ -1791,7 +1941,9 @@ function PlaidOnboardingStep({
             <span className="flex size-5 items-center justify-center rounded-full bg-ob-green-50">
               <Check className="size-3 text-ob-green-800" />
             </span>
-            <span className="font-medium text-ob-green-800">Plaid app configured</span>
+            <span className="font-medium text-ob-green-800">
+              Plaid app configured
+            </span>
             {plaidApp?.configured ? (
               <span className="text-muted-foreground capitalize">
                 · {plaidApp.environment}
@@ -1800,19 +1952,21 @@ function PlaidOnboardingStep({
           </div>
 
           {connected ? (
-            <p className="text-sm text-primary" data-testid="onboarding-connected-note">
-              Bank connected — you can map accounts to businesses, then continue.
+            <p
+              className="text-sm text-primary"
+              data-testid="onboarding-connected-note"
+            >
+              Bank connected — you can map accounts to businesses, then
+              continue.
             </p>
           ) : (
             <>
-              <Button
-                data-testid="onboarding-bank-connect"
-                onClick={onConnect}
-              >
+              <Button data-testid="onboarding-bank-connect" onClick={onConnect}>
                 Connect bank account
               </Button>
               <p className="text-sm text-muted-foreground">
-                Skipping keeps this in your resumable setup checklist until you complete it.
+                Skipping keeps this in your resumable setup checklist until you
+                complete it.
               </p>
             </>
           )}
@@ -2069,9 +2223,9 @@ function OpeningBalancesStep({
             Opening balance booked from your bank
           </div>
           <p className="text-[12.5px] leading-5 text-muted-foreground">
-            OpenBooks recorded a balanced opening entry from your linked bank&apos;s
-            current balance. You&apos;d only set this manually if you were starting
-            from a CSV import or manual entries.
+            OpenBooks recorded a balanced opening entry from your linked
+            bank&apos;s current balance. You&apos;d only set this manually if
+            you were starting from a CSV import or manual entries.
           </p>
         </div>
         <SkipContinueRow

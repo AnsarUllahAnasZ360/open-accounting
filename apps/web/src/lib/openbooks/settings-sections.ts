@@ -6,6 +6,7 @@
 export const SETTINGS_SECTIONS = [
   { id: "profile", label: "Profile" },
   { id: "businesses", label: "Businesses" },
+  { id: "opening-balance", label: "Opening balance" },
   { id: "tax", label: "Tax & fiscal year" },
   { id: "connections", label: "Connections" },
   { id: "ai", label: "AI" },
@@ -27,7 +28,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   label: string;
   items: ReadonlyArray<SettingsSectionId>;
 }> = [
-  { label: "Workspace", items: ["profile", "businesses", "tax"] },
+  { label: "Workspace", items: ["profile", "businesses", "opening-balance", "tax"] },
   { label: "Automation", items: ["ai", "rules", "categories"] },
   { label: "Connections", items: ["connections"] },
   { label: "People", items: ["team", "notifications"] },

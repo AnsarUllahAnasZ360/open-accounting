@@ -7,6 +7,7 @@ import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
 import { computeEntityMetrics, type EntityMetrics } from "./entityMetrics";
 import { assertScopeAuthorized, scopeValidator, type Scope } from "./entityScope";
 import { buildProvenance } from "./lib/provenance";
+import { cutoffsByEntity, isWithinCutoff, isWithinEntityCutoff } from "./openingBalanceCutoff";
 import { normalizeMerchantKey } from "./pipeline";
 import { sumUsdMinor } from "./portfolioMoney";
 import { computeUnreviewedGap } from "./unreviewedGap";
@@ -252,8 +253,19 @@ export const dashboard = query({
     const lines = journalGroups.flatMap((journal) => journal.lines);
     const accounts = accountGroups.flat();
     const bankAccounts = bankAccountGroups.flat();
-    const transactions = transactionGroups.flat();
-    const inboxItems = inboxItemGroups.flat();
+
+    // Opening-balance cutoff: pre-cutoff activity is history, not the working
+    // set. Filter transactions first, then drop the inbox items that point at
+    // them so the queue count and the queue itself can't disagree.
+    const cutoffs = cutoffsByEntity(orderedEntities);
+    const transactions = transactionGroups
+      .flat()
+      .filter((transaction) => isWithinCutoff(cutoffs, transaction.entityId, transaction.date));
+    const visibleTransactionIds = new Set(transactions.map((transaction) => transaction._id));
+    const inboxItems = inboxItemGroups
+      .flat()
+      .filter((item) => !item.transactionId || visibleTransactionIds.has(item.transactionId));
+
     const invoices = invoiceGroups.flat();
     const bills = billGroups.flat();
     const payrollRuns = payrollRunGroups.flat();
@@ -858,8 +870,18 @@ export const inbox = query({
       bucket.push(memory);
       memoriesByMerchant.set(key, bucket);
     }
+    // Opening-balance cutoff: an item whose underlying transaction/document is
+    // dated before the entity's cutoff is history, not queue work. Items with no
+    // date to judge by (questions, unmatched documents) always stay.
     const openItems = items
       .filter((item) => item.status === "open")
+      .filter((item) => {
+        const itemDate =
+          (item.documentId ? documentsById.get(item.documentId)?.date : null) ??
+          (item.transactionId ? transactionsById.get(item.transactionId)?.date : null) ??
+          null;
+        return isWithinEntityCutoff(entity, itemDate);
+      })
       .sort((a, b) => b.createdAt - a.createdAt);
 
     // Count items resolved/dismissed in the last 24h so the queue header can
@@ -1057,7 +1079,13 @@ export const transactions = query({
         ctx.db.query("aiCorrectionMemories").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(2000),
       )),
     ]);
-    const transactions = transactionGroups.flat();
+    // Opening-balance cutoff — see convex/openingBalanceCutoff.ts. Pre-cutoff
+    // rows stay in the database (exports and the audit log still see them) but
+    // are not part of the working set this screen edits.
+    const transactionCutoffs = cutoffsByEntity(orderedEntities);
+    const transactions = transactionGroups
+      .flat()
+      .filter((transaction) => isWithinCutoff(transactionCutoffs, transaction.entityId, transaction.date));
     const accounts = accountGroups.flat();
     const bankAccounts = bankAccountGroups.flat();
     const inboxItems = inboxItemGroups.flat();

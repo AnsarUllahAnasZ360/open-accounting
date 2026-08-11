@@ -18,6 +18,7 @@ import { CategoriesSection } from "@/components/openbooks/settings/CategoriesSec
 import { ConnectionsSection } from "@/components/openbooks/settings/ConnectionsSection";
 import { DataSection } from "@/components/openbooks/settings/DataSection";
 import { NotificationsSection } from "@/components/openbooks/settings/NotificationsSection";
+import { OpeningBalanceSection } from "@/components/openbooks/settings/OpeningBalanceSection";
 import { ProfileScreen } from "@/components/openbooks/ProfileScreen";
 import { RulesSection } from "@/components/openbooks/settings/RulesSection";
 import { TaxSection } from "@/components/openbooks/settings/TaxSection";
@@ -29,6 +30,7 @@ export type { SettingsSectionId };
 const SECTION_DESCRIPTIONS: Record<SettingsSectionId, string> = {
   profile: "Your identity, workspace access, role permissions, and password reset.",
   businesses: "The businesses in this workspace and their books.",
+  "opening-balance": "Start fresh from a specific date — hide or archive earlier transactions.",
   tax: "Fiscal year, accounting basis, and tax identity per business.",
   connections: "Banks and Stripe — your keys, your data.",
   ai: "Your model, your key, and how much AI does on its own.",
@@ -266,6 +268,7 @@ function SectionBody({
       ) : null}
       {active === "profile" ? <ProfileScreen embedded /> : null}
       {active === "businesses" ? <BusinessesSection /> : null}
+      {active === "opening-balance" ? <OpeningBalanceSection /> : null}
       {active === "tax" ? <TaxSection /> : null}
       {active === "connections" ? <ConnectionsSection workspaceId={workspaceId} /> : null}
       {active === "ai" ? <AiSection entityId={entityId} workspaceId={workspaceId} /> : null}

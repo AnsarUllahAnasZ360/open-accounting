@@ -2201,45 +2201,7 @@ function OpeningBalancesStep({
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [showManual, setShowManual] = useState(false);
-
-  // A connected Plaid bank already posts its own opening balance when it links,
-  // so there's nothing to enter here — show a confirmation and let the owner
-  // continue. The manual entry form is only for CSV/demo/manual setups, and an
-  // owner can still opt into it explicitly.
-  if (plaidBankConnected && !showManual) {
-    return (
-      <StepFrame
-        icon={Wallet}
-        title="Opening balances"
-        body="Your connected bank set the starting balance automatically when it linked, so there's nothing to enter here."
-      >
-        <div
-          className="grid gap-2 rounded-lg border border-primary/20 bg-primary/5 p-4"
-          data-testid="onboarding-opening-balances-plaid"
-        >
-          <div className="flex items-center gap-2 text-sm font-medium text-primary">
-            <Check className="size-4 shrink-0" />
-            Opening balance booked from your bank
-          </div>
-          <p className="text-[12.5px] leading-5 text-muted-foreground">
-            OpenBooks recorded a balanced opening entry from your linked
-            bank&apos;s current balance. You&apos;d only set this manually if
-            you were starting from a CSV import or manual entries.
-          </p>
-        </div>
-        <SkipContinueRow
-          onBack={onBack}
-          onContinue={onComplete}
-          continueLabel="Continue"
-          continueTestId="onboarding-opening-continue"
-          onSkip={() => setShowManual(true)}
-          skipTestId="onboarding-opening-manual"
-          skipLabel="Enter balances manually instead"
-        />
-      </StepFrame>
-    );
-  }
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
 
   async function save() {
     setSaving(true);
@@ -2278,7 +2240,11 @@ function OpeningBalancesStep({
     <StepFrame
       icon={Wallet}
       title="Set opening balances"
-      body="Enter each business's starting cash balance in USD so your balance sheet is correct from day one. OpenBooks books a balanced opening entry against Opening Balance Equity, dated the first of your start month. Amounts are USD only."
+      body={
+        plaidBankConnected
+          ? "Your connected bank has provided a starting balance. You can confirm it, adjust it, or set a specific date to start fresh. OpenBooks books a balanced opening entry against Opening Balance Equity."
+          : "Enter each business's starting cash balance in USD so your balance sheet is correct from day one. OpenBooks books a balanced opening entry against Opening Balance Equity, dated the first of your start month. Amounts are USD only."
+      }
     >
       <div
         className="grid gap-3 rounded-lg border bg-background p-4"
@@ -2294,6 +2260,16 @@ function OpeningBalancesStep({
             onChange={(event) => onStartDateChange(event.target.value)}
           />
         </div>
+
+        {startDate && (
+          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+            <p className="font-medium">📅 Opening Balance Date Set</p>
+            <p className="mt-1 text-xs opacity-90">
+              Unreviewed transactions before <strong>{startDate}</strong> will be hidden from your main view.
+              Already-reviewed and categorized transactions will remain visible for reference.
+            </p>
+          </div>
+        )}
         {businesses.map((business) => (
           <div
             key={String(business.id)}
@@ -2322,10 +2298,45 @@ function OpeningBalancesStep({
         continueLabel={saving ? "Saving…" : "Set opening balances"}
         continueTestId="onboarding-opening-save"
         continueDisabled={saving}
-        onSkip={onSkip}
+        onSkip={() => setShowSkipConfirm(true)}
         skipTestId="onboarding-opening-skip"
         skipLabel="Skip for now"
       />
+
+      {/* Skip confirmation dialog */}
+      {showSkipConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
+            <h2 className="text-lg font-bold">Skip opening balance?</h2>
+            <p className="mt-3 text-sm text-muted-foreground">
+              {plaidBankConnected
+                ? "If you skip this step, OpenBooks will use the balance from your connected bank account as the opening balance. All transactions from your bank (starting from when you first connected) will be fetched and displayed."
+                : "If you skip this step, OpenBooks will not have an opening balance entry. All transactions will need to be manually entered or imported via CSV/OFX. Your balance sheet may be incomplete."}
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowSkipConfirm(false)}
+                className="flex-1"
+                data-testid="onboarding-opening-skip-cancel"
+              >
+                Go Back
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowSkipConfirm(false);
+                  onSkip();
+                }}
+                className="flex-1"
+                data-testid="onboarding-opening-skip-confirm"
+              >
+                Skip Anyway
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </StepFrame>
   );
 }

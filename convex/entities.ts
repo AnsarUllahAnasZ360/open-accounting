@@ -134,6 +134,18 @@ export const list = query({
 });
 
 /**
+ * Get a single entity by ID. Used for reading entity details in Settings.
+ * Re-checks workspace authorization server-side.
+ */
+export const getById = query({
+  args: { id: v.id("entities") },
+  handler: async (ctx, args) => {
+    await requireAnyWorkspaceRole(ctx, "hr");
+    return await ctx.db.get(args.id);
+  },
+});
+
+/**
  * Create a new business (entity) and seed a typed chart of accounts through the
  * shared ledger seeder. Owner/admin only; re-checks workspace authz server-side
  * and writes an audit event. Money/currency stays a plain ISO code; the CoA is

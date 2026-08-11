@@ -158,6 +158,10 @@ export default defineSchema({
         }),
       ),
     ),
+    // Opening balance date (ISO format YYYY-MM-DD). When set, transactions before
+    // this date are filtered/hidden from reports. Allows users to "start fresh"
+    // on a specific date while keeping historical data archived.
+    openingBalanceDate: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

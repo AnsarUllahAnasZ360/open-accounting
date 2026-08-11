@@ -95,7 +95,7 @@ const categorizeAndRouteTransactionRef = makeFunctionReference<
     } | null;
     fallbackReason: string | null;
     route: {
-      status: "posted" | "needs_review" | "duplicate";
+      status: "posted" | "needs_review" | "duplicate" | "excluded";
       transactionId: Id<"transactions">;
       entryId: Id<"journalEntries"> | null;
       stage: string;
@@ -136,7 +136,7 @@ type HoldoutEvalResult = {
   predictedAccountNumber: string | null;
   predictedAccountName: string | null;
   correct: boolean;
-  routeStatus: "posted" | "needs_review" | "duplicate";
+  routeStatus: "posted" | "needs_review" | "duplicate" | "excluded";
   stage: string;
   decidedBy: Doc<"transactions">["decidedBy"] | null;
   confidence: number | null;

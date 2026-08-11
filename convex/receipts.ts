@@ -1184,7 +1184,7 @@ export const createExpenseFromReceipt = mutation({
       ...(args.categoryAccountId ? { categoryAccountId: args.categoryAccountId } : {}),
     });
     const result: {
-      status: "posted" | "needs_review" | "duplicate";
+      status: "posted" | "needs_review" | "duplicate" | "excluded";
       transactionId: Id<"transactions">;
       entryId: Id<"journalEntries"> | null;
       stage: string;

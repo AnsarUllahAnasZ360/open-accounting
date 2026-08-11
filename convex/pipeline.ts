@@ -859,6 +859,44 @@ async function routeTransactionCore(
     }
 
     const now = Date.now();
+
+    // Opening-balance cutoff. The owner said "my books start here", so activity
+    // dated earlier must never reach the ledger or the review queue — a
+    // connector back-filling old history after the cutoff was set would
+    // otherwise post confidently-classified rows that move Cash Position while
+    // being invisible on every screen (they are filtered on read).
+    //
+    // The row is still STORED, as `excluded`, so the dedupe index above keeps
+    // recognizing it and a later re-sync can't resurrect it. Returning here
+    // short-circuits every routing branch below: no ledger entry, no inbox item,
+    // no AI spend on a transaction the owner has already decided is history.
+    if (entity.openingBalanceDate && args.date < entity.openingBalanceDate) {
+      const excludedId = await ctx.db.insert("transactions", {
+        entityId: args.entityId,
+        bankAccountId: args.bankAccountId,
+        date: args.date,
+        amountMinor: args.amountMinor,
+        currency: args.currency,
+        merchant: args.merchant,
+        rawDescription: args.rawDescription,
+        status: args.status,
+        review: "excluded",
+        source: args.source,
+        contactId: args.contactId,
+        externalId: args.externalId,
+        evalExpectedAccountId: args.evalExpectedAccountId,
+        evalSet: Boolean(args.evalSet),
+        createdAt: now,
+        updatedAt: now,
+      });
+      return {
+        status: "excluded" as const,
+        transactionId: excludedId,
+        entryId: null,
+        stage: "needs_review" as const,
+      };
+    }
+
     const transactionId = await ctx.db.insert("transactions", {
       entityId: args.entityId,
       bankAccountId: args.bankAccountId,

@@ -191,6 +191,8 @@ type ApplyProjectionResult = {
 	  inboxItemsCreated: number;
   ledgerEntriesPosted: number;
   skippedDuplicates: number;
+  /** Stripe items dropped for landing before the entity's books start. */
+  preCutoffSkipped: number;
   integrationGaps: string[];
 };
 
@@ -927,6 +929,22 @@ async function applyProjectionCore(
 ): Promise<ApplyProjectionResult> {
   const accounts = await ensureStripeAccounts(ctx, args.entity);
   const now = Date.now();
+
+  // Opening-balance cutoff. Stripe posts a payment as SEVERAL balanced entries
+  // (gross, fee, payout drain, invoice receivable), so pre-cutoff Stripe activity
+  // has to be dropped as a whole set — letting half of it through would strand
+  // the other half and leave 1150 Clearing / 1160 In-Transit with a phantom
+  // balance that never zeroes out.
+  //
+  // What crosses the boundary is a BALANCE, not history: an invoice still open
+  // at the cutoff belongs in the owner's opening Accounts Receivable, and the
+  // Stripe balance in flight belongs in their opening clearing figure. Re-posting
+  // the original March sale here would recognise pre-conversion revenue inside
+  // books that are supposed to start at the cutoff.
+  const cutoff = args.entity.openingBalanceDate ?? null;
+  const isPreCutoff = (date: string) => cutoff !== null && date < cutoff;
+  let preCutoffSkipped = 0;
+
   let contactsCreated = 0;
   let incomeTransactionsCreated = 0;
   let invoicesCreated = 0;
@@ -945,6 +963,10 @@ async function applyProjectionCore(
   }
 
   for (const item of args.projection.income) {
+    if (isPreCutoff(item.date)) {
+      preCutoffSkipped += 1;
+      continue;
+    }
     assertNonNegativeMinorUnit(item.amountMinor, "Stripe income amount");
     assertNonNegativeMinorUnit(item.feeMinor, "Stripe fee amount");
     const duplicate = await ctx.db
@@ -999,6 +1021,14 @@ async function applyProjectionCore(
   const existingInvoices = await ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", args.entity._id)).collect();
   const existingInboxItems = await ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", args.entity._id)).collect();
   for (const invoice of args.projection.invoices) {
+    // Issued before the books start: the sale was earned in the prior period and
+    // belongs to the prior books. Any unpaid balance reaches these books through
+    // the owner's opening Accounts Receivable figure, so that a later payment
+    // books as Dr Bank / Cr AR and recognises no revenue twice.
+    if (isPreCutoff(invoice.issueDate)) {
+      preCutoffSkipped += 1;
+      continue;
+    }
     if (invoice.totalMinor < 0 || invoice.amountPaidMinor < 0) {
       const payloadSummary = `Stripe invoice ${invoice.number} has a negative total or paid amount and needs review as a credit, refund, or adjustment.`;
       if (existingInboxItems.some((item) => item.kind === "question" && item.status === "open" && item.payloadSummary === payloadSummary)) {
@@ -1155,6 +1185,10 @@ async function applyProjectionCore(
 
   const existingPayouts = await ctx.db.query("stripePayouts").withIndex("by_entity", (q) => q.eq("entityId", args.entity._id)).collect();
   for (const payout of args.projection.payouts) {
+    if (isPreCutoff(payout.arrivalDate)) {
+      preCutoffSkipped += 1;
+      continue;
+    }
     const existingPayout = existingPayouts.find((row) => row.payoutId === payout.payoutId);
     if (existingPayout) {
       payoutLinesCreated += await replaceStripePayoutLines(ctx, {
@@ -1287,6 +1321,7 @@ async function applyProjectionCore(
     inboxItemsCreated,
     ledgerEntriesPosted,
     skippedDuplicates,
+    preCutoffSkipped,
     integrationGaps: [
       "Stripe invoices now dedupe on stripeInvoiceId; contacts still dedupe on email, aliases, and Stripe customer id.",
       "Stripe webhook delivery still needs Stripe Dashboard or Stripe CLI forwarding configured against this Convex deployment.",
@@ -1604,6 +1639,12 @@ export async function matchPlaidInflowToPayout(
   // arrival so the cash event is real.
   if (args.inflow.status !== "posted") return { matched: false };
   if (args.inflow.amountMinor <= 0) return { matched: false };
+  // A deposit landing before the books start is prior-period cash. Reconciling it
+  // would post Dr Bank / Cr 1160 into a period these books do not cover, and
+  // against a payout that was itself skipped as pre-cutoff.
+  if (args.entity.openingBalanceDate && args.inflow.date < args.entity.openingBalanceDate) {
+    return { matched: false };
+  }
 
   const candidates = await loadMatchingStripePayoutCandidates(ctx, args.entity._id, args.inflow.amountMinor);
   if (candidates.length === 0) return { matched: false };

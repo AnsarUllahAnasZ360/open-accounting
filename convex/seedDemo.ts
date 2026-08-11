@@ -54,7 +54,7 @@ function rangeAmount(next: () => number, min: number, max: number) {
 }
 
 type RouteResult = {
-  status: "duplicate" | "posted" | "needs_review";
+  status: "duplicate" | "posted" | "needs_review" | "excluded";
   transactionId: Id<"transactions">;
   entryId: Id<"journalEntries"> | null;
   // Includes the additive E2 stages (memory / embedding / plaid_prior / ai) now

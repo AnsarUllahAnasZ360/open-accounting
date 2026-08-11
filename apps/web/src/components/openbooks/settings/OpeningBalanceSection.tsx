@@ -57,13 +57,23 @@ export function OpeningBalanceSection() {
         startDate,
         ...(amountMinor !== 0 ? { balanceMinor: amountMinor } : {}),
       });
-      const posted = outcome.posted ? " Opening entry posted." : "";
-      setResult({
-        ok: true,
-        text:
-          `Books now start ${outcome.cutoff}. Archived ${outcome.archivedTransactions} transaction(s) ` +
-          `and cleared ${outcome.dismissedItems} inbox item(s).${posted}`,
-      });
+      const parts = [
+        `Books now start ${outcome.cutoff}.`,
+        `Archived ${outcome.archivedTransactions} transaction(s), reversed ${outcome.reversedEntries} posted entr(ies), cleared ${outcome.dismissedItems} inbox item(s).`,
+      ];
+      if (outcome.replacedOpeningEntries > 0) {
+        parts.push(
+          `Replaced ${outcome.replacedOpeningEntries} earlier opening-balance entr(ies) so the starting cash isn't counted twice.`,
+        );
+      }
+      if (outcome.posted) parts.push("Opening entry posted.");
+      // Never imply the re-base was total when a closed period blocked part of it.
+      if (outcome.lockedEntries > 0) {
+        parts.push(
+          `${outcome.lockedEntries} entr(ies) sit in a locked period and were left untouched — unlock it and re-apply if they should be reversed too.`,
+        );
+      }
+      setResult({ ok: true, text: parts.join(" ") });
       setStartDate("");
       setAmount("");
     } catch (caught) {
@@ -134,7 +144,7 @@ export function OpeningBalanceSection() {
             <p className="text-[11.5px] text-muted-foreground">
               {amountInvalid
                 ? "Enter a plain amount like 1500 or 1500.00."
-                : "Leave blank to re-base the date without posting an entry."}
+                : "Your bank's closing balance the day before this date — not today's."}
             </p>
           </div>
         </div>
@@ -144,8 +154,9 @@ export function OpeningBalanceSection() {
             <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <div className="text-[12px] leading-5 text-amber-900 dark:text-amber-100">
               Transactions dated before <strong className="tabular-nums">{startDate}</strong> will be
-              archived, including ones already categorized or AI-reviewed. Nothing is deleted — they
-              remain in exports, reports history, and the audit log.
+              archived, including ones already categorized or AI-reviewed. Any that already posted
+              are <strong>reversed</strong>, so that period nets to zero on your reports. Nothing is
+              deleted — every original entry and its reversal stay in exports and the audit log.
             </div>
           </div>
         ) : null}
@@ -191,8 +202,9 @@ export function OpeningBalanceSection() {
             <h2 className="text-[15px] font-semibold">Start books on {startDate}?</h2>
             <p className="mt-3 text-[12.5px] leading-5 text-muted-foreground">
               Every transaction dated before this day is archived out of the Inbox and Transactions —
-              including ones you or the AI already categorized. They stay in your exports and audit
-              log.
+              including ones you or the AI already categorized — and anything that already posted is
+              reversed so your reports for that period net to zero. Originals and reversals both stay
+              in your exports and audit log.
             </p>
             {amountMinor !== null && amountMinor !== 0 ? (
               <p className="mt-2 text-[12.5px] leading-5 text-muted-foreground">

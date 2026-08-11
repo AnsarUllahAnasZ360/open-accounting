@@ -4,7 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requireAnyWorkspaceRole, requireUserId } from "./authz";
+import { requireAnyWorkspaceRole, requireUserId, requireWorkspaceRole } from "./authz";
 import { ensureDefaultBankAccountForEntity } from "./defaultBankAccount";
 import { chartTemplatesForType, postLedgerEntryCore, seedChartForEntity } from "./ledger";
 import { assertSignedMinorUnit } from "./money";
@@ -937,6 +937,53 @@ const openingBalanceLineValidator = v.object({
 });
 
 /**
+ * Apply an opening-balance cutoff to a business: every transaction dated before
+ * `cutoff` is marked `excluded` and any open inbox item pointing at one is
+ * dismissed.
+ *
+ * Shared by the onboarding wizard and the Settings screen so a book started on
+ * day one and a book re-based later behave identically. Nothing is deleted —
+ * exports, the audit log, and reconciliation history still see every row; the
+ * pre-cutoff activity simply stops being queue work. The read-time filter in
+ * `openingBalanceCutoff.ts` is the backstop for activity a connector back-fills
+ * AFTER this pass runs.
+ */
+async function applyOpeningBalanceCutoff(
+  ctx: MutationCtx,
+  entityId: Id<"entities">,
+  cutoff: string,
+): Promise<{ archivedTransactions: number; dismissedItems: number }> {
+  const priorTransactionIds = new Set<Id<"transactions">>();
+  const transactions = await ctx.db
+    .query("transactions")
+    .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+    .collect();
+
+  for (const transaction of transactions) {
+    if (transaction.date >= cutoff) continue;
+    priorTransactionIds.add(transaction._id);
+    if (transaction.review !== "excluded") {
+      await ctx.db.patch(transaction._id, { review: "excluded" });
+    }
+  }
+
+  const now = Date.now();
+  let dismissedItems = 0;
+  const items = await ctx.db
+    .query("inboxItems")
+    .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+    .collect();
+  for (const item of items) {
+    if (item.status !== "open") continue;
+    if (!item.transactionId || !priorTransactionIds.has(item.transactionId)) continue;
+    await ctx.db.patch(item._id, { status: "dismissed", updatedAt: now });
+    dismissedItems++;
+  }
+
+  return { archivedTransactions: priorTransactionIds.size, dismissedItems };
+}
+
+/**
  * Set opening balances during onboarding (Epic E4-T5). For each entered line
  * this books a single balanced journal entry (asset debit / 3900 credit) through
  * the ONE posting path so the balance sheet starts non-zero and ties. USD-only,
@@ -991,6 +1038,14 @@ export const setOpeningBalances = mutation({
         startDate: line.startDate,
         sourceTag,
       });
+      // An explicit start date re-bases the book: stamp the cutoff so later
+      // connector back-fills are filtered on read, and archive the activity the
+      // bank already delivered for months the owner is not opening on.
+      if (line.startDate) {
+        const cutoff = openingBalanceDate(line.startDate);
+        await ctx.db.patch(entity._id, { openingBalanceDate: cutoff, updatedAt: Date.now() });
+        await applyOpeningBalanceCutoff(ctx, entity._id, cutoff);
+      }
       results.push({ entityId: entity._id, posted: posted.posted, entryId: posted.entryId });
     }
 
@@ -1006,5 +1061,73 @@ export const setOpeningBalances = mutation({
     });
 
     return { lines: results };
+  },
+});
+
+/**
+ * Set (or move) a business's opening-balance date from Settings, for the owner
+ * who finished onboarding without starting their books on a chosen day.
+ *
+ * Three things happen, in this order:
+ *   1. Every transaction dated before the cutoff is marked `excluded` and its
+ *      open inbox item is dismissed. Nothing is deleted — exports, the audit
+ *      log, and reconciliation history still see the full history — but the
+ *      rows leave the working set for good rather than relying only on the
+ *      read-time filter in `openingBalanceCutoff.ts`.
+ *   2. The cutoff is stamped on the entity so later connector back-fills of old
+ *      activity are filtered on read too.
+ *   3. When `balanceMinor` is supplied, a balanced opening entry is posted
+ *      through the SAME ledger path onboarding uses, so a book started here and
+ *      a book started in the wizard are indistinguishable.
+ */
+export const updateOpeningBalanceDate = mutation({
+  args: {
+    entityId: v.id("entities"),
+    // ISO `YYYY-MM-DD`; floored to the first of its month (decision Q2) so the
+    // opening entry always predates the oldest kept transaction.
+    startDate: v.string(),
+    // Optional USD integer minor units. Signed: negative books a credit-card /
+    // overdraft opening balance. Omitted → date-only (archive without posting).
+    balanceMinor: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    const userId = await requireUserId(ctx);
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) throw new ConvexError("Business not found");
+    // Server-side re-check on the entity's OWN workspace — never the caller's
+    // active one.
+    await requireWorkspaceRole(ctx, entity.workspaceId, "accountant");
+
+    const cutoff = openingBalanceDate(args.startDate);
+
+    await ctx.db.patch(args.entityId, {
+      openingBalanceDate: cutoff,
+      updatedAt: Date.now(),
+    });
+    const { archivedTransactions, dismissedItems } = await applyOpeningBalanceCutoff(
+      ctx,
+      args.entityId,
+      cutoff,
+    );
+
+    // Post the opening entry through the shared ledger path when an amount was
+    // given. `postOpeningBalanceEntry` is idempotent on its sourceId, so
+    // re-running with the same date/amount will not double-post.
+    let posted = false;
+    if (typeof args.balanceMinor === "number" && args.balanceMinor !== 0) {
+      const cash = await defaultCashAccountForEntity(ctx, entity._id);
+      const result = await postOpeningBalanceEntry(ctx, {
+        entity,
+        userId,
+        assetAccountId: cash._id,
+        assetAccountName: cash.name,
+        balanceMinor: args.balanceMinor,
+        startDate: cutoff,
+        sourceTag: `entity:${entity._id}`,
+      });
+      posted = result.posted;
+    }
+
+    return { cutoff, archivedTransactions, dismissedItems, posted };
   },
 });

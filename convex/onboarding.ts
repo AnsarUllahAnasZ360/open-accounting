@@ -890,13 +890,20 @@ async function postOpeningBalanceEntry(
   const sourceId = `opening:onboarding:${args.sourceTag}`;
   // Idempotency: a prior opening entry with this source tag means this step has
   // already run for this account — never double-post on resume.
-  const existing = await ctx.db
+  //
+  // A REVERSED prior entry is different: the cutoff pass unwound it precisely so
+  // a corrected opening balance could take its place. Treating that as "already
+  // posted" is what made re-setting an amount silently do nothing, so a live
+  // entry is the only thing that blocks.
+  const priorEntries = await ctx.db
     .query("journalEntries")
     .withIndex("by_entity", (q) => q.eq("entityId", args.entity._id))
     .filter((q) => q.eq(q.field("sourceId"), sourceId))
-    .first();
-  if (existing) {
-    return { posted: false, entryId: existing._id };
+    .collect();
+  for (const prior of priorEntries) {
+    if (!(await isEntryReversed(ctx, args.entity._id, prior._id))) {
+      return { posted: false, entryId: prior._id };
+    }
   }
 
   const equityAccount = await openingBalanceEquityAccount(ctx, args.entity._id);
@@ -936,29 +943,137 @@ const openingBalanceLineValidator = v.object({
   startDate: v.optional(v.string()),
 });
 
+export type OpeningBalanceCutoffResult = {
+  archivedTransactions: number;
+  dismissedItems: number;
+  reversedEntries: number;
+  /** Stale opening-balance entries unwound so a corrected one can replace them. */
+  replacedOpeningEntries: number;
+  lockedEntries: number;
+};
+
+/** Has some entry already been reversed? Guards every pass against stacking. */
+async function isEntryReversed(
+  ctx: MutationCtx,
+  entityId: Id<"entities">,
+  entryId: Id<"journalEntries">,
+): Promise<boolean> {
+  const reversal = await ctx.db
+    .query("journalEntries")
+    .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+    .filter((q) => q.eq(q.field("reversesEntryId"), entryId))
+    .first();
+  return reversal !== null;
+}
+
 /**
- * Apply an opening-balance cutoff to a business: every transaction dated before
- * `cutoff` is marked `excluded` and any open inbox item pointing at one is
- * dismissed.
+ * Every `sourceId` that can carry an opening-balance entry on this business.
  *
- * Shared by the onboarding wizard and the Settings screen so a book started on
- * day one and a book re-based later behave identically. Nothing is deleted —
- * exports, the audit log, and reconciliation history still see every row; the
- * pre-cutoff activity simply stops being queue work. The read-time filter in
- * `openingBalanceCutoff.ts` is the backstop for activity a connector back-fills
- * AFTER this pass runs.
+ * Three producers write one, each with its own tag: linking a bank
+ * (`opening:<plaidAccountId>`, posted from the bank's CURRENT balance), and the
+ * onboarding wizard / Settings (`opening:onboarding:bank:<id>` and
+ * `opening:onboarding:entity:<id>`).
+ *
+ * Enumerating the exact tags keeps this an indexed, bounded lookup — a prefix
+ * scan over every journal entry would not be.
+ */
+async function openingEntrySourceIds(
+  ctx: MutationCtx,
+  entityId: Id<"entities">,
+): Promise<string[]> {
+  const bankAccounts = await ctx.db
+    .query("bankAccounts")
+    .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+    .collect();
+  const sourceIds = [`opening:onboarding:entity:${entityId}`];
+  for (const bank of bankAccounts) {
+    sourceIds.push(`opening:onboarding:bank:${bank._id}`);
+    if (bank.plaidAccountId) sourceIds.push(`opening:${bank.plaidAccountId}`);
+  }
+  return sourceIds;
+}
+
+/**
+ * Apply an opening-balance cutoff to a business. For every transaction dated
+ * before `cutoff` this:
+ *
+ *   1. REVERSES every journal entry dated before the cutoff. Hiding a
+ *      transaction does not un-post it — Cash Position and the Balance Sheet
+ *      read journal lines, so without this the books still carry activity from
+ *      before the day the owner said their books begin. Each reversal is dated
+ *      to match its ORIGINAL entry, so the pre-cutoff period nets to zero in
+ *      place rather than dumping a correction into the opening month.
+ *   2. Marks every pre-cutoff transaction `excluded`.
+ *   3. Dismisses any open inbox item pointing at one.
+ *
+ * SCOPE is deliberately the whole period, not just entries reachable from a
+ * `transactions` row. A conversion means the pre-conversion period is not in
+ * these books at all — its net position arrives as ONE opening entry instead.
+ * Sweeping by date is also the only way to stay balanced: Stripe posts a payment
+ * as several entries (gross, fee, payout, invoice), and only the gross one is
+ * stored on its transaction. Reversing that one alone would strand the fee and
+ * leave 1150 Clearing with a phantom balance that never zeroes out.
+ *
+ * Nothing is deleted. Posted entries stay immutable; each reversal is a new,
+ * linked entry (`reversesEntryId`), which is the only correction this ledger
+ * permits. Exports and the audit log still show the full history.
+ *
+ * A LOCKED PERIOD wins. `postLedgerEntryCore` refuses to post into a locked
+ * period, and that refusal is correct — a closed month must not move. Those
+ * entries are counted in `lockedEntries` and reported back so the caller can say
+ * so out loud instead of silently leaving the books half-re-based.
+ *
+ * Shared by the onboarding wizard and Settings so a book started on day one and
+ * a book re-based later end up in the same state.
  */
 async function applyOpeningBalanceCutoff(
   ctx: MutationCtx,
-  entityId: Id<"entities">,
+  entity: Doc<"entities">,
+  userId: Id<"users">,
   cutoff: string,
-): Promise<{ archivedTransactions: number; dismissedItems: number }> {
+  options: {
+    /**
+     * Unwind any opening-balance entry already on the book so a corrected one
+     * can replace it.
+     *
+     * TRUE for the Settings re-base, where "set my opening balance to X" is an
+     * explicit instruction to replace whatever is there — including the entry
+     * that linking a bank posts automatically from the CURRENT balance, which
+     * would otherwise count the starting cash twice.
+     *
+     * FALSE for the onboarding wizard, where the step is resumable: re-running
+     * it with the same figures must be a no-op, not a reverse-and-repost loop.
+     */
+    replaceOpeningEntries: boolean;
+  },
+): Promise<OpeningBalanceCutoffResult> {
+  let reversedEntries = 0;
+  let lockedEntries = 0;
+
+  // Sweep the whole pre-cutoff period by DATE. Entries posted by a connector
+  // come in balanced sets (Stripe: gross + fee + payout), and only one member of
+  // the set is reachable from a transaction row — reversing by transaction alone
+  // would unbalance the clearing accounts.
+  const priorEntries = await ctx.db
+    .query("journalEntries")
+    .withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id).lt("date", cutoff))
+    .collect();
+  for (const entry of priorEntries) {
+    const outcome = await reverseEntryForCutoff(ctx, {
+      entity,
+      userId,
+      entryId: entry._id,
+      cutoff,
+    });
+    if (outcome === "reversed") reversedEntries++;
+    if (outcome === "locked") lockedEntries++;
+  }
+
   const priorTransactionIds = new Set<Id<"transactions">>();
   const transactions = await ctx.db
     .query("transactions")
-    .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+    .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
     .collect();
-
   for (const transaction of transactions) {
     if (transaction.date >= cutoff) continue;
     priorTransactionIds.add(transaction._id);
@@ -967,11 +1082,38 @@ async function applyOpeningBalanceCutoff(
     }
   }
 
+  // Any opening-balance entry already on this book described a DIFFERENT
+  // starting point, so moving the cutoff makes it stale regardless of its date.
+  // Linking a bank posts one automatically from the bank's CURRENT balance —
+  // leaving it in place while a corrected opening balance is posted would count
+  // the starting cash twice, which is the exact double-count this whole feature
+  // exists to remove.
+  let replacedOpeningEntries = 0;
+  for (const sourceId of options.replaceOpeningEntries
+    ? await openingEntrySourceIds(ctx, entity._id)
+    : []) {
+    const candidates = await ctx.db
+      .query("journalEntries")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .filter((q) => q.eq(q.field("sourceId"), sourceId))
+      .collect();
+    for (const candidate of candidates) {
+      const outcome = await reverseEntryForCutoff(ctx, {
+        entity,
+        userId,
+        entryId: candidate._id,
+        cutoff,
+      });
+      if (outcome === "reversed") replacedOpeningEntries++;
+      if (outcome === "locked") lockedEntries++;
+    }
+  }
+
   const now = Date.now();
   let dismissedItems = 0;
   const items = await ctx.db
     .query("inboxItems")
-    .withIndex("by_entity", (q) => q.eq("entityId", entityId))
+    .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
     .collect();
   for (const item of items) {
     if (item.status !== "open") continue;
@@ -980,7 +1122,77 @@ async function applyOpeningBalanceCutoff(
     dismissedItems++;
   }
 
-  return { archivedTransactions: priorTransactionIds.size, dismissedItems };
+  return {
+    archivedTransactions: priorTransactionIds.size,
+    dismissedItems,
+    reversedEntries,
+    replacedOpeningEntries,
+    lockedEntries,
+  };
+}
+
+/**
+ * Reverse one posted entry as part of a cutoff pass, through the single ledger
+ * path. Returns what happened so the caller can report honestly:
+ *
+ *   `reversed`      — a mirrored entry was posted against the original.
+ *   `already`       — a reversal already exists (re-running the pass is safe).
+ *   `locked`        — the original sits in a locked period and must not move.
+ *   `not-reversible`— the original is itself a reversal, or has no lines.
+ */
+async function reverseEntryForCutoff(
+  ctx: MutationCtx,
+  args: {
+    entity: Doc<"entities">;
+    userId: Id<"users">;
+    entryId: Id<"journalEntries">;
+    cutoff: string;
+  },
+): Promise<"reversed" | "already" | "locked" | "not-reversible"> {
+  const original = await ctx.db.get(args.entryId);
+  if (!original || original.entityId !== args.entity._id) return "not-reversible";
+  // Never reverse a reversal — that would re-apply the original amount.
+  if (original.reversesEntryId) return "not-reversible";
+
+  // Idempotency: re-running the cutoff (or moving it earlier) must not stack
+  // reversals on the same entry.
+  if (await isEntryReversed(ctx, args.entity._id, args.entryId)) return "already";
+
+  const lines = await ctx.db
+    .query("journalLines")
+    .withIndex("by_entry", (q) => q.eq("entryId", args.entryId))
+    .collect();
+  if (lines.length === 0) return "not-reversible";
+
+  // A locked period must not move. postLedgerEntryCore raises a ConvexError for
+  // that case; report it rather than aborting the whole pass.
+  const lock = await ctx.db
+    .query("periodLocks")
+    .withIndex("by_entity", (q) => q.eq("entityId", args.entity._id))
+    .unique();
+  if (lock && original.date <= lock.lockedThroughDate) return "locked";
+
+  await postLedgerEntryCore(ctx, {
+    entity: args.entity,
+    userId: args.userId,
+    // Dated to the ORIGINAL entry so the old period nets to zero where the
+    // activity actually happened.
+    date: original.date,
+    memo: `Reversed — books start ${args.cutoff}`,
+    source: "manual",
+    sourceId: `opening-cutoff:reverse:${args.entryId}`,
+    reversesEntryId: args.entryId,
+    auditAction: "onboarding.opening_balance.reversed",
+    // Mirror every leg exactly; assertReversalLines re-proves this server-side.
+    lines: lines.map((line) => ({
+      accountId: line.accountId,
+      debitMinor: line.creditMinor,
+      creditMinor: line.debitMinor,
+      currency: line.currency,
+      contactId: line.contactId,
+    })),
+  });
+  return "reversed";
 }
 
 /**
@@ -1044,7 +1256,10 @@ export const setOpeningBalances = mutation({
       if (line.startDate) {
         const cutoff = openingBalanceDate(line.startDate);
         await ctx.db.patch(entity._id, { openingBalanceDate: cutoff, updatedAt: Date.now() });
-        await applyOpeningBalanceCutoff(ctx, entity._id, cutoff);
+        // Resumable step: never touch an opening entry already posted here.
+        await applyOpeningBalanceCutoff(ctx, entity, userId, cutoff, {
+          replaceOpeningEntries: false,
+        });
       }
       results.push({ entityId: entity._id, posted: posted.posted, entryId: posted.entryId });
     }
@@ -1069,16 +1284,21 @@ export const setOpeningBalances = mutation({
  * who finished onboarding without starting their books on a chosen day.
  *
  * Three things happen, in this order:
- *   1. Every transaction dated before the cutoff is marked `excluded` and its
- *      open inbox item is dismissed. Nothing is deleted — exports, the audit
- *      log, and reconciliation history still see the full history — but the
- *      rows leave the working set for good rather than relying only on the
- *      read-time filter in `openingBalanceCutoff.ts`.
- *   2. The cutoff is stamped on the entity so later connector back-fills of old
- *      activity are filtered on read too.
+ *   1. The cutoff is stamped on the entity. From here the pipeline refuses to
+ *      post anything dated earlier (`routeTransactionCore`), and the read paths
+ *      filter what is already stored (`openingBalanceCutoff.ts`).
+ *   2. `applyOpeningBalanceCutoff` re-bases the existing books: pre-cutoff
+ *      entries are REVERSED (dated to the original, so the old period nets to
+ *      zero), their transactions marked `excluded`, and their inbox items
+ *      dismissed. Nothing is deleted and no posted entry is edited — reversal
+ *      is the only correction this ledger permits.
  *   3. When `balanceMinor` is supplied, a balanced opening entry is posted
  *      through the SAME ledger path onboarding uses, so a book started here and
  *      a book started in the wizard are indistinguishable.
+ *
+ * The returned counts include `lockedEntries` — pre-cutoff entries sitting in a
+ * locked period, which are deliberately left untouched. Callers should surface
+ * that number rather than imply the re-base was total.
  */
 export const updateOpeningBalanceDate = mutation({
   args: {
@@ -1104,11 +1324,17 @@ export const updateOpeningBalanceDate = mutation({
       openingBalanceDate: cutoff,
       updatedAt: Date.now(),
     });
-    const { archivedTransactions, dismissedItems } = await applyOpeningBalanceCutoff(
-      ctx,
-      args.entityId,
-      cutoff,
-    );
+    const {
+      archivedTransactions,
+      dismissedItems,
+      reversedEntries,
+      replacedOpeningEntries,
+      lockedEntries,
+    } = await applyOpeningBalanceCutoff(ctx, entity, userId, cutoff, {
+      // An explicit re-base: replace any prior opening balance (including the
+      // one bank-linking posted) rather than stacking a second one on top.
+      replaceOpeningEntries: true,
+    });
 
     // Post the opening entry through the shared ledger path when an amount was
     // given. `postOpeningBalanceEntry` is idempotent on its sourceId, so
@@ -1128,6 +1354,14 @@ export const updateOpeningBalanceDate = mutation({
       posted = result.posted;
     }
 
-    return { cutoff, archivedTransactions, dismissedItems, posted };
+    return {
+      cutoff,
+      archivedTransactions,
+      dismissedItems,
+      reversedEntries,
+      replacedOpeningEntries,
+      lockedEntries,
+      posted,
+    };
   },
 });

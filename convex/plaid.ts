@@ -83,7 +83,9 @@ export type PendingCarryoverCandidate = {
 };
 
 type PlaidRouteResult = {
-  status: "posted" | "needs_review" | "duplicate";
+  // `excluded` = the row landed before the entity's opening-balance cutoff, so
+  // the pipeline stored it as history and skipped posting/queueing entirely.
+  status: "posted" | "needs_review" | "duplicate" | "excluded";
   stage: string;
 };
 
@@ -96,6 +98,8 @@ type PlaidSyncResult = {
   postedCount: number;
   needsReviewCount: number;
   duplicateCount: number;
+  // Rows the opening-balance cutoff kept out of the books (stored as history).
+  excludedCount: number;
   plaidPriorCount: number;
   payoutMatchCount: number;
   removedCount: number;
@@ -806,6 +810,7 @@ function emptyPlaidSyncSummary(nextCursor: string): PlaidSyncResult {
     postedCount: 0,
     needsReviewCount: 0,
     duplicateCount: 0,
+    excludedCount: 0,
     plaidPriorCount: 0,
     payoutMatchCount: 0,
     removedCount: 0,
@@ -834,6 +839,7 @@ function addSyncSummary(total: PlaidSyncResult, next: PlaidSyncResult) {
   total.postedCount += next.postedCount;
   total.needsReviewCount += next.needsReviewCount;
   total.duplicateCount += next.duplicateCount;
+  total.excludedCount += next.excludedCount;
   total.plaidPriorCount += next.plaidPriorCount;
   total.payoutMatchCount += next.payoutMatchCount;
   total.removedCount += next.removedCount;
@@ -991,6 +997,7 @@ async function syncPlaidTransactions(
   let postedCount = 0;
   let needsReviewCount = 0;
   let duplicateCount = 0;
+  let excludedCount = 0;
   let plaidPriorCount = 0;
   let payoutMatchCount = 0;
   // Resolve a posting actor for any reconcile-only payout match. The matcher
@@ -1093,6 +1100,7 @@ async function syncPlaidTransactions(
     if (result.status === "posted") postedCount += 1;
     if (result.status === "needs_review") needsReviewCount += 1;
     if (result.status === "duplicate") duplicateCount += 1;
+    if (result.status === "excluded") excludedCount += 1;
   }
 
   const nextCursor = args.nextCursor ?? fixtureCursor(args.transactions, args.removedTransactionIds);
@@ -1107,6 +1115,7 @@ async function syncPlaidTransactions(
     postedCount,
     needsReviewCount,
     duplicateCount,
+    excludedCount,
     plaidPriorCount,
     payoutMatchCount,
     removedCount,

@@ -98,7 +98,7 @@ type NormalizedProposal = {
 };
 
 type RouteResult = {
-  status: "posted" | "needs_review" | "duplicate";
+  status: "posted" | "needs_review" | "duplicate" | "excluded";
   transactionId: Id<"transactions">;
   entryId: Id<"journalEntries"> | null;
   stage: string;

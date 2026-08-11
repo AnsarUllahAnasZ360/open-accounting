@@ -901,7 +901,7 @@ async function postOpeningBalanceEntry(
     .filter((q) => q.eq(q.field("sourceId"), sourceId))
     .collect();
   for (const prior of priorEntries) {
-    if (!(await isEntryReversed(ctx, args.entity._id, prior._id))) {
+    if (!(await isEntryReversed(ctx, prior._id))) {
       return { posted: false, entryId: prior._id };
     }
   }
@@ -950,18 +950,36 @@ export type OpeningBalanceCutoffResult = {
   /** Stale opening-balance entries unwound so a corrected one can replace them. */
   replacedOpeningEntries: number;
   lockedEntries: number;
+  /** False when the book is larger than one pass — call again to continue. */
+  done: boolean;
 };
 
-/** Has some entry already been reversed? Guards every pass against stacking. */
+/**
+ * How much work one cutoff pass will do before handing control back.
+ *
+ * A Convex mutation may read at most 32k documents, and reversing an entry costs
+ * roughly a handful (the entry, its lines, the reversal check, the period lock).
+ * Re-basing a long-running book can involve far more entries than that, so the
+ * sweep is resumable: each call does a bounded amount and reports whether more
+ * remains, and the caller loops until it is done. Every step is idempotent, so a
+ * repeated or interrupted call is safe.
+ */
+const CUTOFF_BATCH_SIZE = 200;
+
+/**
+ * Has some entry already been reversed? Guards every pass against stacking.
+ *
+ * Indexed on `reversesEntryId`. It used to scan the entity's whole journal per
+ * call, which made the cutoff sweep quadratic and hit the document-read ceiling
+ * on real books.
+ */
 async function isEntryReversed(
   ctx: MutationCtx,
-  entityId: Id<"entities">,
   entryId: Id<"journalEntries">,
 ): Promise<boolean> {
   const reversal = await ctx.db
     .query("journalEntries")
-    .withIndex("by_entity", (q) => q.eq("entityId", entityId))
-    .filter((q) => q.eq(q.field("reversesEntryId"), entryId))
+    .withIndex("by_reverses_entry", (q) => q.eq("reversesEntryId", entryId))
     .first();
   return reversal !== null;
 }
@@ -1049,16 +1067,24 @@ async function applyOpeningBalanceCutoff(
 ): Promise<OpeningBalanceCutoffResult> {
   let reversedEntries = 0;
   let lockedEntries = 0;
+  let done = true;
 
-  // Sweep the whole pre-cutoff period by DATE. Entries posted by a connector
-  // come in balanced sets (Stripe: gross + fee + payout), and only one member of
-  // the set is reachable from a transaction row — reversing by transaction alone
-  // would unbalance the clearing accounts.
+  // Sweep the pre-cutoff period by DATE. Entries posted by a connector come in
+  // balanced sets (Stripe: gross + fee + payout), and only one member of the set
+  // is reachable from a transaction row — reversing by transaction alone would
+  // unbalance the clearing accounts.
+  //
+  // Bounded per call: `take` caps the read, and we stop once the batch is full.
+  // Reversed entries are skipped on the next pass, so repeated calls converge.
   const priorEntries = await ctx.db
     .query("journalEntries")
     .withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id).lt("date", cutoff))
-    .collect();
+    .take(CUTOFF_BATCH_SIZE * 8);
   for (const entry of priorEntries) {
+    if (reversedEntries >= CUTOFF_BATCH_SIZE) {
+      done = false;
+      break;
+    }
     const outcome = await reverseEntryForCutoff(ctx, {
       entity,
       userId,
@@ -1068,14 +1094,16 @@ async function applyOpeningBalanceCutoff(
     if (outcome === "reversed") reversedEntries++;
     if (outcome === "locked") lockedEntries++;
   }
+  // A full page may hide more work beyond it.
+  if (priorEntries.length === CUTOFF_BATCH_SIZE * 8) done = false;
 
   const priorTransactionIds = new Set<Id<"transactions">>();
   const transactions = await ctx.db
     .query("transactions")
-    .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-    .collect();
+    .withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id).lt("date", cutoff))
+    .take(CUTOFF_BATCH_SIZE * 8);
+  if (transactions.length === CUTOFF_BATCH_SIZE * 8) done = false;
   for (const transaction of transactions) {
-    if (transaction.date >= cutoff) continue;
     priorTransactionIds.add(transaction._id);
     if (transaction.review !== "excluded") {
       await ctx.db.patch(transaction._id, { review: "excluded" });
@@ -1114,7 +1142,7 @@ async function applyOpeningBalanceCutoff(
   const items = await ctx.db
     .query("inboxItems")
     .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-    .collect();
+    .take(CUTOFF_BATCH_SIZE * 8);
   for (const item of items) {
     if (item.status !== "open") continue;
     if (!item.transactionId || !priorTransactionIds.has(item.transactionId)) continue;
@@ -1128,6 +1156,7 @@ async function applyOpeningBalanceCutoff(
     reversedEntries,
     replacedOpeningEntries,
     lockedEntries,
+    done,
   };
 }
 
@@ -1156,7 +1185,7 @@ async function reverseEntryForCutoff(
 
   // Idempotency: re-running the cutoff (or moving it earlier) must not stack
   // reversals on the same entry.
-  if (await isEntryReversed(ctx, args.entity._id, args.entryId)) return "already";
+  if (await isEntryReversed(ctx, args.entryId)) return "already";
 
   const lines = await ctx.db
     .query("journalLines")
@@ -1211,6 +1240,7 @@ export const setOpeningBalances = mutation({
       entityId: Id<"entities">;
       posted: boolean;
       entryId: Id<"journalEntries"> | null;
+      cutoffDone: boolean;
     }> = [];
 
     for (const line of args.lines) {
@@ -1253,15 +1283,24 @@ export const setOpeningBalances = mutation({
       // An explicit start date re-bases the book: stamp the cutoff so later
       // connector back-fills are filtered on read, and archive the activity the
       // bank already delivered for months the owner is not opening on.
+      let cutoffDone = true;
       if (line.startDate) {
         const cutoff = openingBalanceDate(line.startDate);
         await ctx.db.patch(entity._id, { openingBalanceDate: cutoff, updatedAt: Date.now() });
         // Resumable step: never touch an opening entry already posted here.
-        await applyOpeningBalanceCutoff(ctx, entity, userId, cutoff, {
+        const swept = await applyOpeningBalanceCutoff(ctx, entity, userId, cutoff, {
           replaceOpeningEntries: false,
         });
+        cutoffDone = swept.done;
       }
-      results.push({ entityId: entity._id, posted: posted.posted, entryId: posted.entryId });
+      results.push({
+        entityId: entity._id,
+        posted: posted.posted,
+        entryId: posted.entryId,
+        // False on a long-running book: the caller must keep calling
+        // `continueOpeningBalanceCutoff` until it reports done.
+        cutoffDone,
+      });
     }
 
     // Mark the step complete on the resumable checklist (Epic E4-T1).
@@ -1330,6 +1369,7 @@ export const updateOpeningBalanceDate = mutation({
       reversedEntries,
       replacedOpeningEntries,
       lockedEntries,
+      done,
     } = await applyOpeningBalanceCutoff(ctx, entity, userId, cutoff, {
       // An explicit re-base: replace any prior opening balance (including the
       // one bank-linking posted) rather than stacking a second one on top.
@@ -1362,6 +1402,40 @@ export const updateOpeningBalanceDate = mutation({
       replacedOpeningEntries,
       lockedEntries,
       posted,
+      done,
     };
+  },
+});
+
+/**
+ * Continue a cutoff sweep that was too large for one pass.
+ *
+ * A Convex mutation may read at most ~32k documents, so re-basing a book with
+ * years of history cannot finish in a single call. `updateOpeningBalanceDate`
+ * does the first pass and reports `done: false` when work remains; the caller
+ * then loops on this until it reports `done: true`.
+ *
+ * Safe to call at any time, including on a book already fully swept — every step
+ * checks its own state first, so extra calls are no-ops rather than corrections.
+ * The cutoff must already be stamped; this never changes it.
+ */
+export const continueOpeningBalanceCutoff = mutation({
+  args: { entityId: v.id("entities") },
+  async handler(ctx, args) {
+    const userId = await requireUserId(ctx);
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity) throw new ConvexError("Business not found");
+    await requireWorkspaceRole(ctx, entity.workspaceId, "accountant");
+
+    const cutoff = entity.openingBalanceDate;
+    if (!cutoff) {
+      throw new ConvexError("This business has no books-start date to apply.");
+    }
+
+    const swept = await applyOpeningBalanceCutoff(ctx, entity, userId, cutoff, {
+      // The opening entry was already settled by the call that set the cutoff.
+      replaceOpeningEntries: false,
+    });
+    return { cutoff, ...swept };
   },
 });

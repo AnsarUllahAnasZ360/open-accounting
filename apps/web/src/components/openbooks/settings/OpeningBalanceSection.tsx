@@ -37,9 +37,11 @@ export function OpeningBalanceSection() {
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   const updateOpeningBalance = useMutation(api.onboarding.updateOpeningBalanceDate);
+  const continueCutoff = useMutation(api.onboarding.continueOpeningBalanceCutoff);
 
   const currentCutoff = entity?.openingBalanceDate ?? null;
   const amountMinor = dollarsToMinor(amount);
@@ -57,9 +59,36 @@ export function OpeningBalanceSection() {
         startDate,
         ...(amountMinor !== 0 ? { balanceMinor: amountMinor } : {}),
       });
+
+      // A long-running book cannot be re-based in one mutation — Convex caps how
+      // many documents a single call may read. The server reports `done: false`
+      // when work remains; keep going until the book is fully re-based, showing
+      // progress rather than a frozen button. The pass is idempotent, so a
+      // repeated or interrupted call is safe.
+      let archived = outcome.archivedTransactions;
+      let reversed = outcome.reversedEntries;
+      let dismissed = outcome.dismissedItems;
+      let locked = outcome.lockedEntries;
+      let done = outcome.done;
+      let passes = 0;
+      const MAX_PASSES = 500;
+      while (!done && passes < MAX_PASSES) {
+        passes += 1;
+        setProgress(
+          `Re-basing your books… ${reversed} entr(ies) reversed, ${archived} transaction(s) archived so far.`,
+        );
+        const next = await continueCutoff({ entityId });
+        archived += next.archivedTransactions;
+        reversed += next.reversedEntries;
+        dismissed += next.dismissedItems;
+        locked += next.lockedEntries;
+        done = next.done;
+      }
+      setProgress(null);
+
       const parts = [
         `Books now start ${outcome.cutoff}.`,
-        `Archived ${outcome.archivedTransactions} transaction(s), reversed ${outcome.reversedEntries} posted entr(ies), cleared ${outcome.dismissedItems} inbox item(s).`,
+        `Archived ${archived} transaction(s), reversed ${reversed} posted entr(ies), cleared ${dismissed} inbox item(s).`,
       ];
       if (outcome.replacedOpeningEntries > 0) {
         parts.push(
@@ -68,15 +97,21 @@ export function OpeningBalanceSection() {
       }
       if (outcome.posted) parts.push("Opening entry posted.");
       // Never imply the re-base was total when a closed period blocked part of it.
-      if (outcome.lockedEntries > 0) {
+      if (locked > 0) {
         parts.push(
-          `${outcome.lockedEntries} entr(ies) sit in a locked period and were left untouched — unlock it and re-apply if they should be reversed too.`,
+          `${locked} entr(ies) sit in a locked period and were left untouched — unlock it and re-apply if they should be reversed too.`,
         );
       }
-      setResult({ ok: true, text: parts.join(" ") });
+      if (!done) {
+        parts.push(
+          "This book is unusually large and is still only partly re-based — run it again to continue.",
+        );
+      }
+      setResult({ ok: done, text: parts.join(" ") });
       setStartDate("");
       setAmount("");
     } catch (caught) {
+      setProgress(null);
       setResult({ ok: false, text: getErrorMessage(caught, "Could not set the opening balance.") });
     } finally {
       setSaving(false);
@@ -185,6 +220,12 @@ export function OpeningBalanceSection() {
             </Button>
           ) : null}
         </div>
+
+        {progress ? (
+          <p className="text-[12.5px] text-muted-foreground" data-testid="opening-balance-progress">
+            {progress}
+          </p>
+        ) : null}
 
         {result ? (
           <p

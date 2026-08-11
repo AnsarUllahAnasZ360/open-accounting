@@ -263,6 +263,63 @@ function stripeProjection(date: string): StripeProjectionForTest {
   };
 }
 
+describe("opening-balance cutoff — large books", () => {
+  it("re-bases a book too large for one pass, across resumable calls", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setup(t);
+    const as = authed(t, ids.userId, ids.email);
+
+    // 260 pre-cutoff entries — more than one pass reverses (CUTOFF_BATCH_SIZE is
+    // 200), so this only completes if the sweep is genuinely resumable.
+    const COUNT = 260;
+    const AMOUNT = 1_000;
+    for (let i = 0; i < COUNT; i += 1) {
+      await postedTransaction(t, ids, {
+        date: "2025-11-18",
+        amountMinor: AMOUNT,
+        merchant: `Vendor ${i}`,
+        externalId: `ext-bulk-${i}`,
+      });
+    }
+    expect(await accountNetMinor(t, ids.bankLedgerId)).toBe(-AMOUNT * COUNT);
+
+    let outcome = await as.mutation(api.onboarding.updateOpeningBalanceDate, {
+      entityId: ids.entityId,
+      startDate: "2026-04-01",
+    });
+    // The first pass must report honestly that it did not finish, rather than
+    // silently leaving the books half re-based.
+    expect(outcome.done).toBe(false);
+
+    let reversed = outcome.reversedEntries;
+    let passes = 0;
+    while (!outcome.done && passes < 20) {
+      passes += 1;
+      outcome = {
+        ...outcome,
+        ...(await as.mutation(api.onboarding.continueOpeningBalanceCutoff, {
+          entityId: ids.entityId,
+        })),
+      };
+      reversed += outcome.reversedEntries;
+    }
+
+    expect(outcome.done).toBe(true);
+    expect(reversed).toBe(COUNT);
+    // Every pre-cutoff entry reversed: the period nets to zero.
+    expect(await accountNetMinor(t, ids.bankLedgerId)).toBe(0);
+    expect(await accountNetMinor(t, ids.softwareId)).toBe(0);
+
+    // Converged: another call finds nothing left and changes nothing.
+    const extra = await as.mutation(api.onboarding.continueOpeningBalanceCutoff, {
+      entityId: ids.entityId,
+    });
+    expect(extra.done).toBe(true);
+    expect(extra.reversedEntries).toBe(0);
+    expect(await accountNetMinor(t, ids.bankLedgerId)).toBe(0);
+  });
+});
+
 describe("opening-balance cutoff — Stripe", () => {
   it("reverses a pre-cutoff Stripe payment as a whole set, leaving clearing at zero", async () => {
     const t = convexTest(schema, modules);

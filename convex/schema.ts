@@ -314,7 +314,12 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_entity", ["entityId"])
-    .index("by_entity_and_date", ["entityId", "date"]),
+    .index("by_entity_and_date", ["entityId", "date"])
+    // "Has this entry already been reversed?" — asked once per entry by the
+    // opening-balance cutoff sweep. Without an index that question is a full
+    // scan of the entity's journal, making the sweep O(entries²) and blowing
+    // Convex's 32k document-read ceiling on books of only a few hundred entries.
+    .index("by_reverses_entry", ["reversesEntryId"]),
   journalLines: defineTable({
     entityId: v.id("entities"),
     entryId: v.id("journalEntries"),
@@ -715,7 +720,10 @@ export default defineSchema({
     .index("by_external_id", ["externalId"])
     .index("by_entry", ["entryId"])
     .index("by_reconciliation", ["reconciliationId"])
-    .index("by_entity_and_stream_review", ["entityId", "streamReview"]),
+    .index("by_entity_and_stream_review", ["entityId", "streamReview"])
+    // Lets the opening-balance cutoff read ONLY the pre-cutoff slice instead of
+    // every transaction on the book.
+    .index("by_entity_and_date", ["entityId", "date"]),
   // Intercompany transfer links (Epic E5-T5). Detected money moving between two
   // entities in the SAME workspace (Zikra↔Z360): an outflow on one entity whose
   // matched counter-leg is an inflow on a different same-workspace entity. Pure

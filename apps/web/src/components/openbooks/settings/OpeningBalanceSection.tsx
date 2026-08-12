@@ -69,19 +69,26 @@ export function OpeningBalanceSection() {
       let reversed = outcome.reversedEntries;
       let dismissed = outcome.dismissedItems;
       let locked = outcome.lockedEntries;
+      let phase = outcome.phase;
+      let cursor = outcome.cursor;
       let done = outcome.done;
       let passes = 0;
-      const MAX_PASSES = 500;
+      const MAX_PASSES = 2000;
       while (!done && passes < MAX_PASSES) {
         passes += 1;
         setProgress(
           `Re-basing your books… ${reversed} entr(ies) reversed, ${archived} transaction(s) archived so far.`,
         );
-        const next = await continueCutoff({ entityId });
+        // `phase` and `cursor` are what advance the sweep. Omitting them would
+        // restart from the first page every time — the loop would never end and
+        // the totals would climb without meaning.
+        const next = await continueCutoff({ entityId, phase, cursor });
         archived += next.archivedTransactions;
         reversed += next.reversedEntries;
         dismissed += next.dismissedItems;
         locked += next.lockedEntries;
+        phase = next.phase;
+        cursor = next.cursor;
         done = next.done;
       }
       setProgress(null);

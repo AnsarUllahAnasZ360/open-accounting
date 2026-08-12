@@ -23,6 +23,14 @@ function dollarsToMinor(value: string): number | null {
   return Math.round(parseFloat(trimmed) * 100);
 }
 
+/** USD minor units back to a plain figure for display. */
+function formatMinor(minor: number) {
+  return (minor / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+}
+
 /**
  * Settings → Opening balance. The post-onboarding way to say "my books start
  * here": stamps the cutoff, archives the activity before it, and optionally
@@ -32,6 +40,10 @@ export function OpeningBalanceSection() {
   const { activeEntity } = useActiveEntity();
   const entityId = activeEntity.id ? (activeEntity.id as Id<"entities">) : null;
   const entity = useQuery(api.entities.getById, entityId ? { id: entityId } : "skip");
+  const summary = useQuery(
+    api.onboarding.openingBalanceSummary,
+    entityId ? { entityId } : "skip",
+  );
 
   const [startDate, setStartDate] = useState("");
   const [amount, setAmount] = useState("");
@@ -69,19 +81,26 @@ export function OpeningBalanceSection() {
       let reversed = outcome.reversedEntries;
       let dismissed = outcome.dismissedItems;
       let locked = outcome.lockedEntries;
+      let phase = outcome.phase;
+      let cursor = outcome.cursor;
       let done = outcome.done;
       let passes = 0;
-      const MAX_PASSES = 500;
+      const MAX_PASSES = 2000;
       while (!done && passes < MAX_PASSES) {
         passes += 1;
         setProgress(
           `Re-basing your books… ${reversed} entr(ies) reversed, ${archived} transaction(s) archived so far.`,
         );
-        const next = await continueCutoff({ entityId });
+        // `phase` and `cursor` are what advance the sweep. Omitting them would
+        // restart from the first page every time — the loop would never end and
+        // the totals would climb without meaning.
+        const next = await continueCutoff({ entityId, phase, cursor });
         archived += next.archivedTransactions;
         reversed += next.reversedEntries;
         dismissed += next.dismissedItems;
         locked += next.lockedEntries;
+        phase = next.phase;
+        cursor = next.cursor;
         done = next.done;
       }
       setProgress(null);
@@ -132,16 +151,37 @@ export function OpeningBalanceSection() {
           </div>
         </div>
 
-        <div className="rounded-lg border bg-muted/40 p-3">
-          <div className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">
-            Current start date
+        <div className="grid gap-3 rounded-lg border bg-muted/40 p-3 sm:grid-cols-2">
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">
+              Current start date
+            </div>
+            <div className="mt-1 text-sm font-semibold tabular-nums">
+              {currentCutoff ? (
+                <span className="text-primary">{currentCutoff}</span>
+              ) : (
+                <span className="text-muted-foreground">
+                  Not set — every fetched transaction is shown
+                </span>
+              )}
+            </div>
           </div>
-          <div className="mt-1 text-sm font-semibold tabular-nums">
-            {currentCutoff ? (
-              <span className="text-primary">{currentCutoff}</span>
-            ) : (
-              <span className="text-muted-foreground">Not set — every fetched transaction is shown</span>
-            )}
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">
+              Opening balance posted
+            </div>
+            <div className="mt-1 text-sm font-semibold tabular-nums">
+              {summary?.openingBalanceMinor != null ? (
+                <span className="text-primary">{formatMinor(summary.openingBalanceMinor)}</span>
+              ) : (
+                <span className="text-muted-foreground">None posted yet</span>
+              )}
+            </div>
+            {summary?.postedAt ? (
+              <div className="mt-0.5 text-[11.5px] text-muted-foreground tabular-nums">
+                Dated {summary.postedAt}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -158,7 +198,7 @@ export function OpeningBalanceSection() {
               data-testid="opening-balance-date-input"
             />
             <p className="text-[11.5px] text-muted-foreground">
-              Dated to the first of that month.
+              Used exactly as picked — this is your first day of trading in OpenBooks.
             </p>
           </div>
 

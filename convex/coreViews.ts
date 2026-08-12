@@ -239,8 +239,19 @@ export const dashboard = query({
         ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(200)
           .then((rows) => rows.filter((account) => !account.archived)),
       )),
-      Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(DASHBOARD_LIMIT),
+      // Bounded at the books-start date. These rows are filtered by the same
+      // cutoff a few lines below, so reading the archived years first only spends
+      // document budget that a portfolio roll-up (every business, summed) cannot
+      // spare.
+      Promise.all(orderedEntities.map((scopedEntity) =>
+        ctx.db.query("transactions")
+          .withIndex("by_entity_and_date", (q) => {
+            const scoped = q.eq("entityId", scopedEntity._id);
+            return scopedEntity.openingBalanceDate
+              ? scoped.gte("date", scopedEntity.openingBalanceDate)
+              : scoped;
+          })
+          .take(DASHBOARD_LIMIT),
       )),
       Promise.all(entityIds.map((entityId) =>
         ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(2000),
@@ -1056,8 +1067,17 @@ export const transactions = query({
     const entity = orderedEntities[0]!;
     const entityIds = orderedEntities.map((scopedEntity) => scopedEntity._id);
     const [transactionGroups, accountGroups, bankAccountGroups, inboxItemGroups, lineGroups, documentGroups, entryGroups, auditEvents, contactGroups, memoryGroups] = await Promise.all([
-      Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(DASHBOARD_LIMIT),
+      // Bounded at the books-start date, same reason as the dashboard: the
+      // cutoff filter below would discard these anyway.
+      Promise.all(orderedEntities.map((scopedEntity) =>
+        ctx.db.query("transactions")
+          .withIndex("by_entity_and_date", (q) => {
+            const scoped = q.eq("entityId", scopedEntity._id);
+            return scopedEntity.openingBalanceDate
+              ? scoped.gte("date", scopedEntity.openingBalanceDate)
+              : scoped;
+          })
+          .take(DASHBOARD_LIMIT),
       )),
       Promise.all(entityIds.map((entityId) =>
         ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(500),

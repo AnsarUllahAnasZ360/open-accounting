@@ -877,7 +877,12 @@ async function postOpeningBalanceEntry(
     assetAccountId: Id<"ledgerAccounts">;
     assetAccountName: string;
     balanceMinor: number;
-    startDate?: string;
+    /**
+     * The already-resolved posting date. The caller decides it, because it MUST
+     * equal the books-start cutoff: an opening entry dated even one day earlier
+     * falls inside the pre-cutoff sweep and gets reversed by its own re-base.
+     */
+    date: string;
     sourceTag: string;
   },
 ): Promise<{ posted: boolean; entryId: Id<"journalEntries"> | null }> {
@@ -913,7 +918,7 @@ async function postOpeningBalanceEntry(
   const posted = await postLedgerEntryCore(ctx, {
     entity: args.entity,
     userId: args.userId,
-    date: openingBalanceDate(args.startDate),
+    date: args.date,
     memo: `Opening balance for ${args.assetAccountName}`,
     source: "manual",
     sourceId,
@@ -975,6 +980,26 @@ export type OpeningBalanceCutoffResult = {
  * repeated or interrupted call is safe.
  */
 const CUTOFF_BATCH_SIZE = 200;
+
+/**
+ * The day a business's books begin, taken EXACTLY as the owner picked it.
+ *
+ * Deliberately not `openingBalanceDate()`, which floors to the first of the
+ * month. That convention belongs to the connector's own opening entry (decision
+ * Q2: predate the oldest imported row). Applying it to a books-start date makes
+ * the product lie — someone choosing 7 August is told their books start 1 August
+ * and watches six days of activity they meant to archive stay on the books.
+ *
+ * The opening entry is dated to this same value, never earlier. An entry dated
+ * before the cutoff sits inside the pre-cutoff sweep and would be reversed by
+ * its own re-base.
+ */
+function booksStartDate(isoDate: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+    throw new ConvexError("Pick a valid books-start date.");
+  }
+  return isoDate;
+}
 
 /**
  * Has some entry already been reversed? Guards every pass against stacking.
@@ -1305,13 +1330,19 @@ export const setOpeningBalances = mutation({
         sourceTag = `entity:${entity._id}`;
       }
 
+      // With no chosen start date this is a plain opening balance, so fall back
+      // to the connector's first-of-this-month convention. With one, the entry
+      // is dated to that exact day — same value as the cutoff below.
+      const entryDate = line.startDate
+        ? booksStartDate(line.startDate)
+        : openingBalanceDate(undefined);
       const posted = await postOpeningBalanceEntry(ctx, {
         entity,
         userId,
         assetAccountId,
         assetAccountName,
         balanceMinor: line.balanceMinor,
-        startDate: line.startDate,
+        date: entryDate,
         sourceTag,
       });
       // An explicit start date re-bases the book: stamp the cutoff so later
@@ -1319,7 +1350,7 @@ export const setOpeningBalances = mutation({
       // bank already delivered for months the owner is not opening on.
       let cutoffDone = true;
       if (line.startDate) {
-        const cutoff = openingBalanceDate(line.startDate);
+        const cutoff = entryDate;
         await ctx.db.patch(entity._id, { openingBalanceDate: cutoff, updatedAt: Date.now() });
         // Resumable step: never touch an opening entry already posted here.
         const swept = await applyOpeningBalanceCutoff(ctx, entity, userId, cutoff, {
@@ -1392,7 +1423,7 @@ export const updateOpeningBalanceDate = mutation({
     // active one.
     await requireWorkspaceRole(ctx, entity.workspaceId, "accountant");
 
-    const cutoff = openingBalanceDate(args.startDate);
+    const cutoff = booksStartDate(args.startDate);
 
     await ctx.db.patch(args.entityId, {
       openingBalanceDate: cutoff,
@@ -1426,7 +1457,7 @@ export const updateOpeningBalanceDate = mutation({
         assetAccountId: cash._id,
         assetAccountName: cash.name,
         balanceMinor: args.balanceMinor,
-        startDate: cutoff,
+        date: cutoff,
         sourceTag: `entity:${entity._id}`,
       });
       posted = result.posted;
@@ -1443,6 +1474,70 @@ export const updateOpeningBalanceDate = mutation({
       phase,
       cursor,
       done,
+    };
+  },
+});
+
+/**
+ * What this business's books currently start on, and the opening balance that
+ * was actually posted — so an owner returning to Settings can see what they
+ * entered last time instead of guessing.
+ *
+ * The amount is read back off the LEDGER rather than from a saved form value:
+ * the posted entry is the truth, and anything else could drift from it. Reversed
+ * entries are ignored, so a corrected balance reports the correction and not the
+ * figure it replaced.
+ */
+export const openingBalanceSummary = query({
+  args: { entityId: v.optional(v.id("entities")) },
+  handler: async (ctx, args) => {
+    const { membership } = await requireAnyWorkspaceRole(ctx, "hr");
+    if (!args.entityId) return null;
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity || entity.workspaceId !== membership.workspaceId) return null;
+
+    const bankAccounts = await ctx.db
+      .query("bankAccounts")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .collect();
+    const sourceIds = [`opening:onboarding:entity:${entity._id}`];
+    for (const bank of bankAccounts) {
+      sourceIds.push(`opening:onboarding:bank:${bank._id}`);
+      if (bank.plaidAccountId) sourceIds.push(`opening:${bank.plaidAccountId}`);
+    }
+
+    let totalMinor = 0;
+    let postedAt: string | null = null;
+    for (const sourceId of sourceIds) {
+      const entries = await ctx.db
+        .query("journalEntries")
+        .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+        .filter((q) => q.eq(q.field("sourceId"), sourceId))
+        .collect();
+      for (const entry of entries) {
+        const reversal = await ctx.db
+          .query("journalEntries")
+          .withIndex("by_reverses_entry", (q) => q.eq("reversesEntryId", entry._id))
+          .first();
+        if (reversal) continue; // superseded by a correction
+        const lines = await ctx.db
+          .query("journalLines")
+          .withIndex("by_entry", (q) => q.eq("entryId", entry._id))
+          .collect();
+        // The asset side is the opening cash; the other leg is 3900 equity.
+        for (const line of lines) {
+          const account = await ctx.db.get(line.accountId);
+          if (!account || account.type !== "asset") continue;
+          totalMinor += line.debitMinor - line.creditMinor;
+        }
+        postedAt = entry.date;
+      }
+    }
+
+    return {
+      startDate: entity.openingBalanceDate ?? null,
+      openingBalanceMinor: postedAt === null ? null : totalMinor,
+      postedAt,
     };
   },
 });

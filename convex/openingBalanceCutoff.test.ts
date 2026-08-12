@@ -311,6 +311,80 @@ function stripeProjection(date: string): StripeProjectionForTest {
   };
 }
 
+describe("opening-balance cutoff — the chosen date", () => {
+  it("uses the exact day picked, not the first of that month", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setup(t);
+
+    // Straddle the 7th: the 3rd must archive, the 9th must survive. Flooring the
+    // date to 2026-08-01 would keep both and quietly contradict the owner.
+    await postedTransaction(t, ids, {
+      date: "2026-08-03",
+      amountMinor: 30_000,
+      merchant: "Before Start",
+      externalId: "ext-before",
+    });
+    await postedTransaction(t, ids, {
+      date: "2026-08-09",
+      amountMinor: 10_000,
+      merchant: "After Start",
+      externalId: "ext-after",
+    });
+
+    const outcome = await reBaseToCompletion(t, ids, {
+      startDate: "2026-08-07",
+      balanceMinor: 18_700,
+    });
+
+    expect(outcome.cutoff).toBe("2026-08-07");
+    expect(outcome.archivedTransactions).toBe(1);
+    expect(outcome.reversedEntries).toBe(1);
+
+    // Opening balance (+18,700) less only the surviving expense (−10,000).
+    expect(await accountNetMinor(t, ids.bankLedgerId)).toBe(8_700);
+
+    // The opening entry carries the same date as the cutoff. Dated any earlier it
+    // would fall inside the pre-cutoff sweep and be reversed by its own re-base.
+    const openingEntryDates = await t.run(async (ctx) => {
+      const entries = await ctx.db
+        .query("journalEntries")
+        .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+        .collect();
+      return entries
+        .filter((entry) => entry.sourceId?.startsWith("opening:onboarding:"))
+        .map((entry) => entry.date);
+    });
+    expect(openingEntryDates).toEqual(["2026-08-07"]);
+  });
+
+  it("reports the posted opening balance back to the owner", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setup(t);
+    const as = authed(t, ids.userId, ids.email);
+
+    const before = await as.query(api.onboarding.openingBalanceSummary, {
+      entityId: ids.entityId,
+    });
+    expect(before?.openingBalanceMinor).toBeNull();
+
+    await reBaseToCompletion(t, ids, { startDate: "2026-04-01", balanceMinor: 18_700 });
+
+    const after = await as.query(api.onboarding.openingBalanceSummary, {
+      entityId: ids.entityId,
+    });
+    expect(after?.startDate).toBe("2026-04-01");
+    expect(after?.openingBalanceMinor).toBe(18_700);
+    expect(after?.postedAt).toBe("2026-04-01");
+
+    // A correction reports the NEW figure, never the one it replaced.
+    await reBaseToCompletion(t, ids, { startDate: "2026-04-01", balanceMinor: 21_500 });
+    const corrected = await as.query(api.onboarding.openingBalanceSummary, {
+      entityId: ids.entityId,
+    });
+    expect(corrected?.openingBalanceMinor).toBe(21_500);
+  });
+});
+
 describe("opening-balance cutoff — large books", () => {
   it("re-bases a book too large for one pass, across resumable calls", async () => {
     const t = convexTest(schema, modules);

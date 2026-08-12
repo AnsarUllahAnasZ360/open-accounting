@@ -331,7 +331,7 @@ describe("opening balances step (E4-T5)", () => {
     return { session, userId, entityId: created.entityIds[0] };
   }
 
-  it("posts ONE balanced opening entry (asset debit = 3900 credit) dated first-of-month and ties the trial balance", async () => {
+  it("posts ONE balanced opening entry (asset debit = 3900 credit) dated to the chosen start day and ties the trial balance", async () => {
     const t = convexTest(schema, modules);
     const { session, entityId } = await ownerWithBusiness(t, "opening@example.com");
 
@@ -356,8 +356,12 @@ describe("opening balances step (E4-T5)", () => {
       return { entry, lines, accounts };
     });
 
-    // Dated the first day of the chosen start month (floored to M-01).
-    expect(detail.entry?.date).toBe("2026-03-01");
+    // Dated the EXACT day chosen, not floored to M-01 as decision Q2 originally
+    // specified. Q2's rationale was that the opening entry must predate the
+    // oldest imported row; the books-start cutoff now guarantees that directly,
+    // and flooring actively breaks it — an entry dated before the cutoff falls
+    // inside the pre-cutoff sweep and is reversed by its own re-base.
+    expect(detail.entry?.date).toBe("2026-03-17");
     expect(detail.entry?.source).toBe("manual");
 
     // Exactly two lines, each a clean debit XOR credit, and balanced.

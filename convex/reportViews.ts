@@ -57,13 +57,29 @@ async function loadJournalThroughDate(
   entityId: Id<"entities">,
   endDate: string,
 ): Promise<{ entries: Doc<"journalEntries">[]; lines: Doc<"journalLines">[]; truncated: boolean }> {
+  // Books that declared a start date do not reach behind it. Everything earlier
+  // was reversed by the re-base, so an original and its reversal cancel and
+  // contribute exactly nothing to any total — reading them costs budget and
+  // changes no number. Skipping them also halves the read, which is what keeps
+  // the portfolio ("All businesses") report inside Convex's document ceiling
+  // once a re-base has doubled the journal.
+  //
+  // The opening entry is dated ON the cutoff, so a `gte` bound keeps it: the
+  // prior period arrives as that one balanced figure, which is what a conversion
+  // means.
+  const entity = await ctx.db.get(entityId);
+  const startDate = entity?.openingBalanceDate ?? null;
+
   // One extra entry past the cap lets us detect "an in-range entry was excluded"
   // without a second query: if we got back more than the cap, the report is
   // genuinely truncated (and we drop the overflow entry so we never load a
   // partial picture).
   const fetched = await ctx.db
     .query("journalEntries")
-    .withIndex("by_entity_and_date", (q) => q.eq("entityId", entityId).lte("date", endDate))
+    .withIndex("by_entity_and_date", (q) => {
+      const scoped = q.eq("entityId", entityId);
+      return startDate ? scoped.gte("date", startDate).lte("date", endDate) : scoped.lte("date", endDate);
+    })
     .take(REPORT_ENTRY_LIMIT + 1);
   const truncated = fetched.length > REPORT_ENTRY_LIMIT;
   const entries = truncated ? fetched.slice(0, REPORT_ENTRY_LIMIT) : fetched;

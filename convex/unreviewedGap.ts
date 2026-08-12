@@ -29,6 +29,13 @@ import type { QueryCtx } from "./_generated/server";
  * MUST resolve + authorize the entity ids before calling — this helper does no
  * authz of its own.
  */
+/**
+ * Cap on the per-entity scan. A portfolio roll-up multiplies this by the number
+ * of businesses, so it has to leave room for everything else the dashboard
+ * reads. Matches the DASHBOARD_LIMIT the other views use.
+ */
+const UNREVIEWED_SCAN_LIMIT = 5000;
+
 export async function computeUnreviewedGap(
   ctx: QueryCtx,
   entityIds: Id<"entities">[],
@@ -38,13 +45,23 @@ export async function computeUnreviewedGap(
   for (const entityId of entityIds) {
     const entity = await ctx.db.get(entityId);
     const cutoff = entity?.openingBalanceDate ?? null;
+    // Read only the working set. This used to be an UNCAPPED collect over every
+    // transaction the business had ever seen, which on a portfolio roll-up
+    // (every entity, summed) was enough on its own to exceed Convex's
+    // document-read ceiling and fail the whole dashboard.
+    //
+    // Pre-cutoff rows are excluded from the gap by definition, so bounding the
+    // query at the cutoff removes archived history at the index rather than
+    // reading it in order to discard it.
     const transactions = await ctx.db
       .query("transactions")
-      .withIndex("by_entity", (q) => q.eq("entityId", entityId))
-      .collect();
+      .withIndex("by_entity_and_date", (q) => {
+        const scoped = q.eq("entityId", entityId);
+        return cutoff ? scoped.gte("date", cutoff) : scoped;
+      })
+      .take(UNREVIEWED_SCAN_LIMIT);
     for (const transaction of transactions) {
       if (transaction.review !== "needs_review") continue;
-      if (cutoff && transaction.date < cutoff) continue;
       unreviewedCount += 1;
       unreviewedAbsMinor += Math.abs(transaction.amountMinor);
     }

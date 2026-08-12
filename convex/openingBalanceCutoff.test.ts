@@ -125,6 +125,54 @@ async function setup(t: TestConvex<typeof schema>) {
   });
 }
 
+/**
+ * Set the cutoff and run the sweep to completion, the way the Settings screen
+ * does. One call only advances one phase, so a test that stops there would be
+ * asserting against a half-re-based book.
+ */
+async function reBaseToCompletion(
+  t: TestConvex<typeof schema>,
+  ids: Awaited<ReturnType<typeof setup>>,
+  args: { startDate: string; balanceMinor?: number },
+) {
+  const as = authed(t, ids.userId, ids.email);
+  const first = await as.mutation(api.onboarding.updateOpeningBalanceDate, {
+    entityId: ids.entityId,
+    startDate: args.startDate,
+    ...(args.balanceMinor !== undefined ? { balanceMinor: args.balanceMinor } : {}),
+  });
+
+  const totals = {
+    cutoff: first.cutoff,
+    posted: first.posted,
+    replacedOpeningEntries: first.replacedOpeningEntries,
+    reversedEntries: first.reversedEntries,
+    archivedTransactions: first.archivedTransactions,
+    dismissedItems: first.dismissedItems,
+    lockedEntries: first.lockedEntries,
+    passes: 0,
+  };
+
+  let { phase, cursor, done } = first;
+  while (!done && totals.passes < 100) {
+    totals.passes += 1;
+    const next = await as.mutation(api.onboarding.continueOpeningBalanceCutoff, {
+      entityId: ids.entityId,
+      phase,
+      cursor,
+    });
+    totals.reversedEntries += next.reversedEntries;
+    totals.archivedTransactions += next.archivedTransactions;
+    totals.dismissedItems += next.dismissedItems;
+    totals.lockedEntries += next.lockedEntries;
+    phase = next.phase;
+    cursor = next.cursor;
+    done = next.done;
+  }
+  if (!done) throw new Error("Cutoff sweep did not converge within 100 passes.");
+  return totals;
+}
+
 /** Net movement on one ledger account across every posted line (debit − credit). */
 async function accountNetMinor(t: TestConvex<typeof schema>, accountId: Id<"ledgerAccounts">) {
   return await t.run(async (ctx) => {
@@ -263,6 +311,80 @@ function stripeProjection(date: string): StripeProjectionForTest {
   };
 }
 
+describe("opening-balance cutoff — the chosen date", () => {
+  it("uses the exact day picked, not the first of that month", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setup(t);
+
+    // Straddle the 7th: the 3rd must archive, the 9th must survive. Flooring the
+    // date to 2026-08-01 would keep both and quietly contradict the owner.
+    await postedTransaction(t, ids, {
+      date: "2026-08-03",
+      amountMinor: 30_000,
+      merchant: "Before Start",
+      externalId: "ext-before",
+    });
+    await postedTransaction(t, ids, {
+      date: "2026-08-09",
+      amountMinor: 10_000,
+      merchant: "After Start",
+      externalId: "ext-after",
+    });
+
+    const outcome = await reBaseToCompletion(t, ids, {
+      startDate: "2026-08-07",
+      balanceMinor: 18_700,
+    });
+
+    expect(outcome.cutoff).toBe("2026-08-07");
+    expect(outcome.archivedTransactions).toBe(1);
+    expect(outcome.reversedEntries).toBe(1);
+
+    // Opening balance (+18,700) less only the surviving expense (−10,000).
+    expect(await accountNetMinor(t, ids.bankLedgerId)).toBe(8_700);
+
+    // The opening entry carries the same date as the cutoff. Dated any earlier it
+    // would fall inside the pre-cutoff sweep and be reversed by its own re-base.
+    const openingEntryDates = await t.run(async (ctx) => {
+      const entries = await ctx.db
+        .query("journalEntries")
+        .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+        .collect();
+      return entries
+        .filter((entry) => entry.sourceId?.startsWith("opening:onboarding:"))
+        .map((entry) => entry.date);
+    });
+    expect(openingEntryDates).toEqual(["2026-08-07"]);
+  });
+
+  it("reports the posted opening balance back to the owner", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setup(t);
+    const as = authed(t, ids.userId, ids.email);
+
+    const before = await as.query(api.onboarding.openingBalanceSummary, {
+      entityId: ids.entityId,
+    });
+    expect(before?.openingBalanceMinor).toBeNull();
+
+    await reBaseToCompletion(t, ids, { startDate: "2026-04-01", balanceMinor: 18_700 });
+
+    const after = await as.query(api.onboarding.openingBalanceSummary, {
+      entityId: ids.entityId,
+    });
+    expect(after?.startDate).toBe("2026-04-01");
+    expect(after?.openingBalanceMinor).toBe(18_700);
+    expect(after?.postedAt).toBe("2026-04-01");
+
+    // A correction reports the NEW figure, never the one it replaced.
+    await reBaseToCompletion(t, ids, { startDate: "2026-04-01", balanceMinor: 21_500 });
+    const corrected = await as.query(api.onboarding.openingBalanceSummary, {
+      entityId: ids.entityId,
+    });
+    expect(corrected?.openingBalanceMinor).toBe(21_500);
+  });
+});
+
 describe("opening-balance cutoff — large books", () => {
   it("re-bases a book too large for one pass, across resumable calls", async () => {
     const t = convexTest(schema, modules);
@@ -292,30 +414,45 @@ describe("opening-balance cutoff — large books", () => {
     expect(outcome.done).toBe(false);
 
     let reversed = outcome.reversedEntries;
+    let archived = outcome.archivedTransactions;
+    let phase = outcome.phase;
+    let cursor = outcome.cursor;
+    let done = outcome.done;
     let passes = 0;
-    while (!outcome.done && passes < 20) {
+
+    // A bounded loop is the point: without a working cursor this never
+    // terminates, because each pass re-reads the same first page.
+    while (!done && passes < 40) {
       passes += 1;
-      outcome = {
-        ...outcome,
-        ...(await as.mutation(api.onboarding.continueOpeningBalanceCutoff, {
-          entityId: ids.entityId,
-        })),
-      };
-      reversed += outcome.reversedEntries;
+      const next = await as.mutation(api.onboarding.continueOpeningBalanceCutoff, {
+        entityId: ids.entityId,
+        phase,
+        cursor,
+      });
+      reversed += next.reversedEntries;
+      archived += next.archivedTransactions;
+      phase = next.phase;
+      cursor = next.cursor;
+      done = next.done;
     }
 
-    expect(outcome.done).toBe(true);
+    expect(done).toBe(true);
     expect(reversed).toBe(COUNT);
+    // Counts report what CHANGED, so each row is counted exactly once — the
+    // inflated "180800 archived" bug was a count of rows merely re-read.
+    expect(archived).toBe(COUNT);
     // Every pre-cutoff entry reversed: the period nets to zero.
     expect(await accountNetMinor(t, ids.bankLedgerId)).toBe(0);
     expect(await accountNetMinor(t, ids.softwareId)).toBe(0);
 
-    // Converged: another call finds nothing left and changes nothing.
+    // Converged: replaying from the start finds nothing left and changes nothing.
     const extra = await as.mutation(api.onboarding.continueOpeningBalanceCutoff, {
       entityId: ids.entityId,
+      phase: "entries",
+      cursor: null,
     });
-    expect(extra.done).toBe(true);
     expect(extra.reversedEntries).toBe(0);
+    expect(extra.archivedTransactions).toBe(0);
     expect(await accountNetMinor(t, ids.bankLedgerId)).toBe(0);
   });
 });
@@ -406,10 +543,10 @@ describe("opening-balance cutoff", () => {
     // Bank is credited for all three: −85,000.
     expect(await accountNetMinor(t, ids.bankLedgerId)).toBe(-85_000);
 
-    const outcome = await authed(t, ids.userId, ids.email).mutation(
-      api.onboarding.updateOpeningBalanceDate,
-      { entityId: ids.entityId, startDate: "2026-04-01", balanceMinor: 15_000 },
-    );
+    const outcome = await reBaseToCompletion(t, ids, {
+      startDate: "2026-04-01",
+      balanceMinor: 15_000,
+    });
 
     expect(outcome.cutoff).toBe("2026-04-01");
     expect(outcome.archivedTransactions).toBe(2);
@@ -496,10 +633,7 @@ describe("opening-balance cutoff", () => {
       lockedThroughDate: "2025-12-31",
     });
 
-    const outcome = await as.mutation(api.onboarding.updateOpeningBalanceDate, {
-      entityId: ids.entityId,
-      startDate: "2026-04-01",
-    });
+    const outcome = await reBaseToCompletion(t, ids, { startDate: "2026-04-01" });
 
     // A closed month must not move, and the caller must be told so rather than
     // being left to assume the re-base was total.

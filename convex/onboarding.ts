@@ -877,7 +877,12 @@ async function postOpeningBalanceEntry(
     assetAccountId: Id<"ledgerAccounts">;
     assetAccountName: string;
     balanceMinor: number;
-    startDate?: string;
+    /**
+     * The already-resolved posting date. The caller decides it, because it MUST
+     * equal the books-start cutoff: an opening entry dated even one day earlier
+     * falls inside the pre-cutoff sweep and gets reversed by its own re-base.
+     */
+    date: string;
     sourceTag: string;
   },
 ): Promise<{ posted: boolean; entryId: Id<"journalEntries"> | null }> {
@@ -913,7 +918,7 @@ async function postOpeningBalanceEntry(
   const posted = await postLedgerEntryCore(ctx, {
     entity: args.entity,
     userId: args.userId,
-    date: openingBalanceDate(args.startDate),
+    date: args.date,
     memo: `Opening balance for ${args.assetAccountName}`,
     source: "manual",
     sourceId,
@@ -943,13 +948,23 @@ const openingBalanceLineValidator = v.object({
   startDate: v.optional(v.string()),
 });
 
+/**
+ * Which slice of the re-base a pass is working through. The caller hands both
+ * `phase` and `cursor` back on the next call so the sweep resumes exactly where
+ * it stopped instead of re-reading the first page forever.
+ */
+export type CutoffPhase = "entries" | "transactions" | "inbox" | "done";
+
 export type OpeningBalanceCutoffResult = {
+  /** Counts what CHANGED in this pass, never what was merely read. */
   archivedTransactions: number;
   dismissedItems: number;
   reversedEntries: number;
   /** Stale opening-balance entries unwound so a corrected one can replace them. */
   replacedOpeningEntries: number;
   lockedEntries: number;
+  phase: CutoffPhase;
+  cursor: string | null;
   /** False when the book is larger than one pass — call again to continue. */
   done: boolean;
 };
@@ -965,6 +980,26 @@ export type OpeningBalanceCutoffResult = {
  * repeated or interrupted call is safe.
  */
 const CUTOFF_BATCH_SIZE = 200;
+
+/**
+ * The day a business's books begin, taken EXACTLY as the owner picked it.
+ *
+ * Deliberately not `openingBalanceDate()`, which floors to the first of the
+ * month. That convention belongs to the connector's own opening entry (decision
+ * Q2: predate the oldest imported row). Applying it to a books-start date makes
+ * the product lie — someone choosing 7 August is told their books start 1 August
+ * and watches six days of activity they meant to archive stay on the books.
+ *
+ * The opening entry is dated to this same value, never earlier. An entry dated
+ * before the cutoff sits inside the pre-cutoff sweep and would be reversed by
+ * its own re-base.
+ */
+function booksStartDate(isoDate: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+    throw new ConvexError("Pick a valid books-start date.");
+  }
+  return isoDate;
+}
 
 /**
  * Has some entry already been reversed? Guards every pass against stacking.
@@ -1063,50 +1098,85 @@ async function applyOpeningBalanceCutoff(
      * it with the same figures must be a no-op, not a reverse-and-repost loop.
      */
     replaceOpeningEntries: boolean;
+    /** Where to resume. Defaults to the start of the first phase. */
+    phase: CutoffPhase;
+    cursor?: string | null;
   },
 ): Promise<OpeningBalanceCutoffResult> {
   let reversedEntries = 0;
   let lockedEntries = 0;
-  let done = true;
+  let archivedTransactions = 0;
+  let dismissedItems = 0;
+  let phase = options.phase;
+  let cursor = options.cursor ?? null;
 
-  // Sweep the pre-cutoff period by DATE. Entries posted by a connector come in
-  // balanced sets (Stripe: gross + fee + payout), and only one member of the set
-  // is reachable from a transaction row — reversing by transaction alone would
-  // unbalance the clearing accounts.
+  // Walk the pre-cutoff period with a CURSOR, one phase at a time.
   //
-  // Bounded per call: `take` caps the read, and we stop once the batch is full.
-  // Reversed entries are skipped on the next pass, so repeated calls converge.
-  const priorEntries = await ctx.db
-    .query("journalEntries")
-    .withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id).lt("date", cutoff))
-    .take(CUTOFF_BATCH_SIZE * 8);
-  for (const entry of priorEntries) {
-    if (reversedEntries >= CUTOFF_BATCH_SIZE) {
-      done = false;
-      break;
+  // A plain `take` would re-read the same first page on every call: rows stay
+  // pre-cutoff after they are handled, so the pass would never advance and the
+  // loop would never end. The cursor is what makes this converge.
+  //
+  // Entries are swept by DATE rather than by transaction because a connector
+  // posts balanced SETS (Stripe: gross + fee + payout) and only one member of
+  // the set is reachable from a transaction row — reversing by transaction alone
+  // would unbalance the clearing accounts.
+  if (phase === "entries") {
+    const page = await ctx.db
+      .query("journalEntries")
+      .withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id).lt("date", cutoff))
+      .paginate({ cursor, numItems: CUTOFF_BATCH_SIZE });
+    for (const entry of page.page) {
+      const outcome = await reverseEntryForCutoff(ctx, {
+        entity,
+        userId,
+        entryId: entry._id,
+        cutoff,
+      });
+      if (outcome === "reversed") reversedEntries++;
+      if (outcome === "locked") lockedEntries++;
     }
-    const outcome = await reverseEntryForCutoff(ctx, {
-      entity,
-      userId,
-      entryId: entry._id,
-      cutoff,
-    });
-    if (outcome === "reversed") reversedEntries++;
-    if (outcome === "locked") lockedEntries++;
-  }
-  // A full page may hide more work beyond it.
-  if (priorEntries.length === CUTOFF_BATCH_SIZE * 8) done = false;
-
-  const priorTransactionIds = new Set<Id<"transactions">>();
-  const transactions = await ctx.db
-    .query("transactions")
-    .withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id).lt("date", cutoff))
-    .take(CUTOFF_BATCH_SIZE * 8);
-  if (transactions.length === CUTOFF_BATCH_SIZE * 8) done = false;
-  for (const transaction of transactions) {
-    priorTransactionIds.add(transaction._id);
-    if (transaction.review !== "excluded") {
-      await ctx.db.patch(transaction._id, { review: "excluded" });
+    // Reversals are dated to their originals, so they land inside this same
+    // range and will be walked later — `reverseEntryForCutoff` skips them.
+    cursor = page.continueCursor;
+    if (page.isDone) {
+      phase = "transactions";
+      cursor = null;
+    }
+  } else if (phase === "transactions") {
+    const page = await ctx.db
+      .query("transactions")
+      .withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id).lt("date", cutoff))
+      .paginate({ cursor, numItems: CUTOFF_BATCH_SIZE });
+    for (const transaction of page.page) {
+      // Count what actually CHANGED. Counting rows seen instead inflates the
+      // total every pass and tells the owner a number that means nothing.
+      if (transaction.review !== "excluded") {
+        await ctx.db.patch(transaction._id, { review: "excluded" });
+        archivedTransactions++;
+      }
+    }
+    cursor = page.continueCursor;
+    if (page.isDone) {
+      phase = "inbox";
+      cursor = null;
+    }
+  } else if (phase === "inbox") {
+    const page = await ctx.db
+      .query("inboxItems")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .paginate({ cursor, numItems: CUTOFF_BATCH_SIZE });
+    const now = Date.now();
+    for (const item of page.page) {
+      if (item.status !== "open" || !item.transactionId) continue;
+      const transaction = await ctx.db.get(item.transactionId);
+      if (!transaction || transaction.date >= cutoff) continue;
+      await ctx.db.patch(item._id, { status: "dismissed", updatedAt: now });
+      dismissedItems++;
+    }
+    cursor = page.continueCursor;
+    if (page.isDone) {
+      phase = "done";
+      cursor = null;
     }
   }
 
@@ -1137,26 +1207,15 @@ async function applyOpeningBalanceCutoff(
     }
   }
 
-  const now = Date.now();
-  let dismissedItems = 0;
-  const items = await ctx.db
-    .query("inboxItems")
-    .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-    .take(CUTOFF_BATCH_SIZE * 8);
-  for (const item of items) {
-    if (item.status !== "open") continue;
-    if (!item.transactionId || !priorTransactionIds.has(item.transactionId)) continue;
-    await ctx.db.patch(item._id, { status: "dismissed", updatedAt: now });
-    dismissedItems++;
-  }
-
   return {
-    archivedTransactions: priorTransactionIds.size,
+    archivedTransactions,
     dismissedItems,
     reversedEntries,
     replacedOpeningEntries,
     lockedEntries,
-    done,
+    phase,
+    cursor,
+    done: phase === "done",
   };
 }
 
@@ -1271,13 +1330,19 @@ export const setOpeningBalances = mutation({
         sourceTag = `entity:${entity._id}`;
       }
 
+      // With no chosen start date this is a plain opening balance, so fall back
+      // to the connector's first-of-this-month convention. With one, the entry
+      // is dated to that exact day — same value as the cutoff below.
+      const entryDate = line.startDate
+        ? booksStartDate(line.startDate)
+        : openingBalanceDate(undefined);
       const posted = await postOpeningBalanceEntry(ctx, {
         entity,
         userId,
         assetAccountId,
         assetAccountName,
         balanceMinor: line.balanceMinor,
-        startDate: line.startDate,
+        date: entryDate,
         sourceTag,
       });
       // An explicit start date re-bases the book: stamp the cutoff so later
@@ -1285,11 +1350,12 @@ export const setOpeningBalances = mutation({
       // bank already delivered for months the owner is not opening on.
       let cutoffDone = true;
       if (line.startDate) {
-        const cutoff = openingBalanceDate(line.startDate);
+        const cutoff = entryDate;
         await ctx.db.patch(entity._id, { openingBalanceDate: cutoff, updatedAt: Date.now() });
         // Resumable step: never touch an opening entry already posted here.
         const swept = await applyOpeningBalanceCutoff(ctx, entity, userId, cutoff, {
           replaceOpeningEntries: false,
+          phase: "entries",
         });
         cutoffDone = swept.done;
       }
@@ -1357,7 +1423,7 @@ export const updateOpeningBalanceDate = mutation({
     // active one.
     await requireWorkspaceRole(ctx, entity.workspaceId, "accountant");
 
-    const cutoff = openingBalanceDate(args.startDate);
+    const cutoff = booksStartDate(args.startDate);
 
     await ctx.db.patch(args.entityId, {
       openingBalanceDate: cutoff,
@@ -1369,11 +1435,14 @@ export const updateOpeningBalanceDate = mutation({
       reversedEntries,
       replacedOpeningEntries,
       lockedEntries,
+      phase,
+      cursor,
       done,
     } = await applyOpeningBalanceCutoff(ctx, entity, userId, cutoff, {
       // An explicit re-base: replace any prior opening balance (including the
       // one bank-linking posted) rather than stacking a second one on top.
       replaceOpeningEntries: true,
+      phase: "entries",
     });
 
     // Post the opening entry through the shared ledger path when an amount was
@@ -1388,7 +1457,7 @@ export const updateOpeningBalanceDate = mutation({
         assetAccountId: cash._id,
         assetAccountName: cash.name,
         balanceMinor: args.balanceMinor,
-        startDate: cutoff,
+        date: cutoff,
         sourceTag: `entity:${entity._id}`,
       });
       posted = result.posted;
@@ -1402,7 +1471,73 @@ export const updateOpeningBalanceDate = mutation({
       replacedOpeningEntries,
       lockedEntries,
       posted,
+      phase,
+      cursor,
       done,
+    };
+  },
+});
+
+/**
+ * What this business's books currently start on, and the opening balance that
+ * was actually posted — so an owner returning to Settings can see what they
+ * entered last time instead of guessing.
+ *
+ * The amount is read back off the LEDGER rather than from a saved form value:
+ * the posted entry is the truth, and anything else could drift from it. Reversed
+ * entries are ignored, so a corrected balance reports the correction and not the
+ * figure it replaced.
+ */
+export const openingBalanceSummary = query({
+  args: { entityId: v.optional(v.id("entities")) },
+  handler: async (ctx, args) => {
+    const { membership } = await requireAnyWorkspaceRole(ctx, "hr");
+    if (!args.entityId) return null;
+    const entity = await ctx.db.get(args.entityId);
+    if (!entity || entity.workspaceId !== membership.workspaceId) return null;
+
+    const bankAccounts = await ctx.db
+      .query("bankAccounts")
+      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+      .collect();
+    const sourceIds = [`opening:onboarding:entity:${entity._id}`];
+    for (const bank of bankAccounts) {
+      sourceIds.push(`opening:onboarding:bank:${bank._id}`);
+      if (bank.plaidAccountId) sourceIds.push(`opening:${bank.plaidAccountId}`);
+    }
+
+    let totalMinor = 0;
+    let postedAt: string | null = null;
+    for (const sourceId of sourceIds) {
+      const entries = await ctx.db
+        .query("journalEntries")
+        .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
+        .filter((q) => q.eq(q.field("sourceId"), sourceId))
+        .collect();
+      for (const entry of entries) {
+        const reversal = await ctx.db
+          .query("journalEntries")
+          .withIndex("by_reverses_entry", (q) => q.eq("reversesEntryId", entry._id))
+          .first();
+        if (reversal) continue; // superseded by a correction
+        const lines = await ctx.db
+          .query("journalLines")
+          .withIndex("by_entry", (q) => q.eq("entryId", entry._id))
+          .collect();
+        // The asset side is the opening cash; the other leg is 3900 equity.
+        for (const line of lines) {
+          const account = await ctx.db.get(line.accountId);
+          if (!account || account.type !== "asset") continue;
+          totalMinor += line.debitMinor - line.creditMinor;
+        }
+        postedAt = entry.date;
+      }
+    }
+
+    return {
+      startDate: entity.openingBalanceDate ?? null,
+      openingBalanceMinor: postedAt === null ? null : totalMinor,
+      postedAt,
     };
   },
 });
@@ -1415,12 +1550,25 @@ export const updateOpeningBalanceDate = mutation({
  * does the first pass and reports `done: false` when work remains; the caller
  * then loops on this until it reports `done: true`.
  *
+ * Pass back the `phase` and `cursor` from the previous result. They are what
+ * make the sweep advance — without them each call re-reads the first page, so
+ * the loop never finishes and the running totals climb without meaning.
+ *
  * Safe to call at any time, including on a book already fully swept — every step
  * checks its own state first, so extra calls are no-ops rather than corrections.
  * The cutoff must already be stamped; this never changes it.
  */
 export const continueOpeningBalanceCutoff = mutation({
-  args: { entityId: v.id("entities") },
+  args: {
+    entityId: v.id("entities"),
+    phase: v.union(
+      v.literal("entries"),
+      v.literal("transactions"),
+      v.literal("inbox"),
+      v.literal("done"),
+    ),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
   async handler(ctx, args) {
     const userId = await requireUserId(ctx);
     const entity = await ctx.db.get(args.entityId);
@@ -1435,6 +1583,8 @@ export const continueOpeningBalanceCutoff = mutation({
     const swept = await applyOpeningBalanceCutoff(ctx, entity, userId, cutoff, {
       // The opening entry was already settled by the call that set the cutoff.
       replaceOpeningEntries: false,
+      phase: args.phase,
+      cursor: args.cursor ?? null,
     });
     return { cutoff, ...swept };
   },

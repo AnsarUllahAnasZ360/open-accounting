@@ -311,6 +311,53 @@ function stripeProjection(date: string): StripeProjectionForTest {
   };
 }
 
+describe("opening-balance cutoff — reads after a re-base", () => {
+  it("stops reports and the dashboard reading behind the cutoff", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setup(t);
+
+    // A re-base leaves every pre-cutoff entry PLUS its reversal on the book, so
+    // the journal roughly doubles. Reading it all is what pushed the portfolio
+    // report over Convex's document ceiling on live data.
+    for (let i = 0; i < 30; i += 1) {
+      await postedTransaction(t, ids, {
+        date: "2025-11-18",
+        amountMinor: 1_000,
+        merchant: `Old ${i}`,
+        externalId: `ext-old-${i}`,
+      });
+    }
+    await postedTransaction(t, ids, {
+      date: "2026-05-09",
+      amountMinor: 7_000,
+      merchant: "Kept",
+      externalId: "ext-kept",
+    });
+
+    await reBaseToCompletion(t, ids, { startDate: "2026-04-01", balanceMinor: 20_000 });
+
+    const totalEntries = await t.run(async (ctx) =>
+      (
+        await ctx.db
+          .query("journalEntries")
+          .withIndex("by_entity", (q) => q.eq("entityId", ids.entityId))
+          .collect()
+      ).length,
+    );
+    // 30 originals + 30 reversals + 1 kept + 1 opening = 62.
+    expect(totalEntries).toBe(62);
+
+    const dashboard = await authed(t, ids.userId, ids.email).query(api.coreViews.dashboard, {
+      entityId: ids.entityId,
+    });
+
+    // The narrower read changes no number: the 60 cancelling rows contributed
+    // nothing, so cash is still 20,000 opening − 7,000 kept.
+    const bank = dashboard!.bankBalances.find((row) => row.name === "Operating Checking");
+    expect(bank?.amountMinor).toBe(13_000);
+  });
+});
+
 describe("opening-balance cutoff — the chosen date", () => {
   it("uses the exact day picked, not the first of that month", async () => {
     const t = convexTest(schema, modules);

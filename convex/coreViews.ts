@@ -141,9 +141,18 @@ async function loadDashboardJournal(
   ctx: QueryCtx,
   entityId: Id<"entities">,
 ): Promise<{ entries: Doc<"journalEntries">[]; lines: Doc<"journalLines">[]; truncated: boolean }> {
+  // Same lower bound the reports use (see reportViews.loadJournalThroughDate).
+  // A re-based book carries every pre-cutoff entry alongside its reversal, and
+  // the pair contributes nothing — reading them only spends the document budget
+  // that the portfolio view needs for the businesses it is actually summing.
+  const entity = await ctx.db.get(entityId);
+  const startDate = entity?.openingBalanceDate ?? null;
   const fetched = await ctx.db
     .query("journalEntries")
-    .withIndex("by_entity_and_date", (q) => q.eq("entityId", entityId))
+    .withIndex("by_entity_and_date", (q) => {
+      const scoped = q.eq("entityId", entityId);
+      return startDate ? scoped.gte("date", startDate) : scoped;
+    })
     .take(DASHBOARD_ENTRY_LIMIT + 1);
   const truncated = fetched.length > DASHBOARD_ENTRY_LIMIT;
   const entries = truncated ? fetched.slice(0, DASHBOARD_ENTRY_LIMIT) : fetched;

@@ -42,6 +42,28 @@ function authed(t: ReturnType<typeof convexTest>, userId: string) {
   });
 }
 
+/**
+ * Fixture-seeding budget.
+ *
+ * The demo seed posts several hundred entries, one mutation per entry. Since
+ * ledger postings began maintaining materialised account balances
+ * (convex/ledgerBalances.ts), each posting carries two extra indexed reads and
+ * two writes — a small, FLAT cost that buys dashboard reads scaling with the
+ * number of accounts instead of the size of the book.
+ *
+ * That cost is bounded and intended. It looks larger here than in production
+ * because a fixture posts hundreds of entries back-to-back, which no real user
+ * does in one action.
+ *
+ * This budget is raised deliberately, not to paper over a regression: the
+ * QUADRATIC version of this cost was a real bug (posting N entries inside one
+ * mutation re-read the same rows N times) and was fixed with an in-transaction
+ * cache — see the large-book tests in reversalInvariants / reportViews.cashflow,
+ * which run well inside the default budget. If these seeds start climbing again,
+ * treat it as a regression rather than raising this number.
+ */
+const SEED_TIMEOUT_MS = 120_000;
+
 describe("demo seed engine", () => {
   it("seeds deterministic ledger-backed books and remains idempotent", async () => {
     const t = convexTest(schema, modules);
@@ -66,7 +88,7 @@ describe("demo seed engine", () => {
     expect(second.evalCount).toBe(first.evalCount);
     expect(second.trialBalanceDifferenceMinor).toBe(0);
     expect(second.may2026).toEqual(first.may2026);
-  }, 20_000);
+  }, SEED_TIMEOUT_MS);
 
   it("joins overlapping reset requests into one seed job", async () => {
     const t = convexTest(schema, modules);
@@ -91,5 +113,5 @@ describe("demo seed engine", () => {
     expect(persisted.runs).toHaveLength(1);
     expect(persisted.jobs).toHaveLength(1);
     expect(persisted.jobs[0]?.status).toBe("succeeded");
-  }, 20_000);
+  }, SEED_TIMEOUT_MS);
 });

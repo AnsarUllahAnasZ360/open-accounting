@@ -78,6 +78,13 @@ const EXEMPT: Record<string, string> = {
   // read is that scan; the AR list and ageing live in incomeViews/reportViews and
   // ARE bounded.
   "invoices.ts": "nextInvoiceNumber must see all history to keep invoice numbers unique",
+
+  // The materialisation itself. It sums the ledger and must therefore see ALL of
+  // it — a cutoff-bounded rebuild would produce balances that disagree with the
+  // lines they summarise. The cutoff is applied when these balances are READ
+  // (entityMetrics.loadEntityBalances sums month buckets from the books-start
+  // date), which is the right layer for it.
+  "ledgerBalances.ts": "materialises balances from the whole ledger; the cutoff is applied on read",
 };
 
 /**

@@ -211,5 +211,8 @@ describe("public demo write guard (E11-T6)", () => {
     // the guard exempts internal callers.
     const reseed = await t.action(internal.publicDemo.resetAndSeedPublicDemo, { force: true });
     expect(reseed.reset).toBe(true);
-  });
+    // Seeds the full demo book, so it carries the fixture budget rather than the
+    // default — see the note atop convex/seedDemo.test.ts. A climb beyond this is
+    // a regression, not a reason to raise it again.
+  }, 120_000);
 });

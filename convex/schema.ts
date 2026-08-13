@@ -339,6 +339,59 @@ export default defineSchema({
     .index("by_entity", ["entityId"])
     .index("by_entry", ["entryId"])
     .index("by_account", ["accountId"]),
+
+  /**
+   * Materialised per-account ledger balance (remediation plan task 1.5).
+   *
+   * WHY THIS EXISTS. "What is my cash?" was answered by re-reading every journal
+   * line on the entity, on every dashboard load. That cannot scale: Convex allows
+   * 4,096 document reads per query, and a book of a few thousand entries exceeds
+   * it — so the dashboard either failed outright or returned silently truncated
+   * totals. No read budget fixes that, because the cost grows with the age of the
+   * business.
+   *
+   * These rows are DERIVED, never authoritative. `journalLines` remains the
+   * system of record; this is a running sum maintained by the single posting path
+   * (`ledger.postLedgerEntryCore`), which is the only writer to the ledger. It can
+   * be rebuilt from the lines at any time — see `ledgerBalances.rebuildEntity`.
+   *
+   * Reads become ~one row per account instead of thousands of lines, and stay
+   * constant as the book grows.
+   */
+  accountBalances: defineTable({
+    entityId: v.id("entities"),
+    accountId: v.id("ledgerAccounts"),
+    /** All-time sums. Signed direction is applied at read time by account type. */
+    debitMinor: v.number(),
+    creditMinor: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_entity", ["entityId"])
+    .index("by_entity_and_account", ["entityId", "accountId"]),
+
+  /**
+   * The same running sum, bucketed by calendar month (`YYYY-MM`).
+   *
+   * Needed for anything period-shaped that would otherwise re-read the journal:
+   * the P&L trend, the trailing burn behind `runwayDays`, and totals for a book
+   * with an opening-balance cutoff (sum the months from the books-start forward
+   * rather than all time).
+   *
+   * Bounded by accounts × months-since-start, which for a re-based book is small
+   * by construction — that is what re-basing is for.
+   */
+  accountMonthBalances: defineTable({
+    entityId: v.id("entities"),
+    accountId: v.id("ledgerAccounts"),
+    /** Calendar month of the ENTRY date, `YYYY-MM`. */
+    month: v.string(),
+    debitMinor: v.number(),
+    creditMinor: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_entity_and_month", ["entityId", "month"])
+    .index("by_entity_account_month", ["entityId", "accountId", "month"]),
+
   periodLocks: defineTable({
     entityId: v.id("entities"),
     lockedThroughDate: v.string(),

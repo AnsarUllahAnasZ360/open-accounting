@@ -5,6 +5,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
 import { assertNotDemoWrite } from "./demoWorkspace";
+import { applyEntryToBalances } from "./ledgerBalances";
 import { assertNonNegativeMinorUnit } from "./money";
 
 const accountTypeValidator = v.union(
@@ -453,6 +454,27 @@ export async function postLedgerEntryCore(
       createdAt: now,
     });
   }
+
+  // Fold this entry into the materialised per-account balances.
+  //
+  // This is the ONLY place they are maintained, because this is the only path
+  // that writes to the ledger — and a derived total with two writers would drift.
+  // Same mutation as the line inserts above, so the balance and the lines it
+  // summarises commit together or not at all.
+  //
+  // A reversal needs no special handling: it arrives here as an ordinary posting
+  // with mirrored legs, and nets the balance back out.
+  await applyEntryToBalances(ctx, {
+    entityId: args.entity._id,
+    // The ENTRY date, so the month bucket follows the transaction rather than
+    // the wall clock — a back-dated posting lands in the month it belongs to.
+    date: args.date,
+    lines: args.lines.map((line) => ({
+      accountId: line.accountId,
+      debitMinor: line.debitMinor,
+      creditMinor: line.creditMinor,
+    })),
+  });
 
   await ctx.db.insert("auditEvents", {
     workspaceId: args.entity.workspaceId,

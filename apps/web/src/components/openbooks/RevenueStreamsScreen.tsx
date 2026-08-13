@@ -15,6 +15,10 @@ import { toast } from "sonner";
 
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import {
+  ArchivedBanner,
+  BooksWindowToggle,
+} from "@/components/openbooks/BooksWindowToggle";
 import { Amount, EmptyState } from "@/components/openbooks/primitives";
 import { StreamSplitEditor } from "@/components/openbooks/StreamSplitEditor";
 import { Button } from "@/components/ui/button";
@@ -104,8 +108,11 @@ function PageTitle() {
 
 function InsightsSurface({ entityId }: { entityId: Id<"entities"> }) {
   const [period, setPeriod] = useState<Period>("month");
+  // Per-screen, never global (plan §3.5 rule 5). Switching here must not change
+  // what the Dashboard or the Reports show.
+  const [booksWindow, setBooksWindow] = useState<"working" | "archived">("working");
   const range = useMemo(() => periodRange(period), [period]);
-  const data = useQuery(api.streamViews.streamPnl, { entityId, ...range });
+  const data = useQuery(api.streamViews.streamPnl, { entityId, ...range, window: booksWindow });
 
   if (data === undefined) {
     return <Card><p className="text-sm text-muted-foreground">Loading insights…</p></Card>;
@@ -120,8 +127,18 @@ function InsightsSurface({ entityId }: { entityId: Id<"entities"> }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {data.window === "archived" && data.booksStartDate ? (
+        <ArchivedBanner booksStartDate={data.booksStartDate} />
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <PeriodPicker period={period} onChange={setPeriod} />
+        <div className="flex flex-wrap items-center gap-3">
+          <PeriodPicker period={period} onChange={setPeriod} />
+          <BooksWindowToggle
+            window={booksWindow}
+            onChange={setBooksWindow}
+            booksStartDate={data.booksStartDate}
+          />
+        </div>
         {data.untaggedRevenueMinor > 0 ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-surface px-2.5 py-1 text-[12px] font-medium text-warning">
             <AlertTriangle className="size-3.5" />

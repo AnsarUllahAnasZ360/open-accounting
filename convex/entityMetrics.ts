@@ -21,10 +21,90 @@ import type { QueryCtx } from "./_generated/server";
 
 type Balance = { debitMinor: number; creditMinor: number };
 
-// Cap journal loading by ENTRY (not by flat row) so a per-entity read can never
-// drop one leg of a balanced posting (mirrors coreViews/reportViews, E1-T5).
-export const METRIC_ENTRY_LIMIT = 20000;
-const METRIC_TABLE_LIMIT = 5000;
+/**
+ * THE REAL CEILING IS 4096 DOCUMENTS READ PER FUNCTION EXECUTION.
+ *
+ * Not 32k. Comments elsewhere in this repo cite 32k and they are wrong — the
+ * runtime error is explicit:
+ *
+ *   "Too many reads in a single function execution (limit: 4096)"
+ *
+ * That number governs the WHOLE query, not one table: every entry, every line,
+ * every account, invoice, bill, transaction and contact the handler touches,
+ * summed. It is easy to blow without noticing, because each journal entry drags
+ * in roughly two lines behind it, so an entry cap of N costs about 3N reads.
+ *
+ * Budget below the ceiling rather than at it: the dashboard also reads several
+ * other tables around these figures, and a query that only just fits today fails
+ * the moment someone adds a widget.
+ */
+const CONVEX_READ_LIMIT = 4096;
+/** Share of the ceiling the journal load may claim, leaving room for the rest. */
+const JOURNAL_READ_BUDGET = 2400;
+/** An entry plus its legs. Two-leg postings are the norm; three-leg happen. */
+const DOCS_PER_ENTRY = 3;
+
+/**
+ * Per-entity entry cap for a SINGLE-business read.
+ *
+ * 800 entries ≈ 2,400 documents. Deliberately not "as many as possible": the
+ * caller reads other tables too, and this has to leave room for them.
+ */
+export const METRIC_ENTRY_LIMIT = Math.floor(JOURNAL_READ_BUDGET / DOCS_PER_ENTRY);
+/**
+ * Cap for the flat side-tables (accounts, invoices, bills). Was 5,000 — which on
+ * its own exceeded the real ceiling for one business, before a single journal
+ * entry was read.
+ */
+const METRIC_TABLE_LIMIT = 400;
+
+/**
+ * Floor for one business's slice of a portfolio read. Below this the figures are
+ * too partial to be worth computing, so a large portfolio truncates hard and says
+ * so rather than quietly reporting a total assembled from a handful of entries.
+ */
+const MIN_ENTITY_ENTRY_BUDGET = 120;
+
+/**
+ * How many entries each business may load when `count` businesses share ONE read
+ * transaction.
+ *
+ * This is what "All businesses" got wrong: the per-entity cap was applied per
+ * entity, so N businesses read N times the budget and the query died at the
+ * ceiling. The budget is a property of the transaction, not of the business, so
+ * it has to be divided.
+ */
+export function entryBudgetFor(entityCount: number): number {
+  const count = Math.max(1, entityCount);
+  return Math.max(
+    MIN_ENTITY_ENTRY_BUDGET,
+    Math.min(METRIC_ENTRY_LIMIT, Math.floor(JOURNAL_READ_BUDGET / count / DOCS_PER_ENTRY)),
+  );
+}
+
+/**
+ * Cap for the side-tables when `count` businesses share one transaction. Same
+ * reasoning as `entryBudgetFor` — a flat 400 per business is 2,000 reads across
+ * five businesses, on top of the journal.
+ */
+export function tableBudgetFor(entityCount: number): number {
+  const count = Math.max(1, entityCount);
+  return Math.max(60, Math.min(METRIC_TABLE_LIMIT, Math.floor(METRIC_TABLE_LIMIT / count)));
+}
+
+/**
+ * KNOWN LIMITATION, and the reason task 1.5 is now REQUIRED rather than optional.
+ *
+ * A book with more than ~800 journal entries cannot have its all-time totals
+ * computed from raw lines inside one Convex query, at any budget. Bounding the
+ * read stops the crash and reports `truncated` honestly, but the figures on a
+ * large book ARE partial.
+ *
+ * The real fix is a materialised per-account balance updated at post time, which
+ * turns this from thousands of reads into tens. Until that lands, the dashboard
+ * degrades instead of failing — and says that it has.
+ */
+export const READ_LIMIT_FOR_REFERENCE = CONVEX_READ_LIMIT;
 // Cash ledger accounts: a `bank`/`cash`/`checking`/`savings` asset, or any asset
 // linked to a bankAccounts row.
 const CASH_SUBTYPES = new Set(["bank", "cash", "checking", "savings"]);
@@ -57,16 +137,43 @@ function shiftMonth(month: string, delta: number) {
  * the `by_entry` index, so an entry's debit and credit legs are always loaded
  * together (never split by a flat `.take`). Mirrors the dashboard/report loaders.
  */
-async function loadEntityJournal(
+export type EntityJournal = {
+  entries: Doc<"journalEntries">[];
+  lines: Doc<"journalLines">[];
+  truncated: boolean;
+};
+
+export async function loadEntityJournal(
   ctx: QueryCtx,
   entityId: Id<"entities">,
-): Promise<{ entries: Doc<"journalEntries">[]; lines: Doc<"journalLines">[]; truncated: boolean }> {
+  /**
+   * The entity's books-start date, when it has one. Everything earlier was
+   * reversed by the re-base, so an original and its reversal cancel and change
+   * no metric — but reading them still costs document budget, and this loader
+   * runs once PER BUSINESS on the portfolio roll-up. That multiplication is what
+   * takes "All businesses" down while each business alone loads fine.
+   */
+  startDate: string | null,
+  /** This entity's slice of the shared read budget (see `entryBudgetFor`). */
+  entryBudget: number,
+): Promise<EntityJournal> {
+  // MOST RECENT FIRST. The index is keyed on date ascending, so a bounded read
+  // in natural order keeps the oldest entries and drops everything recent —
+  // which on a book larger than the budget means the dashboard reports figures
+  // from years ago and shows nothing from this month.
+  //
+  // Truncating a balance is wrong in either direction; this at least keeps the
+  // period the owner is actually looking at, and `truncated` says it happened.
   const fetched = await ctx.db
     .query("journalEntries")
-    .withIndex("by_entity_and_date", (q) => q.eq("entityId", entityId))
-    .take(METRIC_ENTRY_LIMIT + 1);
-  const truncated = fetched.length > METRIC_ENTRY_LIMIT;
-  const entries = truncated ? fetched.slice(0, METRIC_ENTRY_LIMIT) : fetched;
+    .withIndex("by_entity_and_date", (q) => {
+      const scoped = q.eq("entityId", entityId);
+      return startDate ? scoped.gte("date", startDate) : scoped;
+    })
+    .order("desc")
+    .take(entryBudget + 1);
+  const truncated = fetched.length > entryBudget;
+  const entries = truncated ? fetched.slice(0, entryBudget) : fetched;
   const lineGroups = await Promise.all(
     entries.map((entry) =>
       ctx.db.query("journalLines").withIndex("by_entry", (q) => q.eq("entryId", entry._id)).collect(),
@@ -108,14 +215,60 @@ export type EntityMetrics = {
 export async function computeEntityMetrics(
   ctx: QueryCtx,
   entity: Doc<"entities">,
+  options: {
+    /**
+     * Entries this business may load. Omit on a single-entity read to keep the
+     * full per-entity cap; a multi-business read passes each entity its slice of
+     * the shared budget so N businesses fit in one read transaction.
+     */
+    entryBudget?: number;
+    /**
+     * An already-loaded journal for this entity, to be used instead of loading
+     * it again.
+     *
+     * `coreViews.dashboard` needs the same entries and lines for its own widgets
+     * that this function needs for the metric block. Without this it loaded the
+     * whole journal TWICE per business — the single largest source of read
+     * pressure on the dashboard, and the reason "All businesses" exceeded
+     * Convex's document limit while each business alone was fine.
+     *
+     * The caller MUST load it with the same cutoff bound (`loadEntityJournal`),
+     * or the metrics and the widgets would describe different books.
+     */
+    journal?: EntityJournal;
+    /**
+     * Side-tables the caller has ALREADY read for this entity.
+     *
+     * `coreViews.dashboard` loads all four for its own widgets. Without this it
+     * read each of them twice per business — once there, once here — which on a
+     * 4,096-document ceiling is not a micro-optimisation, it is the difference
+     * between rendering and throwing.
+     *
+     * Must be the same entity's rows, loaded with the same bounds, or the metric
+     * block and the widgets would describe different books.
+     */
+    accounts?: Doc<"ledgerAccounts">[];
+    bankAccounts?: Doc<"bankAccounts">[];
+    invoices?: Doc<"invoices">[];
+    bills?: Doc<"bills">[];
+    /** Slice of the side-table budget (see `tableBudgetFor`). */
+    tableBudget?: number;
+  } = {},
 ): Promise<EntityMetrics> {
+  const entryBudget = options.entryBudget ?? METRIC_ENTRY_LIMIT;
+  const tableBudget = options.tableBudget ?? METRIC_TABLE_LIMIT;
   const [journal, accounts, bankAccounts, invoices, bills] = await Promise.all([
-    loadEntityJournal(ctx, entity._id),
-    ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(METRIC_TABLE_LIMIT),
-    ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200)
+    options.journal ??
+      loadEntityJournal(ctx, entity._id, entity.openingBalanceDate ?? null, entryBudget),
+    options.accounts ??
+      ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(tableBudget),
+    options.bankAccounts ??
+      ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(60)
       .then((rows) => rows.filter((account) => !account.archived)),
-    ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(METRIC_TABLE_LIMIT),
-    ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(METRIC_TABLE_LIMIT),
+    options.invoices ??
+      ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(tableBudget),
+    options.bills ??
+      ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(tableBudget),
   ]);
   const { entries, lines, truncated } = journal;
 

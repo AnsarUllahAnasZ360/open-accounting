@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
-import { computeEntityMetrics, type EntityMetrics } from "./entityMetrics";
+import { computeEntityMetrics, entryBudgetFor, type EntityMetrics } from "./entityMetrics";
 import { assertScopeAuthorized, scopeValidator, type Scope } from "./entityScope";
 import { sumUsdMinor } from "./portfolioMoney";
 
@@ -65,12 +65,18 @@ export const portfolioDashboard = query({
       .slice()
       .sort((a, b) => a.createdAt - b.createdAt || a._id.localeCompare(b._id));
 
+    // One read transaction covers EVERY business here, so the per-entity cap has
+    // to be divided rather than repeated. Using the single-entity cap N times is
+    // what made "All businesses" exceed Convex's document limit while each
+    // business on its own loaded fine.
+    const entryBudget = entryBudgetFor(ordered.length);
+
     // EACH per-entity read is preceded by a workspace-role check (parity with the
     // single-entity dashboard's getActiveEntity gate).
     const metricsList: EntityMetrics[] = [];
     for (const entity of ordered) {
       await requireWorkspaceRole(ctx, entity.workspaceId, "member");
-      metricsList.push(await computeEntityMetrics(ctx, entity));
+      metricsList.push(await computeEntityMetrics(ctx, entity, { entryBudget }));
     }
 
     const byBusiness: ByBusinessRow[] = metricsList.map((metrics) => ({

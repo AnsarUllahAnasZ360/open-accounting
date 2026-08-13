@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { requireWorkspaceRole } from "./authz";
+import { TABLE_READ_LIMIT } from "./readBudget";
 import { getEntityForWrite, postLedgerEntryCore } from "./ledger";
 
 // Which chart groups a category type belongs to in the friendly tree. Income and
@@ -44,11 +45,11 @@ export const list = query({
     const lines = await ctx.db
       .query("journalLines")
       .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-      .take(8000);
+      .take(TABLE_READ_LIMIT);
     const entries = await ctx.db
       .query("journalEntries")
       .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-      .take(8000);
+      .take(TABLE_READ_LIMIT);
     const entryDate = new Map(entries.map((entry) => [entry._id as string, entry.date]));
     const ytdByAccount = new Map<string, number>();
     for (const line of lines) {

@@ -12,6 +12,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { requireAnyWorkspacePermission, requireWorkspacePermission, requireWorkspaceRole, roleHasPermission } from "./authz";
+import { TABLE_READ_LIMIT } from "./readBudget";
 import { assertNotDemoWrite } from "./demoWorkspace";
 import { resolveDefaultEntity } from "./entityScope";
 import { postLedgerEntryCore, type LedgerLineInput } from "./ledger";
@@ -1127,7 +1128,7 @@ async function consumedSettlementTxnIds(
   const lines = await ctx.db
     .query("payrollRunLines")
     .withIndex("by_entity", (q) => q.eq("entityId", entityId))
-    .take(5000);
+    .take(TABLE_READ_LIMIT);
   const used = new Set<Id<"transactions">>();
   for (const line of lines) {
     if (line.settlementTxnId) used.add(line.settlementTxnId);

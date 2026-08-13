@@ -16,6 +16,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import {
+  ArchivedBanner,
+  BooksWindowToggle,
+} from "@/components/openbooks/BooksWindowToggle";
 import { Amount, EmptyState, formatMinorMoney } from "@/components/openbooks/primitives";
 import {
   AddMenu,
@@ -152,6 +156,9 @@ function ExpensesCashSurface() {
   const [search, setSearch] = useState("");
 
   const serverPeriod = rangeToServerPeriod(period);
+  // Books window is per-screen, never global (plan §3.5 rule 5): switching to
+  // Archived here must not change the Dashboard or the Reports.
+  const [booksWindow, setBooksWindow] = useState<"working" | "archived">("working");
   // Send the REAL selected window (and today) so the server scopes to it instead
   // of a hardcoded demo month — this is what was hiding transactions dated after
   // the old frozen "today". Works for presets and custom ranges alike.
@@ -165,6 +172,7 @@ function ExpensesCashSurface() {
     period: serverPeriod,
     range: { start: periodIso.from, end: periodIso.to },
     today: todayIso(),
+    window: booksWindow,
   });
 
   // Mirror the preset period into the URL so sidebar subroutes preserve the
@@ -198,13 +206,23 @@ function ExpensesCashSurface() {
   }
 
   return (
-    <ExpensesCashTable
-      data={data}
-      period={period}
-      setPeriod={setPeriod}
-      search={search}
-      setSearch={setSearch}
-    />
+    <div className="flex flex-col gap-4">
+      {data.window === "archived" && data.booksStartDate ? (
+        <ArchivedBanner booksStartDate={data.booksStartDate} />
+      ) : null}
+      <BooksWindowToggle
+        window={booksWindow}
+        onChange={setBooksWindow}
+        booksStartDate={data.booksStartDate}
+      />
+      <ExpensesCashTable
+        data={data}
+        period={period}
+        setPeriod={setPeriod}
+        search={search}
+        setSearch={setSearch}
+      />
+    </div>
   );
 }
 

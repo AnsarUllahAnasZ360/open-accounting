@@ -4,7 +4,13 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { requireWorkspaceRole } from "./authz";
+import { TABLE_READ_LIMIT } from "./readBudget";
 import { getEntityForWrite } from "./ledger";
+import {
+  loadScopedBills,
+  loadScopedInvoices,
+  loadScopedTransactions,
+} from "./openingBalanceCutoff";
 import { reinforceStreamRule } from "./streamRules";
 import { normalizeStreamSplit } from "./streams";
 
@@ -192,7 +198,7 @@ export const renameStreamEverywhere = mutation({
       const rows = await ctx.db
         .query(table)
         .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-        .take(4000);
+        .take(TABLE_READ_LIMIT);
       for (const row of rows) {
         const next = relabelSplit(row.streams, from, to);
         if (next) {
@@ -253,7 +259,7 @@ export const deleteStream = mutation({
       const rows = await ctx.db
         .query(table)
         .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-        .take(4000);
+        .take(TABLE_READ_LIMIT);
       for (const row of rows) {
         if (!row.streams || !row.streams.some((line) => line.streamLabel === label)) continue;
         if (reassignTo) {
@@ -324,9 +330,9 @@ export const listStreamsDetailed = query({
 
     const [registry, transactions, invoices, bills, rules] = await Promise.all([
       ctx.db.query("revenueStreams").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500),
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(4000),
-      ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(4000),
-      ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(4000),
+      loadScopedTransactions(ctx, entity, { limit: 4000 }),
+      loadScopedInvoices(ctx, entity, { limit: 4000 }),
+      loadScopedBills(ctx, entity, { limit: 4000 }),
       ctx.db.query("streamRules").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
     ]);
 

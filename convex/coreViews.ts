@@ -25,6 +25,7 @@ import {
   type BooksWindow,
 } from "./openingBalanceCutoff";
 import { normalizeMerchantKey } from "./pipeline";
+import { SMALL_TABLE_READ_LIMIT, TABLE_READ_LIMIT } from "./readBudget";
 import { sumUsdMinor } from "./portfolioMoney";
 import { computeUnreviewedGap } from "./unreviewedGap";
 
@@ -130,6 +131,15 @@ const DASHBOARD_LIMIT = 600;
 // cap itself now lives in entityMetrics (`entryBudgetFor`) because it has to be
 // divided across the businesses in scope, not applied per business.
 const CASH_SUBTYPES = new Set(["bank", "cash", "checking", "savings"]);
+
+/** Inbox items scanned to find the open queue (open + resolved + dismissed). */
+const INBOX_ITEM_LIMIT = 1000;
+/**
+ * Open items rendered, newest first. Each one costs a `ctx.db.get` for its
+ * transaction and document, so this is what bounds the queue's read cost — the
+ * size of the book no longer matters.
+ */
+const INBOX_ROW_LIMIT = 300;
 
 function combinedRunwayDays(rows: EntityMetrics[]): number | null {
   const combinedCash = sumUsdMinor(rows.map((row) => row.cashMinor));
@@ -330,10 +340,22 @@ export const dashboard = query({
     const transactions = transactionGroups
       .flat()
       .filter((transaction) => isWithinCutoff(cutoffs, transaction.entityId, transaction.date));
-    const visibleTransactionIds = new Set(transactions.map((transaction) => transaction._id));
+    // Drop an inbox item only when its transaction is KNOWN to be pre-cutoff.
+    //
+    // This used to require the transaction to be present in the bounded scan
+    // above, so an item whose transaction fell outside that slice was dropped
+    // as if it were archived. The dashboard's queue count then disagreed with
+    // the Inbox screen's own count on any book larger than the cap — an absent
+    // row means "not loaded", never "not in the books".
+    const archivedTransactionIds = new Set(
+      transactionGroups
+        .flat()
+        .filter((transaction) => !isWithinCutoff(cutoffs, transaction.entityId, transaction.date))
+        .map((transaction) => transaction._id),
+    );
     const inboxItems = inboxItemGroups
       .flat()
-      .filter((item) => !item.transactionId || visibleTransactionIds.has(item.transactionId));
+      .filter((item) => !item.transactionId || !archivedTransactionIds.has(item.transactionId));
 
     const invoices = invoiceGroups.flat();
     const bills = billGroups.flat();
@@ -918,19 +940,50 @@ export const inbox = query({
     const entity = await getActiveEntity(ctx, args.entityId);
     if (!entity) return null;
 
-    const [items, transactions, accounts, bankAccounts, documents, correctionMemories] = await Promise.all([
-      ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(DASHBOARD_LIMIT),
-      ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500),
-      ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200)
+    const [items, accounts, bankAccounts, correctionMemories] = await Promise.all([
+      ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(INBOX_ITEM_LIMIT),
+      ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(TABLE_READ_LIMIT),
+      ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(SMALL_TABLE_READ_LIMIT)
         .then((rows) => rows.filter((account) => !account.archived)),
-      ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
-      ctx.db.query("aiCorrectionMemories").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
+      ctx.db.query("aiCorrectionMemories").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(TABLE_READ_LIMIT),
     ]);
-    const transactionsById = new Map(transactions.map((transaction) => [transaction._id, transaction]));
     const accountsById = new Map(accounts.map((account) => [account._id, account]));
     const bankAccountsById = new Map(bankAccounts.map((account) => [account._id, account]));
-    const documentsById = new Map(documents.map((document) => [document._id, document]));
+
+    // Resolve each queued item's transaction/document BY ID.
+    //
+    // This used to join against a bounded scan of the whole table. Any item whose
+    // transaction fell outside that slice silently lost its merchant, amount and
+    // date — the row rendered as "categorize / $0.00 / Needs context" while the
+    // detail pane still showed the real figure, because the summary text lives on
+    // the item itself. Worse, an unresolved row also had no date, so it slipped
+    // past the opening-balance cutoff filter below.
+    //
+    // A scan can never be the right shape for this: the rows we need are named by
+    // the items, not adjacent to them in an index. Fetching by id is bounded by
+    // the QUEUE length rather than the book size, so it is both correct and
+    // cheaper — a business with 200k transactions costs the same as one with 200.
+    const queued = items
+      .filter((item) => item.status === "open")
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, INBOX_ROW_LIMIT);
+
+    const transactionIds = [...new Set(queued.flatMap((item) => (item.transactionId ? [item.transactionId] : [])))];
+    const documentIds = [...new Set(queued.flatMap((item) => (item.documentId ? [item.documentId] : [])))];
+    const [resolvedTransactions, resolvedDocuments] = await Promise.all([
+      Promise.all(transactionIds.map((id) => ctx.db.get(id))),
+      Promise.all(documentIds.map((id) => ctx.db.get(id))),
+    ]);
+    const transactionsById = new Map(
+      resolvedTransactions
+        .filter((row): row is NonNullable<typeof row> => row !== null && row.entityId === entity._id)
+        .map((row) => [row._id, row]),
+    );
+    const documentsById = new Map(
+      resolvedDocuments
+        .filter((row): row is NonNullable<typeof row> => row !== null && row.entityId === entity._id)
+        .map((row) => [row._id, row]),
+    );
 
     // E2-T11: index correction memories by (merchantKey, direction) so each
     // categorize item can offer Top-N "same as last time" suggestions. The
@@ -946,16 +999,16 @@ export const inbox = query({
     // Opening-balance cutoff: an item whose underlying transaction/document is
     // dated before the entity's cutoff is history, not queue work. Items with no
     // date to judge by (questions, unmatched documents) always stay.
-    const openItems = items
-      .filter((item) => item.status === "open")
-      .filter((item) => {
-        const itemDate =
-          (item.documentId ? documentsById.get(item.documentId)?.date : null) ??
-          (item.transactionId ? transactionsById.get(item.transactionId)?.date : null) ??
-          null;
-        return isWithinEntityCutoff(entity, itemDate);
-      })
-      .sort((a, b) => b.createdAt - a.createdAt);
+    // `queued` is already open-only and newest-first; every referenced row above
+    // was fetched by id, so a null date here genuinely means the item has no date
+    // to judge by (a question, an unmatched document) rather than a failed join.
+    const openItems = queued.filter((item) => {
+      const itemDate =
+        (item.documentId ? documentsById.get(item.documentId)?.date : null) ??
+        (item.transactionId ? transactionsById.get(item.transactionId)?.date : null) ??
+        null;
+      return isWithinEntityCutoff(entity, itemDate);
+    });
 
     // Count items resolved/dismissed in the last 24h so the queue header can
     // show progress ("M cleared today"). Read-only, entity-scoped.

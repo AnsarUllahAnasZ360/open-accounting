@@ -186,11 +186,11 @@ export async function computeCfoSignals(
       resolveTaxSetAsidePct(ctx, workspaceId),
     ]);
 
-  // Reuse everything already read. Called without these, computeEntityMetrics
-  // loads its own journal and its own copy of all four tables — doubling this
-  // handler's reads against a 4,096-document ceiling.
+  // Reuse the side-tables already read. The metric block sources cash, revenue
+  // and expense from the MATERIALISED balances rather than the journal above, so
+  // those figures are exact regardless of how much of the journal this handler
+  // sampled for its trend and anomaly work.
   const metrics = await computeEntityMetrics(ctx, entity, {
-    journal: { ...journal, truncated: journal.entries.length >= ENTRY_LIMIT },
     accounts,
     bankAccounts,
     invoices,

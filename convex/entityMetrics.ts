@@ -1,5 +1,10 @@
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
+import {
+  loadAccountBalances,
+  loadMonthlyBalances,
+  preCutoffMonthAdjustment,
+} from "./ledgerBalances";
 
 /**
  * Shared per-entity metric block (Epic E5-T6).
@@ -64,6 +69,13 @@ const METRIC_TABLE_LIMIT = 400;
  * so rather than quietly reporting a total assembled from a handful of entries.
  */
 const MIN_ENTITY_ENTRY_BUDGET = 120;
+
+/**
+ * Month buckets are one row per (account, month), so a books-start date N months
+ * back costs roughly accounts x N. This multiplier keeps that read bounded while
+ * still covering a couple of years of a normal chart of accounts.
+ */
+const MONTH_BUCKET_FACTOR = 6;
 
 /**
  * How many entries each business may load when `count` businesses share ONE read
@@ -182,6 +194,137 @@ export async function loadEntityJournal(
   return { entries, lines: lineGroups.flat(), truncated };
 }
 
+export type EntityBalanceSnapshot = {
+  /** Net position per account across the entity's working set. */
+  balances: Map<Id<"ledgerAccounts">, Balance>;
+  /** The same figures per calendar month, for trend and burn. */
+  monthly: Map<string, Map<Id<"ledgerAccounts">, Balance>>;
+  /** Latest month with any activity, or null on an empty book. */
+  latestMonth: string | null;
+  /** True when figures came from the line-based fallback and a rebuild is due. */
+  needsRebuild: boolean;
+  truncated: boolean;
+};
+
+/**
+ * Load an entity's position from the MATERIALISED balances.
+ *
+ * This replaces reading every journal line on every dashboard load. Cost is one
+ * row per account (all-time) or per account-month (re-based book) instead of
+ * thousands of lines, so it stays flat as the book grows — double the
+ * transactions and this reads exactly the same amount.
+ *
+ * Two cases:
+ *
+ *  - NO books-start date → the all-time running balance is the answer directly.
+ *  - A books-start date → sum the month buckets from that month forward, and
+ *    subtract the part of the cutoff month that falls before the exact day (a
+ *    no-op under decision D4, which restricts new cutoffs to month starts).
+ *
+ * The monthly buckets are loaded either way, because the trailing burn behind
+ * `runwayDays` needs them.
+ */
+async function loadEntityBalances(
+  ctx: QueryCtx,
+  entity: Doc<"entities">,
+  limit: number,
+): Promise<EntityBalanceSnapshot> {
+  const cutoff = entity.openingBalanceDate ?? null;
+  const fromMonth = cutoff ? cutoff.slice(0, 7) : undefined;
+
+  const monthly = await loadMonthlyBalances(ctx, entity._id, {
+    fromMonth,
+    limit: limit * MONTH_BUCKET_FACTOR,
+  });
+
+  let balances: Map<Id<"ledgerAccounts">, Balance>;
+  let truncated = monthly.truncated;
+
+  if (cutoff) {
+    // Working set = the cutoff month onward, less the pre-cutoff days of that month.
+    balances = new Map(monthly.totals);
+    const adjustment = await preCutoffMonthAdjustment(ctx, entity._id, cutoff, limit);
+    for (const [accountId, delta] of adjustment) {
+      const current = balances.get(accountId);
+      if (!current) continue;
+      balances.set(accountId, {
+        debitMinor: current.debitMinor - delta.debitMinor,
+        creditMinor: current.creditMinor - delta.creditMinor,
+      });
+    }
+  } else {
+    // All-time: one row per account, the cheapest read in the system.
+    balances = await loadAccountBalances(ctx, entity._id, limit);
+  }
+
+  const latestMonth = [...monthly.byMonth.keys()].sort((a, b) => b.localeCompare(a))[0] ?? null;
+
+  // FALLBACK: a book with ledger history but no materialised rows.
+  //
+  // Two ways to get here, and both are real:
+  //  - A business that posted entries before this table existed, between the
+  //    deploy and its rebuild. Reading zero there would be far worse than the
+  //    partial totals it replaces — it would look like the books were wiped.
+  //  - A path that wrote journalLines directly instead of going through
+  //    postLedgerEntryCore (fixtures and seeds do this). The materialisation
+  //    only sees the single posting path, by design.
+  //
+  // So: if the ledger has entries but the balances do not, compute from the lines
+  // the way this module used to, and say a rebuild is needed. Bounded, so a large
+  // book still degrades rather than failing.
+  if (balances.size === 0) {
+    const anyEntry = await ctx.db
+      .query("journalEntries")
+      .withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id))
+      .first();
+    if (anyEntry) {
+      return await computeSnapshotFromLines(ctx, entity, limit * MONTH_BUCKET_FACTOR);
+    }
+  }
+
+  return { balances, monthly: monthly.byMonth, latestMonth, truncated, needsRebuild: false };
+}
+
+/**
+ * The pre-materialisation computation, kept as the transition and fixture path.
+ *
+ * Reads entries and their lines directly. This is the cost the materialised
+ * tables exist to avoid, so it is bounded and flags `truncated` — it is a
+ * fallback, never the steady state.
+ */
+async function computeSnapshotFromLines(
+  ctx: QueryCtx,
+  entity: Doc<"entities">,
+  entryBudget: number,
+): Promise<EntityBalanceSnapshot> {
+  const journal = await loadEntityJournal(
+    ctx,
+    entity._id,
+    entity.openingBalanceDate ?? null,
+    entryBudget,
+  );
+  const entriesById = new Map(journal.entries.map((entry) => [entry._id, entry]));
+  const balances = new Map<Id<"ledgerAccounts">, Balance>();
+  const monthly = new Map<string, Map<Id<"ledgerAccounts">, Balance>>();
+
+  for (const line of journal.lines) {
+    addBalance(balances, line);
+    const entry = entriesById.get(line.entryId);
+    if (!entry) continue;
+    const month = entry.date.slice(0, 7);
+    const bucket = monthly.get(month) ?? new Map<Id<"ledgerAccounts">, Balance>();
+    const current = bucket.get(line.accountId) ?? { debitMinor: 0, creditMinor: 0 };
+    current.debitMinor += line.debitMinor;
+    current.creditMinor += line.creditMinor;
+    bucket.set(line.accountId, current);
+    monthly.set(month, bucket);
+  }
+
+  const latestMonth =
+    journal.entries.map((entry) => entry.date.slice(0, 7)).sort((a, b) => b.localeCompare(a))[0] ?? null;
+  return { balances, monthly, latestMonth, truncated: journal.truncated, needsRebuild: true };
+}
+
 export type EntityMetrics = {
   entityId: Id<"entities">;
   name: string;
@@ -223,19 +366,15 @@ export async function computeEntityMetrics(
      */
     entryBudget?: number;
     /**
-     * An already-loaded journal for this entity, to be used instead of loading
-     * it again.
+     * No longer accepted. The metric block reads MATERIALISED balances now — one
+     * row per account instead of the whole journal — so there is nothing
+     * expensive left to share, and a caller handing in raw entries would be
+     * describing a different (bounded) view of the book than the balances do.
      *
-     * `coreViews.dashboard` needs the same entries and lines for its own widgets
-     * that this function needs for the metric block. Without this it loaded the
-     * whole journal TWICE per business — the single largest source of read
-     * pressure on the dashboard, and the reason "All businesses" exceeded
-     * Convex's document limit while each business alone was fine.
-     *
-     * The caller MUST load it with the same cutoff bound (`loadEntityJournal`),
-     * or the metrics and the widgets would describe different books.
+     * `coreViews.dashboard` still loads a journal for its own widgets; that read
+     * is period-bounded and separate.
      */
-    journal?: EntityJournal;
+    journal?: never;
     /**
      * Side-tables the caller has ALREADY read for this entity.
      *
@@ -257,9 +396,8 @@ export async function computeEntityMetrics(
 ): Promise<EntityMetrics> {
   const entryBudget = options.entryBudget ?? METRIC_ENTRY_LIMIT;
   const tableBudget = options.tableBudget ?? METRIC_TABLE_LIMIT;
-  const [journal, accounts, bankAccounts, invoices, bills] = await Promise.all([
-    options.journal ??
-      loadEntityJournal(ctx, entity._id, entity.openingBalanceDate ?? null, entryBudget),
+  const [snapshot, accounts, bankAccounts, invoices, bills] = await Promise.all([
+    loadEntityBalances(ctx, entity, tableBudget),
     options.accounts ??
       ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(tableBudget),
     options.bankAccounts ??
@@ -270,10 +408,9 @@ export async function computeEntityMetrics(
     options.bills ??
       ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(tableBudget),
   ]);
-  const { entries, lines, truncated } = journal;
+  const { balances, monthly, latestMonth: latestActivityMonth, truncated } = snapshot;
 
   const accountsById = new Map(accounts.map((account) => [account._id, account]));
-  const entriesById = new Map(entries.map((entry) => [entry._id, entry]));
 
   // Cash ledger accounts (exclude credit-card "bank" accounts: a card is a
   // liability and must not inflate the cash position).
@@ -292,21 +429,18 @@ export async function computeEntityMetrics(
       .map((account) => account._id),
   );
 
-  // Aggregate balances + a per-month income/expense bucket for the burn estimate.
-  const balances = new Map<Id<"ledgerAccounts">, Balance>();
+  // Per-month income/expense for the burn estimate, folded from the materialised
+  // month buckets rather than from raw lines.
   const monthlyPnl = new Map<string, { incomeMinor: number; expenseMinor: number }>();
-  for (const line of lines) {
-    addBalance(balances, line);
-    const account = accountsById.get(line.accountId);
-    const entry = entriesById.get(line.entryId);
-    if (!account || !entry) continue;
-    if (account.type === "income" || account.type === "expense") {
-      const month = entry.date.slice(0, 7);
-      const bucket = monthlyPnl.get(month) ?? { incomeMinor: 0, expenseMinor: 0 };
-      if (account.type === "income") bucket.incomeMinor += line.creditMinor - line.debitMinor;
-      else bucket.expenseMinor += line.debitMinor - line.creditMinor;
-      monthlyPnl.set(month, bucket);
+  for (const [month, perAccount] of monthly) {
+    const bucket = monthlyPnl.get(month) ?? { incomeMinor: 0, expenseMinor: 0 };
+    for (const [accountId, balance] of perAccount) {
+      const account = accountsById.get(accountId);
+      if (!account) continue;
+      if (account.type === "income") bucket.incomeMinor += balance.creditMinor - balance.debitMinor;
+      else if (account.type === "expense") bucket.expenseMinor += balance.debitMinor - balance.creditMinor;
     }
+    monthlyPnl.set(month, bucket);
   }
 
   let cashMinor = 0;
@@ -336,8 +470,9 @@ export async function computeEntityMetrics(
   // RUNWAY_TRAILING_MONTHS ending at the latest month with activity. If the
   // business is net cash-positive (burn ≤ 0) or holds no cash, runway is null
   // (effectively infinite / not applicable).
-  const latestMonth =
-    entries.map((entry) => entry.date.slice(0, 7)).sort((a, b) => b.localeCompare(a))[0] ?? null;
+  // Taken from the materialised month buckets, which cover the whole book rather
+  // than a bounded slice of it.
+  const latestMonth = latestActivityMonth;
   let runwayDays: number | null = null;
   if (latestMonth && cashMinor > 0) {
     const trailingMonths = Array.from({ length: RUNWAY_TRAILING_MONTHS }, (_, i) =>

@@ -121,7 +121,9 @@ describe("public demo workspace (E11-T4 / E11-T8)", () => {
     expect(afterReset.entityCount).toBe(1);
     // An observability row was recorded for each reset (E11-T8 DoD).
     expect(afterReset.resetAuditCount).toBe(2);
-  });
+    // Seeds the demo book TWICE (seed + reset-and-reseed), so it carries the
+    // fixture budget — see the note atop convex/seedDemo.test.ts.
+  }, 240_000);
 
   it("resetAndSeedPublicDemo is a NO-OP when OPENBOOKS_PUBLIC_DEMO_ENABLED is unset and not forced", async () => {
     const t = convexTest(schema, modules);

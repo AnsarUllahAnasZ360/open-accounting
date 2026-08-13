@@ -318,7 +318,9 @@ export const dashboard = query({
         computeEntityMetrics(ctx, scopedEntity, {
           entryBudget,
           tableBudget,
-          journal: journalGroups[index],
+          // No journal handed in: the metric block reads materialised balances,
+          // which cost one row per account regardless of book size. The journal
+          // loaded above is for this screen's own period widgets.
           accounts: accountGroups[index],
           bankAccounts: bankAccountGroups[index],
           invoices: invoiceGroups[index],

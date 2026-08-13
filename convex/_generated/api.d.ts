@@ -68,6 +68,7 @@ import type * as notifications from "../notifications.js";
 import type * as onboarding from "../onboarding.js";
 import type * as onboardingProposals from "../onboardingProposals.js";
 import type * as openingBalanceCutoff from "../openingBalanceCutoff.js";
+import type * as openingBalanceDiagnostics from "../openingBalanceDiagnostics.js";
 import type * as payroll from "../payroll.js";
 import type * as payrollEmail from "../payrollEmail.js";
 import type * as payrollMath from "../payrollMath.js";
@@ -179,6 +180,7 @@ declare const fullApi: ApiFromModules<{
   onboarding: typeof onboarding;
   onboardingProposals: typeof onboardingProposals;
   openingBalanceCutoff: typeof openingBalanceCutoff;
+  openingBalanceDiagnostics: typeof openingBalanceDiagnostics;
   payroll: typeof payroll;
   payrollEmail: typeof payrollEmail;
   payrollMath: typeof payrollMath;

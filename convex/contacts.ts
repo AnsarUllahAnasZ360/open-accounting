@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type QueryCtx, query } from "./_generated/server";
 import { getActiveEntity } from "./activeEntity";
+import { TABLE_READ_LIMIT } from "./readBudget";
 import { requireWorkspaceRole } from "./authz";
 import { getEntityForWrite } from "./ledger";
 
@@ -292,7 +293,7 @@ export const contactProfile = query({
     const [invoices, bills, transactions, accounts] = await Promise.all([
       ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
       ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(4000),
+      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(TABLE_READ_LIMIT),
       ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500),
     ]);
 

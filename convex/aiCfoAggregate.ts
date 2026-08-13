@@ -5,6 +5,13 @@ import { internalQuery, query, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
 import { computeEntityMetrics } from "./entityMetrics";
 import { resolveDefaultEntity } from "./entityScope";
+import {
+  loadScopedBills,
+  loadScopedInvoices,
+  loadScopedJournalEntries,
+  loadScopedTransactions,
+} from "./openingBalanceCutoff";
+import { SMALL_TABLE_READ_LIMIT, TABLE_READ_LIMIT } from "./readBudget";
 import { DEFAULT_TAX_SET_ASIDE_PCT } from "./settings";
 import { computeCfoAnomalies, type CfoAnomalyCard } from "./aiCfoAnomalies";
 
@@ -82,8 +89,12 @@ export type CfoSignals = {
 };
 
 type Balance = { debitMinor: number; creditMinor: number };
-const ENTRY_LIMIT = 20000;
-const TABLE_LIMIT = 5000;
+// Convex allows 4,096 document reads per FUNCTION EXECUTION, across every table
+// this handler touches. These were 20,000 and 5,000 — each on its own beyond the
+// whole allowance. An entry also drags ~2 lines behind it, so the entry cap costs
+// roughly 3x its value.
+const ENTRY_LIMIT = 300;
+const TABLE_LIMIT = TABLE_READ_LIMIT;
 const TRAILING_MONTHS = 6;
 // Expense-creep floor (R6 §B): flag a category only when it is up BOTH ≥25% AND
 // ≥$200 vs its trailing average — keeps the panel quiet on noise.
@@ -122,11 +133,13 @@ async function getActiveEntity(ctx: QueryCtx, entityId?: Id<"entities">) {
   return { entity, workspaceId: membership.workspaceId };
 }
 
-async function loadEntityJournal(ctx: QueryCtx, entityId: Id<"entities">) {
-  const entries = await ctx.db
-    .query("journalEntries")
-    .withIndex("by_entity_and_date", (q) => q.eq("entityId", entityId))
-    .take(ENTRY_LIMIT);
+/**
+ * Bounded at the books-start date. The CFO signals ground every number the AI
+ * says out loud, so reading behind the cutoff means the assistant advises on a
+ * period the owner has explicitly taken out of their books.
+ */
+async function loadEntityJournal(ctx: QueryCtx, entity: Doc<"entities">) {
+  const entries = await loadScopedJournalEntries(ctx, entity, { limit: ENTRY_LIMIT });
   const lineGroups = await Promise.all(
     entries.map((entry) =>
       ctx.db.query("journalLines").withIndex("by_entry", (q) => q.eq("entryId", entry._id)).collect(),
@@ -156,17 +169,35 @@ export async function computeCfoSignals(
   workspaceId: Id<"workspaces">,
   today: string,
 ): Promise<CfoSignals> {
-  const [metrics, journal, accounts, invoices, bills, payrollRuns, transactions, taxSetAsidePct] =
+  const [journal, accounts, bankAccounts, invoices, bills, payrollRuns, transactions, taxSetAsidePct] =
     await Promise.all([
-      computeEntityMetrics(ctx, entity),
-      loadEntityJournal(ctx, entity._id),
+      loadEntityJournal(ctx, entity),
       ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(TABLE_LIMIT),
-      ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(TABLE_LIMIT),
-      ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(TABLE_LIMIT),
-      ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(TABLE_LIMIT),
+      ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(SMALL_TABLE_READ_LIMIT)
+        .then((rows) => rows.filter((account) => !account.archived)),
+      // AR/AP signals are SETTLEMENT questions — an unpaid pre-cutoff invoice is
+      // still owed, and the CFO signals would understate what is collectable if
+      // it were dropped. Revenue/expense come from the journal above, which IS
+      // cutoff-bounded. See the rule atop openingBalanceCutoff.loadScopedInvoices.
+      loadScopedInvoices(ctx, entity, { window: "all", limit: TABLE_LIMIT }),
+      loadScopedBills(ctx, entity, { window: "all", limit: TABLE_LIMIT }),
+      ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(SMALL_TABLE_READ_LIMIT),
+      loadScopedTransactions(ctx, entity, { limit: TABLE_LIMIT }),
       resolveTaxSetAsidePct(ctx, workspaceId),
     ]);
+
+  // Reuse everything already read. Called without these, computeEntityMetrics
+  // loads its own journal and its own copy of all four tables — doubling this
+  // handler's reads against a 4,096-document ceiling.
+  const metrics = await computeEntityMetrics(ctx, entity, {
+    journal: { ...journal, truncated: journal.entries.length >= ENTRY_LIMIT },
+    accounts,
+    bankAccounts,
+    invoices,
+    bills,
+    entryBudget: ENTRY_LIMIT,
+    tableBudget: TABLE_LIMIT,
+  });
 
   const { entries, lines } = journal;
   const accountsById = new Map(accounts.map((account) => [account._id, account]));

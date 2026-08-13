@@ -5,6 +5,13 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { query, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
 import { assertScopeAuthorized, scopeValidator, type Scope } from "./entityScope";
+import {
+  booksWindowValidator,
+  loadScopedJournalEntries,
+  loadScopedTransactions,
+  type BooksWindow,
+} from "./openingBalanceCutoff";
+import { perEntity, SMALL_TABLE_READ_LIMIT, TABLE_READ_LIMIT } from "./readBudget";
 
 const TODAY = "2026-06-11";
 
@@ -270,6 +277,11 @@ const EMPTY = {
   transactions: [] as ExpenseTxnRow[],
   vendors: [] as VendorRow[],
   evidenceNeeded: [] as EvidenceRow[],
+  // Books-window fields, present on the empty payload too so the screen can read
+  // them without a null check before any business exists.
+  window: "working" as BooksWindow,
+  booksStartDate: null as string | null,
+  readOnly: false,
 };
 
 export const overview = query({
@@ -285,6 +297,9 @@ export const overview = query({
     // The client's real "today" (todayIso()). Anchors the preset windows and the
     // trailing recurring-detection window instead of a hardcoded date.
     today: v.optional(v.string()),
+    // Which slice of the books to report. Defaults to the working set;
+    // `archived` powers the read-only Archived view (decision D1).
+    window: v.optional(booksWindowValidator),
   },
   handler: async (ctx, args) => {
     const { entities, isPortfolioScope } = await resolveExpenseEntities(ctx, args);
@@ -294,6 +309,11 @@ export const overview = query({
       .sort((a, b) => a.createdAt - b.createdAt || a._id.localeCompare(b._id));
     const entity = orderedEntities[0]!;
     const entityIds = orderedEntities.map((scopedEntity) => scopedEntity._id);
+    const window: BooksWindow = args.window ?? "working";
+    // Convex allows 4,096 document reads per function execution, shared across
+    // every table this handler touches AND every business in scope.
+    const tableLimit = perEntity(TABLE_READ_LIMIT, orderedEntities.length);
+    const entryLimit = perEntity(900, orderedEntities.length, 200);
     const periodId: PeriodId = args.period ?? "this";
     const today = args.today ?? TODAY;
     const monthStart = `${today.slice(0, 7)}-01`;
@@ -308,33 +328,53 @@ export const overview = query({
 
     const [accountGroups, entryGroups, lineGroups, transactionGroups, contactGroups, documentGroups, bankAccountGroups, payrollRunGroups] = await Promise.all([
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(500),
+        ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(tableLimit),
+      )),
+      // Bounded by the REPORTING WINDOW, not by a row count. Every figure on this
+      // screen is computed for [prevStart, windowEnd] — the selected period plus
+      // the prior one it is compared against — so reading beyond that range
+      // spends budget on rows that are then discarded.
+      //
+      // It also keeps this screen reconciling with the report pack: a count cap
+      // truncates at a different point on each screen, and two screens then
+      // report different totals for the same month.
+      Promise.all(orderedEntities.map((scopedEntity) =>
+        loadScopedJournalEntries(ctx, scopedEntity, {
+          window,
+          from: prevStart,
+          to: windowEnd,
+          limit: entryLimit,
+        }),
+      )),
+      // Lines are filtered to the loaded entries below, so bound them in
+      // proportion to the entry budget rather than at a flat 5,000 — which alone
+      // exceeded Convex's 4,096-document per-function ceiling.
+      Promise.all(entityIds.map((entityId) =>
+        ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(entryLimit * 3),
+      )),
+      Promise.all(orderedEntities.map((scopedEntity) =>
+        loadScopedTransactions(ctx, scopedEntity, { window, limit: tableLimit, order: "desc" }),
       )),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("journalEntries").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(5000),
+        ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(tableLimit),
       )),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(5000),
+        ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(tableLimit),
       )),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(5000),
+        ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(SMALL_TABLE_READ_LIMIT),
       )),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(2000),
-      )),
-      Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(5000),
-      )),
-      Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(200),
-      )),
-      Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(500),
+        ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(SMALL_TABLE_READ_LIMIT),
       )),
     ]);
     const accounts = accountGroups.flat();
     const entries = entryGroups.flat();
-    const lines = lineGroups.flat();
+    // `journalLines` has no date of its own, so the cutoff reaches them only
+    // through their entry. Restricting to the entries actually loaded stops a
+    // pre-cutoff posting leaking in via the flat line read.
+    const inWindowEntryIds = new Set(entries.map((entry) => entry._id));
+    const lines = lineGroups.flat().filter((line) => inWindowEntryIds.has(line.entryId));
     const transactions = transactionGroups.flat();
     const contacts = contactGroups.flat();
     const documents = documentGroups.flat();
@@ -555,6 +595,19 @@ export const overview = query({
       },
       period: periodId,
       periods: PERIOD_OPTIONS,
+      /** Which slice this payload describes. Drives the Archived toggle. */
+      window,
+      /**
+       * Earliest books-start date across the businesses in scope, or null when
+       * none has been re-based — the toggle hides itself in that case.
+       */
+      booksStartDate:
+        orderedEntities
+          .map((scopedEntity) => scopedEntity.openingBalanceDate)
+          .filter((date): date is string => Boolean(date))
+          .sort()[0] ?? null,
+      /** Archived rows are read-only; the mutations refuse the write too. */
+      readOnly: window === "archived",
       kpis: {
         spentMinor: totalMinor,
         spentLabel: `Spent · ${windowStart.slice(0, 7)}`,

@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireWorkspaceRole } from "./authz";
 import { getEntityForWrite } from "./ledger";
+import { isInBooksWindow, loadScopedTransactions } from "./openingBalanceCutoff";
 import { normalizeStreamSplit, splitFromBps, type StreamLine } from "./streams";
 
 // At/above this confidence a matched rule auto-tags without human review; below
@@ -187,11 +188,9 @@ export const applyStreamRulesForEntity = mutation({
     if (rules.length === 0) return { autoTagged: 0, queued: 0, scanned: 0 };
 
     const limit = Math.min(2000, Math.max(1, Math.floor(args.limit ?? 800)));
-    const txns = await ctx.db
-      .query("transactions")
-      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-      .order("desc")
-      .take(limit);
+    // Bounded at the books-start date: auto-tagging a pre-cutoff transaction
+    // would put archived history back into the needs-review queue.
+    const txns = await loadScopedTransactions(ctx, entity, { limit, order: "desc" });
 
     let autoTagged = 0;
     let queued = 0;
@@ -231,7 +230,11 @@ export const streamNeedsReview = query({
       .withIndex("by_entity_and_stream_review", (q) =>
         q.eq("entityId", entity._id).eq("streamReview", "needs_review"),
       )
-      .take(500);
+      .take(500)
+      // The books-start cutoff cannot be pushed into this index (it is keyed on
+      // review status, not date), so it is applied in memory. A pre-cutoff row is
+      // archived history — it must not appear as queue work.
+      .then((found) => found.filter((txn) => isInBooksWindow(entity, txn.date)));
     return {
       currency: entity.currency,
       rows: rows
@@ -260,7 +263,11 @@ export const streamNeedsReviewCount = query({
       .withIndex("by_entity_and_stream_review", (q) =>
         q.eq("entityId", entity._id).eq("streamReview", "needs_review"),
       )
-      .take(500);
+      .take(500)
+      // The books-start cutoff cannot be pushed into this index (it is keyed on
+      // review status, not date), so it is applied in memory. A pre-cutoff row is
+      // archived history — it must not appear as queue work.
+      .then((found) => found.filter((txn) => isInBooksWindow(entity, txn.date)));
     return rows.length;
   },
 });
@@ -298,7 +305,11 @@ export const confirmAllStreamSuggestions = mutation({
       .withIndex("by_entity_and_stream_review", (q) =>
         q.eq("entityId", entity._id).eq("streamReview", "needs_review"),
       )
-      .take(500);
+      .take(500)
+      // The books-start cutoff cannot be pushed into this index (it is keyed on
+      // review status, not date), so it is applied in memory. A pre-cutoff row is
+      // archived history — it must not appear as queue work.
+      .then((found) => found.filter((txn) => isInBooksWindow(entity, txn.date)));
     let confirmed = 0;
     for (const txn of rows) {
       const streams = txn.streams ?? [];

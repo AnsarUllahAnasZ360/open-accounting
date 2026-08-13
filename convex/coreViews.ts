@@ -4,10 +4,26 @@ import { getActiveEntity } from "./activeEntity";
 import type { Doc, Id } from "./_generated/dataModel";
 import { query, type QueryCtx } from "./_generated/server";
 import { requireAnyWorkspaceRole, requireWorkspaceRole } from "./authz";
-import { computeEntityMetrics, type EntityMetrics } from "./entityMetrics";
+import {
+  computeEntityMetrics,
+  entryBudgetFor,
+  loadEntityJournal,
+  tableBudgetFor,
+  type EntityJournal,
+  type EntityMetrics,
+} from "./entityMetrics";
 import { assertScopeAuthorized, scopeValidator, type Scope } from "./entityScope";
 import { buildProvenance } from "./lib/provenance";
-import { cutoffsByEntity, isWithinCutoff, isWithinEntityCutoff } from "./openingBalanceCutoff";
+import {
+  booksWindowValidator,
+  cutoffsByEntity,
+  isWithinCutoff,
+  isWithinEntityCutoff,
+  loadScopedBills,
+  loadScopedInvoices,
+  loadScopedTransactions,
+  type BooksWindow,
+} from "./openingBalanceCutoff";
 import { normalizeMerchantKey } from "./pipeline";
 import { sumUsdMinor } from "./portfolioMoney";
 import { computeUnreviewedGap } from "./unreviewedGap";
@@ -98,10 +114,21 @@ function trailingMonthWindow(today: string, count: number) {
   return Array.from({ length: count }, (_, index) => shiftMonth(endMonth, index - (count - 1)));
 }
 
-const DASHBOARD_LIMIT = 5000;
-// Cap journal loading by ENTRY (not by flat row) so the dashboard, like the
-// reports (E1-T5 / RC5), can never drop one leg of a balanced posting.
-const DASHBOARD_ENTRY_LIMIT = 20000;
+/**
+ * Per-table read cap for the single-entity screens.
+ *
+ * Was 5,000 — which alone exceeded Convex's REAL ceiling of 4,096 documents per
+ * function execution, before any other table was touched. The 32k figure quoted
+ * in older comments here is wrong; the runtime error is explicit about 4,096.
+ *
+ * Screens that read several tables must stay well under this, and the portfolio
+ * paths divide it further (see entityMetrics.tableBudgetFor).
+ */
+const DASHBOARD_LIMIT = 600;
+// Journal loading is capped by ENTRY (not by flat row) so the dashboard, like
+// the reports (E1-T5 / RC5), can never drop one leg of a balanced posting. The
+// cap itself now lives in entityMetrics (`entryBudgetFor`) because it has to be
+// divided across the businesses in scope, not applied per business.
 const CASH_SUBTYPES = new Set(["bank", "cash", "checking", "savings"]);
 
 function combinedRunwayDays(rows: EntityMetrics[]): number | null {
@@ -137,31 +164,28 @@ function combineEntityMetrics(rows: EntityMetrics[], fallbackEntityId: Id<"entit
  * loaded together (never split by a flat `.take`). Mirrors the reports loader
  * so dashboard totals match report totals on a large book (E1-T5).
  */
+/**
+ * Load one entity's journal for the dashboard.
+ *
+ * Delegates to `entityMetrics.loadEntityJournal` — the SAME loader the metric
+ * block uses — so the journal can be loaded once and handed to both. This module
+ * used to carry its own near-identical copy, which meant every dashboard read
+ * loaded each business's entire journal twice: once for the metric tiles, once
+ * for the widgets. On a single business that was merely wasteful; summed across
+ * a portfolio it is what exceeded Convex's document limit and broke
+ * "All businesses".
+ *
+ * Bounded at the books-start date (mirrors reportViews.loadJournalThroughDate).
+ * A re-based book carries every pre-cutoff entry alongside its reversal, and the
+ * pair nets to nothing — reading them only spends budget the roll-up needs for
+ * the businesses it is actually summing.
+ */
 async function loadDashboardJournal(
   ctx: QueryCtx,
-  entityId: Id<"entities">,
-): Promise<{ entries: Doc<"journalEntries">[]; lines: Doc<"journalLines">[]; truncated: boolean }> {
-  // Same lower bound the reports use (see reportViews.loadJournalThroughDate).
-  // A re-based book carries every pre-cutoff entry alongside its reversal, and
-  // the pair contributes nothing — reading them only spends the document budget
-  // that the portfolio view needs for the businesses it is actually summing.
-  const entity = await ctx.db.get(entityId);
-  const startDate = entity?.openingBalanceDate ?? null;
-  const fetched = await ctx.db
-    .query("journalEntries")
-    .withIndex("by_entity_and_date", (q) => {
-      const scoped = q.eq("entityId", entityId);
-      return startDate ? scoped.gte("date", startDate) : scoped;
-    })
-    .take(DASHBOARD_ENTRY_LIMIT + 1);
-  const truncated = fetched.length > DASHBOARD_ENTRY_LIMIT;
-  const entries = truncated ? fetched.slice(0, DASHBOARD_ENTRY_LIMIT) : fetched;
-  const lineGroups = await Promise.all(
-    entries.map((entry) =>
-      ctx.db.query("journalLines").withIndex("by_entry", (q) => q.eq("entryId", entry._id)).collect(),
-    ),
-  );
-  return { entries, lines: lineGroups.flat(), truncated };
+  entity: Doc<"entities">,
+  entryBudget: number,
+): Promise<EntityJournal> {
+  return loadEntityJournal(ctx, entity._id, entity.openingBalanceDate ?? null, entryBudget);
 }
 
 export const dashboard = query({
@@ -213,15 +237,23 @@ export const dashboard = query({
     const months = trailingMonthWindow(today, TREND_WINDOW_MONTHS);
     const windowStartMonth = months[0];
 
-    // Shared per-entity metric block (E5-T6). The portfolio roll-up sums these
-    // exact numbers, so the single-entity dashboard exposes them from the SAME
-    // helper — a test asserts coreViews.dashboard.metrics equals that entity's
-    // portfolio byBusiness row, guaranteeing the two paths can't drift.
-    const metricsList = await Promise.all(orderedEntities.map((scopedEntity) => computeEntityMetrics(ctx, scopedEntity)));
-    const metrics = isPortfolioScope ? combineEntityMetrics(metricsList, entity._id) : metricsList[0]!;
+    // One read transaction covers EVERY business in scope, so the per-entity cap
+    // must be divided rather than repeated (see entityMetrics.entryBudgetFor).
+    const entryBudget = entryBudgetFor(orderedEntities.length);
 
+    // Load each business's journal ONCE, then feed it to both the metric block
+    // and the widgets below. These two used to load it separately, doubling the
+    // heaviest read on the page.
+    const journalGroups = await Promise.all(
+      orderedEntities.map((scopedEntity) => loadDashboardJournal(ctx, scopedEntity, entryBudget)),
+    );
+
+    // Side-tables are read ONCE here and handed to computeEntityMetrics below.
+    // They used to be read twice per business — once for the metric tiles, once
+    // for the widgets — which against a 4,096-document ceiling is what actually
+    // broke "All businesses".
+    const tableBudget = tableBudgetFor(orderedEntities.length);
     const [
-      journalGroups,
       accountGroups,
       bankAccountGroups,
       transactionGroups,
@@ -231,12 +263,11 @@ export const dashboard = query({
       payrollRunGroups,
       contactGroups,
     ] = await Promise.all([
-      Promise.all(entityIds.map((entityId) => loadDashboardJournal(ctx, entityId))),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(DASHBOARD_LIMIT),
+        ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(tableBudget),
       )),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(200)
+        ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(60)
           .then((rows) => rows.filter((account) => !account.archived)),
       )),
       // Bounded at the books-start date. These rows are filtered by the same
@@ -244,31 +275,49 @@ export const dashboard = query({
       // document budget that a portfolio roll-up (every business, summed) cannot
       // spare.
       Promise.all(orderedEntities.map((scopedEntity) =>
-        ctx.db.query("transactions")
-          .withIndex("by_entity_and_date", (q) => {
-            const scoped = q.eq("entityId", scopedEntity._id);
-            return scopedEntity.openingBalanceDate
-              ? scoped.gte("date", scopedEntity.openingBalanceDate)
-              : scoped;
-          })
-          .take(DASHBOARD_LIMIT),
+        loadScopedTransactions(ctx, scopedEntity, { limit: tableBudget, order: "desc" }),
       )),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(2000),
+        ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(tableBudget),
+      )),
+      // `window: "all"` on invoices/bills is deliberate — AR/AP are SETTLEMENT
+      // questions, not recognition ones. See openingBalanceCutoff.loadScopedInvoices.
+      Promise.all(orderedEntities.map((scopedEntity) =>
+        loadScopedInvoices(ctx, scopedEntity, { window: "all", limit: tableBudget }),
+      )),
+      Promise.all(orderedEntities.map((scopedEntity) =>
+        loadScopedBills(ctx, scopedEntity, { window: "all", limit: tableBudget }),
       )),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(2000),
+        ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(60),
       )),
       Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(2000),
-      )),
-      Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("payrollRuns").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(200),
-      )),
-      Promise.all(entityIds.map((entityId) =>
-        ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(2000),
+        ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(tableBudget),
       )),
     ]);
+
+    // Shared per-entity metric block (E5-T6). The portfolio roll-up sums these
+    // exact numbers, so the single-entity dashboard exposes them from the SAME
+    // helper — a test asserts coreViews.dashboard.metrics equals that entity's
+    // portfolio byBusiness row, guaranteeing the two paths can't drift.
+    //
+    // Every table it needs was read above and is passed in, so this adds NO
+    // further reads.
+    const metricsList = await Promise.all(
+      orderedEntities.map((scopedEntity, index) =>
+        computeEntityMetrics(ctx, scopedEntity, {
+          entryBudget,
+          tableBudget,
+          journal: journalGroups[index],
+          accounts: accountGroups[index],
+          bankAccounts: bankAccountGroups[index],
+          invoices: invoiceGroups[index],
+          bills: billGroups[index],
+        }),
+      ),
+    );
+    const metrics = isPortfolioScope ? combineEntityMetrics(metricsList, entity._id) : metricsList[0]!;
+
     const entries = journalGroups.flatMap((journal) => journal.entries);
     const lines = journalGroups.flatMap((journal) => journal.lines);
     const accounts = accountGroups.flat();
@@ -846,14 +895,18 @@ export const dashboard = query({
           bills.length +
           payrollRuns.length +
           contacts.length,
-        limit: DASHBOARD_LIMIT,
-        // True only when an in-range journal entry was actually excluded by the
-        // entry cap (whole-entry loading, E1-T5), never on flat row count, so
-        // the dashboard can never reflect a half-loaded posting.
+        limit: tableBudget,
+        // True when ANY bounded read hit its cap, so the banner appears whenever
+        // a figure on this page is partial. The journal check comes first because
+        // it is the one that can silently change a total: entries are loaded
+        // whole (E1-T5), so a truncated journal drops complete postings rather
+        // than half of one.
         truncated:
           journalTruncated ||
-          accounts.length >= DASHBOARD_LIMIT ||
-          transactions.length >= DASHBOARD_LIMIT,
+          accounts.length >= tableBudget ||
+          transactions.length >= tableBudget ||
+          invoices.length >= tableBudget ||
+          bills.length >= tableBudget,
       },
     };
   },
@@ -1043,8 +1096,12 @@ export const transactions = query({
     direction: v.optional(v.union(v.literal("in"), v.literal("out"), v.literal("all"))),
     source: v.optional(v.union(v.literal("bank"), v.literal("stripe"), v.literal("manual"))),
     bankAccountIds: v.optional(v.array(v.id("bankAccounts"))),
+    // Which slice of the books to list. Defaults to the owner's working set;
+    // `archived` powers the read-only Archived view (decision D1).
+    window: v.optional(booksWindowValidator),
   },
   handler: async (ctx, args) => {
+    const window: BooksWindow = args.window ?? "working";
     let entities: Doc<"entities">[];
     const isPortfolioScope = args.scope === "all" && !args.entityId;
     if (isPortfolioScope) {
@@ -1068,16 +1125,10 @@ export const transactions = query({
     const entityIds = orderedEntities.map((scopedEntity) => scopedEntity._id);
     const [transactionGroups, accountGroups, bankAccountGroups, inboxItemGroups, lineGroups, documentGroups, entryGroups, auditEvents, contactGroups, memoryGroups] = await Promise.all([
       // Bounded at the books-start date, same reason as the dashboard: the
-      // cutoff filter below would discard these anyway.
+      // cutoff filter below would discard these anyway. `window: "archived"`
+      // flips the bound to read the pre-cutoff period instead.
       Promise.all(orderedEntities.map((scopedEntity) =>
-        ctx.db.query("transactions")
-          .withIndex("by_entity_and_date", (q) => {
-            const scoped = q.eq("entityId", scopedEntity._id);
-            return scopedEntity.openingBalanceDate
-              ? scoped.gte("date", scopedEntity.openingBalanceDate)
-              : scoped;
-          })
-          .take(DASHBOARD_LIMIT),
+        loadScopedTransactions(ctx, scopedEntity, { window, limit: DASHBOARD_LIMIT, order: "desc" }),
       )),
       Promise.all(entityIds.map((entityId) =>
         ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(500),
@@ -1110,11 +1161,16 @@ export const transactions = query({
     ]);
     // Opening-balance cutoff — see convex/openingBalanceCutoff.ts. Pre-cutoff
     // rows stay in the database (exports and the audit log still see them) but
-    // are not part of the working set this screen edits.
+    // are not part of the working set this screen edits. The index bound above
+    // has already selected the right slice; this is the belt-and-braces filter
+    // for the working set, and a no-op in the archived window.
     const transactionCutoffs = cutoffsByEntity(orderedEntities);
-    const transactions = transactionGroups
-      .flat()
-      .filter((transaction) => isWithinCutoff(transactionCutoffs, transaction.entityId, transaction.date));
+    const transactions =
+      window === "working"
+        ? transactionGroups
+            .flat()
+            .filter((transaction) => isWithinCutoff(transactionCutoffs, transaction.entityId, transaction.date))
+        : transactionGroups.flat();
     const accounts = accountGroups.flat();
     const bankAccounts = bankAccountGroups.flat();
     const inboxItems = inboxItemGroups.flat();
@@ -1445,6 +1501,29 @@ export const transactions = query({
           name: account.name,
           type: account.type,
         })),
+      /** Which slice this payload describes. Drives the Archived toggle's state. */
+      window,
+      /**
+       * The books-start date, when one exists. Null means no business in scope
+       * has been re-based, so there is no archive — the toggle should not render
+       * at all rather than offer an empty view.
+       *
+       * On a portfolio scope this is the EARLIEST cutoff across the businesses
+       * shown, since each may have re-based on a different day.
+       */
+      booksStartDate:
+        orderedEntities
+          .map((scopedEntity) => scopedEntity.openingBalanceDate)
+          .filter((date): date is string => Boolean(date))
+          .sort()[0] ?? null,
+      /**
+       * Archived rows are READ-ONLY. Their journal entries have been reversed;
+       * re-categorising or re-posting one would put activity back on the books
+       * the re-base removed. The UI hides the action controls, and
+       * `requireTransactionForAdmin` refuses the write server-side — the hidden
+       * button is not the control.
+       */
+      readOnly: window === "archived",
     };
   },
 });

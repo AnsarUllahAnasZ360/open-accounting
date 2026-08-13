@@ -1,9 +1,16 @@
 import { v } from "convex/values";
 
 import { resolveActiveEntity } from "./activeEntity";
+import { TABLE_READ_LIMIT } from "./readBudget";
 import type { Doc, Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { requireAnyWorkspaceRole, roleHasPermission } from "./authz";
+import {
+  loadScopedBills,
+  loadScopedInvoices,
+  loadScopedJournalEntries,
+  loadScopedTransactions,
+} from "./openingBalanceCutoff";
 import { baseEquivalentMinor, formatFxRateMicros, FX_MICRO_SCALE } from "./payrollMath";
 import { resolveAccrualFxRateMicros } from "./payroll";
 
@@ -187,9 +194,11 @@ export const overview = query({
     ] = await Promise.all([
       ctx.db.query("entities").withIndex("by_workspace", (q) => q.eq("workspaceId", membership.workspaceId)).take(50),
       ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
-      ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
-      ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
+      // Document lists + AR/AP counts: settlement questions, not recognition.
+      // An unpaid pre-cutoff invoice or bill still needs collecting or paying.
+      loadScopedInvoices(ctx, entity, { window: "all", limit: 200 }),
+      loadScopedBills(ctx, entity, { window: "all", limit: 200 }),
+      loadScopedTransactions(ctx, entity, { limit: 1000 }),
       ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(200),
       ctx.db.query("rules").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
       ctx.db.query("employees").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
@@ -198,8 +207,8 @@ export const overview = query({
       ctx.db.query("documents").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
       ctx.db.query("inboxItems").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
       ctx.db.query("auditEvents").withIndex("by_workspace", (q) => q.eq("workspaceId", entity.workspaceId)).order("desc").take(200),
-      ctx.db.query("journalEntries").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).order("desc").take(1000),
-      ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(4000),
+      loadScopedJournalEntries(ctx, entity, { limit: 1000, order: "desc" }),
+      ctx.db.query("journalLines").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(TABLE_READ_LIMIT),
     ]);
 
     const liveSandboxEntity = entities.find((row) => row.slug === "live-sandbox") ?? null;
@@ -222,8 +231,11 @@ export const overview = query({
     const journalEntriesById = new Map(journalEntries.map((entry) => [entry._id as string, entry]));
     // Lines grouped by entry, so a bill's AP-post entry can surface the expense
     // category it debited (the read-only "ledger impact" for the bill detail).
+    // Only entries inside the books window are keyed here, so a pre-cutoff
+    // posting cannot surface through the flat line read above.
     const linesByEntry = new Map<string, Doc<"journalLines">[]>();
     for (const line of journalLines) {
+      if (!journalEntriesById.has(line.entryId as string)) continue;
       const rows = linesByEntry.get(line.entryId as string) ?? [];
       rows.push(line);
       linesByEntry.set(line.entryId as string, rows);

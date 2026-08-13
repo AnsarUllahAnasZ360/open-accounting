@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, type QueryCtx } from "./_generated/server";
 import { computeCfoSignals, type CfoSignal } from "./aiCfoAggregate";
+import { loadScopedJournalEntries } from "./openingBalanceCutoff";
 
 /**
  * Weekly digest data layer (Epic E9-T6) — the V8 (non-Node) queries and the
@@ -66,7 +67,9 @@ async function entityMonthlyPnl(
   priorMonth: string,
 ) {
   const [entries, accounts] = await Promise.all([
-    ctx.db.query("journalEntries").withIndex("by_entity_and_date", (q) => q.eq("entityId", entity._id)).take(ENTRY_LIMIT),
+    // Bounded at the books-start date. This digest is emailed out, so a figure
+    // that includes re-based history is a wrong number leaving the building.
+    loadScopedJournalEntries(ctx, entity, { limit: ENTRY_LIMIT }),
     ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(TABLE_LIMIT),
   ]);
   const accountType = new Map(accounts.map((account) => [account._id, account.type]));

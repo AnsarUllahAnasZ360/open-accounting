@@ -416,6 +416,62 @@ describe("V6 — revenue agrees across every surface on a re-based book", () => 
   });
 });
 
+describe("the Inbox resolves its rows by id, not from a bounded scan", () => {
+  it("shows the merchant, amount and date on an item whose transaction is far down the book", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await setup(t);
+
+    // Enough transactions that the target is NOT in the first page of any
+    // bounded scan of the table. The old code joined the inbox against a capped
+    // `.take()`, so an item pointing past the cap lost its merchant, amount and
+    // date — the row rendered "categorize / $0.00 / Needs context" while the
+    // detail pane still showed the real figure from the item's own summary.
+    for (let index = 0; index < 40; index += 1) {
+      await postedIncome(t, ids, {
+        date: "2026-05-01",
+        amountMinor: 1_000 + index,
+        merchant: `Filler ${index}`,
+        externalId: `filler-${index}`,
+      });
+    }
+    const targetTxn = await postedIncome(t, ids, {
+      date: "2026-06-20",
+      amountMinor: 212_875,
+      merchant: "Western Union",
+      externalId: "target",
+    });
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.insert("inboxItems", {
+        entityId: ids.entityId,
+        kind: "categorize",
+        status: "open",
+        payloadSummary: "Western Union needs review for USD 2128.75",
+        transactionId: targetTxn,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    const as = authed(t, ids.userId, ids.email);
+    const inbox = await as.query(api.coreViews.inbox, { entityId: ids.entityId });
+    // Found by the item's OWN summary, which survives a failed join — looking it
+    // up by `transactionId` would miss, because that field is itself derived from
+    // the join and goes null when it fails.
+    const row = inbox!.items.find((item) => item.summary.includes("Western Union"));
+
+    expect(row).toBeTruthy();
+    // The row must carry the transaction's own data. When the join failed,
+    // `merchant` fell back to `item.kind` ("categorize"), the amount to 0, the
+    // date to null and `transactionId` to null — exactly what the screen showed.
+    expect(row!.merchant).toBe("Western Union");
+    expect(row!.merchant).not.toBe("categorize");
+    expect(row!.amountMinor).toBe(212_875);
+    expect(row!.date).toBe("2026-06-20");
+    expect(row!.transactionId).toBe(targetTxn);
+  });
+});
+
 describe("archived rows are read-only, enforced on the server", () => {
   it("refuses to re-categorize a pre-cutoff transaction, and still allows a post-cutoff one", async () => {
     const t = convexTest(schema, modules);

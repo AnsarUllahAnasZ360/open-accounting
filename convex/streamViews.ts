@@ -2,6 +2,13 @@ import { ConvexError, v } from "convex/values";
 
 import { query } from "./_generated/server";
 import { requireWorkspaceRole } from "./authz";
+import {
+  booksWindowValidator,
+  loadScopedBills,
+  loadScopedInvoices,
+  loadScopedTransactions,
+  type BooksWindow,
+} from "./openingBalanceCutoff";
 
 // Bounded scan for the MVP per-stream P&L. Flagged as `truncated` if hit.
 const STREAM_PNL_LIMIT = 16000;
@@ -30,6 +37,9 @@ export const streamPnl = query({
     entityId: v.id("entities"),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
+    // Which slice of the books to report on. Defaults to the owner's actual
+    // books; `archived` powers the read-only Archived view.
+    window: v.optional(booksWindowValidator),
   },
   handler: async (ctx, args) => {
     const entity = await ctx.db.get(args.entityId);
@@ -41,11 +51,20 @@ export const streamPnl = query({
     const endDate = args.endDate ?? `${year}-12-31`;
     const inRange = (date: string) => date >= startDate && date <= endDate;
 
+    // Opening-balance cutoff. Without this, a re-based book reported its whole
+    // pre-cutoff history here while the P&L reported only the working set — the
+    // same books giving two different revenue totals depending on the screen.
+    //
+    // The date-range filter above does NOT cover this: it defaults to the current
+    // calendar year, which happens to hide the gap when the books start in
+    // January and expose it every other month of the year.
+    const window: BooksWindow = args.window ?? "working";
+
     const [accounts, transactions, invoices, bills] = await Promise.all([
       ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(2000),
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(STREAM_PNL_LIMIT),
-      ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(STREAM_PNL_LIMIT),
-      ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(STREAM_PNL_LIMIT),
+      loadScopedTransactions(ctx, entity, { window, limit: STREAM_PNL_LIMIT }),
+      loadScopedInvoices(ctx, entity, { window, limit: STREAM_PNL_LIMIT }),
+      loadScopedBills(ctx, entity, { window, limit: STREAM_PNL_LIMIT }),
     ]);
     const accountType = new Map(accounts.map((a) => [a._id as string, a.type]));
 
@@ -64,7 +83,17 @@ export const streamPnl = query({
     // --- Transactions (income/expense-categorized only) -------------------
     for (const txn of transactions) {
       if (txn.status !== "posted") continue;
-      if (txn.review === "excluded") continue;
+      // `excluded` normally means "keep this out of my figures". But the re-base
+      // sweep ALSO stamps `excluded` on every pre-cutoff row — it is the archive
+      // marker. Applying the skip in the archived window would therefore hide the
+      // entire archive and report it as empty, which is how the Archived view
+      // would have shipped showing nothing at all.
+      //
+      // KNOWN LIMITATION: a row the owner excluded by hand before the re-base is
+      // indistinguishable from one the sweep excluded, so it surfaces in the
+      // archive too. Separating them needs a distinct marker on the sweep; until
+      // then, over-showing history in a read-only archive is the safer error.
+      if (txn.review === "excluded" && window !== "archived") continue;
       if (!inRange(txn.date)) continue;
       const type = txn.categoryAccountId ? accountType.get(txn.categoryAccountId as string) : undefined;
       const side: "revenue" | "cost" | null =
@@ -127,6 +156,9 @@ export const streamPnl = query({
       entity: { id: entity._id, name: entity.name, currency: entity.currency },
       startDate,
       endDate,
+      window,
+      /** Null when this business has never been re-based, so there is no archive. */
+      booksStartDate: entity.openingBalanceDate ?? null,
       streams,
       untaggedRevenueMinor,
       unallocatedCostMinor,

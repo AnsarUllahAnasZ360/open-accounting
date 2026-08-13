@@ -17,6 +17,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import {
+  ArchivedBanner,
+  BooksWindowToggle,
+} from "@/components/openbooks/BooksWindowToggle";
 import { Amount, EmptyState, formatMinorMoney } from "@/components/openbooks/primitives";
 import {
   AddMenu,
@@ -167,13 +171,16 @@ export function IncomeScreen({ subsection }: { subsection?: string }) {
     return { start: iso.from, end: iso.to };
   }, [period]);
 
+  // Books window is per-screen, never global (plan §3.5 rule 5): switching to
+  // Archived here must not change the Dashboard or the Reports.
+  const [booksWindow, setBooksWindow] = useState<"working" | "archived">("working");
   const data = useQuery(
     api.incomeViews.overview,
     scope === "all"
-      ? { scope: "all" as const, range }
+      ? { scope: "all" as const, range, window: booksWindow }
       : activeEntity.id
-        ? { entityId: activeEntity.id as Id<"entities">, range }
-        : { range },
+        ? { entityId: activeEntity.id as Id<"entities">, range, window: booksWindow }
+        : { range, window: booksWindow },
   );
 
   // Mirror the preset period into the URL so sidebar subroutes preserve the
@@ -221,10 +228,23 @@ export function IncomeScreen({ subsection }: { subsection?: string }) {
     ) : null;
 
   const shared = { data, period, setPeriod, search, setSearch, banner };
-  if (subsection === "invoices") {
-    return <InvoicesArSurface {...shared} />;
-  }
-  return <IncomeCashSurface {...shared} />;
+  return (
+    <div className="flex flex-col gap-4">
+      {data.window === "archived" && data.booksStartDate ? (
+        <ArchivedBanner booksStartDate={data.booksStartDate} />
+      ) : null}
+      <BooksWindowToggle
+        window={booksWindow}
+        onChange={setBooksWindow}
+        booksStartDate={data.booksStartDate}
+      />
+      {subsection === "invoices" ? (
+        <InvoicesArSurface {...shared} />
+      ) : (
+        <IncomeCashSurface {...shared} />
+      )}
+    </div>
+  );
 }
 
 type SurfaceProps = {

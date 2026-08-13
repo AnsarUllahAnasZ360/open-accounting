@@ -5,6 +5,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 import { requireWorkspaceRole } from "./authz";
 import { getEntityForWrite, postLedgerEntryCore } from "./ledger";
 import { assertNonNegativeMinorUnit } from "./money";
+import { loadScopedTransactions } from "./openingBalanceCutoff";
 
 const TODAY = "2026-06-11";
 
@@ -144,10 +145,11 @@ export const matchCandidates = query({
     await requireWorkspaceRole(ctx, entity.workspaceId, "member");
     const contact = await ctx.db.get(bill.contactId);
     const vendorName = contact?.name ?? "Vendor";
-    const transactions = await ctx.db
-      .query("transactions")
-      .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-      .take(2000);
+    // Only the working set is offerable. A pre-cutoff bank row has already been
+    // reversed and archived by the re-base, so proposing it as the settlement for
+    // a bill would invite the owner to reconcile against activity that is no
+    // longer on their books.
+    const transactions = await loadScopedTransactions(ctx, entity, { limit: 2000 });
     const candidates = scoreCandidates(transactions, bill, vendorName);
     return {
       billId: bill._id,
@@ -240,10 +242,9 @@ export const markPaid = mutation({
         throw new ConvexError("Pick an outgoing (money-out) bank transaction to settle a bill.");
       }
     } else {
-      const transactions = await ctx.db
-        .query("transactions")
-        .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-        .take(2000);
+      // Same bound as `matchCandidates` — auto-picking a pre-cutoff row would
+      // post a settlement against a reversed, archived transaction.
+      const transactions = await loadScopedTransactions(ctx, entity, { limit: 2000 });
       const best = scoreCandidates(transactions, bill, vendorName)[0];
       if (best) {
         matchedTxn = (await ctx.db.get(best.id)) ?? null;

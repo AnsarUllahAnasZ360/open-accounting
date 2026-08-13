@@ -4,6 +4,11 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalQuery, type QueryCtx } from "./_generated/server";
 import { computeCfoSignals } from "./aiCfoAggregate";
+import {
+  loadScopedBills,
+  loadScopedInvoices,
+  loadScopedTransactions,
+} from "./openingBalanceCutoff";
 import { baseEquivalentMinor, FX_MICRO_SCALE } from "./payrollMath";
 import { resolveAccrualFxRateMicros } from "./payroll";
 
@@ -99,7 +104,9 @@ export const queryTransactionsForEntity = internalQuery({
     const limit = limitRows(args.limit);
     const search = args.search?.trim().toLowerCase();
     const [transactions, accounts, contacts, bankAccounts] = await Promise.all([
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500),
+      // Bounded at the books-start date: the assistant must answer from the
+      // owner's actual books, not the period they re-based away.
+      loadScopedTransactions(ctx, entity, { limit: 500 }),
       ctx.db.query("ledgerAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
       ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
       ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(100),
@@ -242,9 +249,12 @@ export const searchContactsForEntity = internalQuery({
     const queryText = args.query?.trim().toLowerCase();
     const [contacts, invoices, bills, transactions] = await Promise.all([
       ctx.db.query("contacts").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
-      ctx.db.query("invoices").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
-      ctx.db.query("bills").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(300),
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(1000),
+      // Contact lookup: "what does this customer still owe me?" is a settlement
+      // question. Pre-cutoff invoices/bills stay visible; the cutoff governs
+      // recognition, not collectability.
+      loadScopedInvoices(ctx, entity, { window: "all", limit: 300 }),
+      loadScopedBills(ctx, entity, { window: "all", limit: 300 }),
+      loadScopedTransactions(ctx, entity, { limit: 1000 }),
     ]);
 
     return {

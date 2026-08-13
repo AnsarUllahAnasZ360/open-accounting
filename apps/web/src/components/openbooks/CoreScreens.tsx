@@ -5,6 +5,11 @@ import { getErrorMessage } from "@/lib/errors";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  ArchivedBanner,
+  BooksWindowToggle,
+} from "@/components/openbooks/BooksWindowToggle";
+import {
+  AlertTriangle,
   ArrowLeftRight,
   ArrowRight,
   ArrowUpRight,
@@ -599,6 +604,28 @@ function SingleBusinessDashboard() {
           >
             Review in Inbox
           </Link>
+        </section>
+      ) : null}
+
+      {/*
+        The read budget is shared across every business in scope, so a large
+        portfolio can exceed it. When that happens the server returns partial
+        figures with `limits.truncated` rather than failing the whole page — and
+        this says so out loud. A number that admits it is incomplete is honest;
+        the same number presented as final is not.
+      */}
+      {dashboard.readStats.truncated ? (
+        <section
+          data-testid="dashboard-truncated"
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[14px] border border-warning/30 bg-warning-surface px-4 py-3 text-sm text-foreground"
+        >
+          <AlertTriangle className="size-4 shrink-0 text-warning" aria-hidden="true" />
+          <span>
+            These totals are partial — this view hit its data limit.
+            {scope === "all"
+              ? " Open a single business to see its complete figures."
+              : " Narrow the period to see everything."}
+          </span>
         </section>
       ) : null}
 
@@ -2607,12 +2634,14 @@ function useTransactionsData(args: {
   direction?: AmountDirection;
   source?: string;
   bankAccountIds?: string[];
+  window?: "working" | "archived";
 }) {
   const { activeEntity, scope } = useActiveEntity();
   const result = useQuery(api.coreViews.transactions, {
     ...(scope === "all"
       ? { scope: "all" as const }
       : entityArg(activeEntity.id)),
+    window: args.window,
     review: args.review,
     search: args.search,
     from: args.from,
@@ -2876,6 +2905,10 @@ export function TransactionsScreen() {
   // E7-6: register keyboard model (J/K/Enter/E), matching the Inbox scheme.
   const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
 
+  // Books window is per-screen, never global (plan §3.5 rule 5): switching to
+  // Archived on the register must not change the Dashboard or the Reports.
+  const [booksWindow, setBooksWindow] = useState<"working" | "archived">("working");
+
   const bounds = useMemo(() => dateRangeValueToISO(range, todayIso()), [range]);
   const data = useTransactionsData({
     review,
@@ -2885,6 +2918,7 @@ export function TransactionsScreen() {
     direction: amount.direction,
     source: source.length === 1 ? source[0] : undefined,
     bankAccountIds: accountIds,
+    window: booksWindow,
   });
   const recategorizeTransaction = useMutation(
     api.pipeline.recategorizeTransaction,
@@ -4173,6 +4207,17 @@ export function TransactionsScreen() {
       config={transactionsConfig}
       banner={
         <>
+          {/* Books window (decision D1). Renders only when this business has a
+              books-start date; archived rows are read-only, enforced server-side
+              in pipeline.requireTransactionForAdmin. */}
+          {data.window === "archived" && data.booksStartDate ? (
+            <ArchivedBanner booksStartDate={data.booksStartDate} />
+          ) : null}
+          <BooksWindowToggle
+            window={booksWindow}
+            onChange={setBooksWindow}
+            booksStartDate={data.booksStartDate}
+          />
           {/* E8-T4: the single per-page insight banner, built from the SAME
               coreViews.transactions.insights aggregate the register already
               loaded. The chip jumps to the uncategorized (needs-review) view;

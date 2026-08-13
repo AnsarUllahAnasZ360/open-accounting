@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -131,12 +131,34 @@ async function requireEntity(ctx: MutationCtx, entityId: Id<"entities">) {
   return entity;
 }
 
+/**
+ * Resolve a transaction for an owner-initiated edit, and REFUSE it when the row
+ * sits before the entity's books-start date.
+ *
+ * This is the server half of the Archived view being read-only (plan §3.5 rule
+ * 2). The UI hides the action controls on an archived row, but hiding a button
+ * is not a control — this is. A pre-cutoff transaction's journal entry has
+ * already been reversed by the re-base; confirming, re-categorising or
+ * re-posting it would put activity back on the books that the owner explicitly
+ * took off them, and would do it without a matching opening-balance leg.
+ *
+ * Applies to every owner-facing write on this module (confirm, recategorize,
+ * exclude, …) because they all resolve through here. The SYSTEM actor path
+ * (`requireTransactionForSystemActor`) is deliberately untouched: connectors are
+ * already blocked from posting behind the cutoff in `routeTransactionCore`, and
+ * the re-base sweep itself must keep writing to these rows.
+ */
 async function requireTransactionForAdmin(ctx: MutationCtx, transactionId: Id<"transactions">) {
   const transaction = await ctx.db.get(transactionId);
   if (!transaction) {
     throw new Error("Transaction not found.");
   }
   const entity = await requireEntity(ctx, transaction.entityId);
+  if (entity.openingBalanceDate && transaction.date < entity.openingBalanceDate) {
+    throw new ConvexError(
+      `This transaction is dated before your books start (${entity.openingBalanceDate}), so it is archived and read-only. Move your books-start date if it should be on the books.`,
+    );
+  }
   return { entity, transaction };
 }
 

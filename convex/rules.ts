@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { getEntityForWrite } from "./ledger";
+import { TABLE_READ_LIMIT } from "./readBudget";
 import { requireWorkspaceRole } from "./authz";
 import {
   groupHasCondition,
@@ -361,7 +362,7 @@ export const preview = query({
     const txns = await ctx.db
       .query("transactions")
       .withIndex("by_entity", (q) => q.eq("entityId", entity._id))
-      .take(5000);
+      .take(TABLE_READ_LIMIT);
 
     const groups = sanitizeGroups(args.conditionGroups) ?? [
       {
@@ -429,7 +430,7 @@ export const previewAll = query({
 
     const [rules, txns] = await Promise.all([
       ctx.db.query("rules").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(500),
-      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(5000),
+      ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entity._id)).take(TABLE_READ_LIMIT),
     ]);
 
     const activeRules = rules.filter((rule) => rule.active).sort((a, b) => a.order - b.order);

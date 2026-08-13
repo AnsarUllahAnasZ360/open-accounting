@@ -9,6 +9,7 @@ import {
   requireWorkspacePermission,
 } from "./authz";
 import { assertNotDemoWrite } from "./demoWorkspace";
+import { TABLE_READ_LIMIT } from "./readBudget";
 import { ensureDefaultBankAccountForEntity } from "./defaultBankAccount";
 import { chartTemplatesForType, seedChartForEntity } from "./ledger";
 
@@ -66,7 +67,7 @@ async function entityCounts(ctx: QueryCtx, entityId: Id<"entities">) {
   const [bankAccounts, stripeAccounts, transactions] = await Promise.all([
     ctx.db.query("bankAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(200),
     ctx.db.query("stripeAccounts").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(50),
-    ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(5000),
+    ctx.db.query("transactions").withIndex("by_entity", (q) => q.eq("entityId", entityId)).take(TABLE_READ_LIMIT),
   ]);
   return {
     bankAccountCount: bankAccounts.length,

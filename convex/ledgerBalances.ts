@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { requireWorkspaceRole } from "./authz";
@@ -402,6 +403,89 @@ export const rebuildEntityInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     return await rebuildEntityBalances(ctx, args.entityId, args.cursor ?? null);
+  },
+});
+
+/**
+ * Rebuild a business's balances to COMPLETION, without the caller looping.
+ *
+ * `rebuildEntity` folds a bounded slice per call because a long book cannot fit
+ * in one mutation's read budget. That is correct, but it makes the operational
+ * step "call this repeatedly until it says done" — a runbook that is easy to
+ * abandon half-finished, which would leave balances understated and looking like
+ * a reconciliation failure.
+ *
+ * So this reschedules itself until the book is folded, and is the entry point an
+ * operator should use. Idempotent: the first pass clears the entity's existing
+ * rows, so re-running from the start replaces rather than doubles.
+ *
+ * `passLimit` is a runaway guard, not a tuning knob — reaching it means something
+ * is wrong (a cursor that never advances), and the run stops rather than
+ * rescheduling forever.
+ */
+export const rebuildEntityToCompletion = internalMutation({
+  args: {
+    entityId: v.id("entities"),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    pass: v.optional(v.number()),
+    passLimit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{
+    entityId: Id<"entities">;
+    pass: number;
+    entriesProcessed: number;
+    done: boolean;
+    scheduledNext: boolean;
+    abandoned: boolean;
+  }> => {
+    const pass = args.pass ?? 1;
+    const passLimit = args.passLimit ?? 500;
+    const result = await rebuildEntityBalances(ctx, args.entityId, args.cursor ?? null);
+
+    const exhausted = !result.done && pass >= passLimit;
+    if (!result.done && !exhausted) {
+      await ctx.scheduler.runAfter(0, internal.ledgerBalances.rebuildEntityToCompletion, {
+        entityId: args.entityId,
+        cursor: result.cursor,
+        pass: pass + 1,
+        passLimit,
+      });
+    }
+
+    return {
+      entityId: args.entityId,
+      pass,
+      entriesProcessed: result.entriesProcessed,
+      done: result.done,
+      scheduledNext: !result.done && !exhausted,
+      // Surfaced rather than thrown: the balances written so far are valid, and
+      // an operator needs to know the run stopped early rather than finding out
+      // from a wrong figure later.
+      abandoned: exhausted,
+    };
+  },
+});
+
+/**
+ * Rebuild EVERY non-archived business in a workspace, one after another.
+ *
+ * The operator-facing backfill. Entities are processed in sequence rather than
+ * in parallel so the work stays inside one business's read budget at a time.
+ */
+export const rebuildWorkspaceToCompletion = internalMutation({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, args) => {
+    const entities = await ctx.db
+      .query("entities")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .take(200);
+    const targets = entities.filter((entity) => entity.archived !== true);
+    for (const entity of targets) {
+      await ctx.scheduler.runAfter(0, internal.ledgerBalances.rebuildEntityToCompletion, {
+        entityId: entity._id,
+      });
+    }
+    return { scheduled: targets.map((entity) => ({ id: entity._id, name: entity.name })) };
   },
 });
 

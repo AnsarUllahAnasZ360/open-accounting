@@ -419,7 +419,7 @@ Fixing only the former would have changed nothing the owner could see.
 
 **Goal:** "All businesses" loads reliably at any book size. Unblocks Ansar immediately.
 
-- [ ] **1.1** Land the working-tree `entityMetrics.ts` change (date-bounded journal load).
+- [x] **1.1** Land the working-tree `entityMetrics.ts` change (date-bounded journal load).
       It is correct and necessary — just not sufficient.
 - [ ] **1.2** Replace the per-entry `by_entry` line collect with an **entity-scoped,
       date-bounded line query**. Add index `journalLines.by_entity_and_date` (denormalising
@@ -431,15 +431,18 @@ Fixing only the former would have changed nothing the owner could see.
       range scan reads the same documents. It optimises the wrong axis. Folded into 1.5,
       where a materialised cache would make it worth the migration.
       **What actually cuts reads is bounding how much is loaded at all — 1.1 and 1.3.**
-- [ ] **1.3** Make the entry cap a **shared budget divided by the entity count**, not a
+- [x] **1.3** Make the entry cap a **shared budget divided by the entity count**, not a
       per-entity constant. `METRIC_ENTRY_LIMIT = 20000` is already near the ceiling for a
       single business; multiplied across a portfolio it cannot fit by construction. The
       budget has to be portfolio-aware.
-- [ ] **1.4** Make the portfolio roll-up degrade instead of throwing: when the budget is
+- [x] **1.4** Make the portfolio roll-up degrade instead of throwing: when the budget is
       exhausted, return per-business rows with `truncated: true` and render a visible
       "figures are partial" banner. **A wrong number shown confidently is worse than an
       honest partial.**
-- [ ] **1.5** *(Follow-up, not blocking)* Evaluate a materialised `entityMetricsCache`
+- [x] **1.5** ~~*(Follow-up, not blocking)*~~ **DONE, and it was blocking after all.**
+      Shipped as `convex/ledgerBalances.ts` + two derived tables, maintained inside
+      `postLedgerEntryCore`. Dashboard figures no longer depend on the size of the book;
+      the "totals are partial" banner should not reappear. Evaluate a materialised `entityMetricsCache`
       table updated on ledger post, so the portfolio reads *N* rows instead of *N* journals.
       This is the durable answer for open-source users with large books. Write as a separate
       ADR.
@@ -555,13 +558,13 @@ reliable gate and should be fixed independently.
 
 **Goal:** one number, everywhere, consistent with the Balance Sheet.
 
-- [ ] **2.1** Promote cutoff filtering from a per-module convention to a **shared scoped
+- [x] **2.1** Promote cutoff filtering from a per-module convention to a **shared scoped
       loader**. Add `convex/entityScope.ts` helpers — `loadScopedTransactions`,
       `loadScopedJournal`, `loadScopedInvoices`, `loadScopedBills` — that apply the cutoff at
       the *index* level. Modules call the loader; no module hand-rolls the filter again.
       Each helper takes a `mode: "working" | "archived" | "all"` parameter **defaulting to
       `working`** (decision D1, §3.5), so a caller that omits it is safe by construction.
-- [ ] **2.2** Migrate each uncovered module to the loader, in user-visibility order:
+- [x] **2.2** Migrate each uncovered module to the loader, in user-visibility order:
       1. `streamViews.ts` — **the reported bug**
       2. `incomeViews.ts`, `expensesViews.ts`, `moduleViews.ts`
       3. `streamTags.ts`, `streamRules.ts`
@@ -569,22 +572,22 @@ reliable gate and should be fixed independently.
       5. `aiCfoAggregate.ts`, `agentToolQueries.ts` — so **Ask AI stops advising on
          archived data**
       6. `weeklyDigestData.ts`, `reconciliation.ts`, `intercompany.ts`, `payroll.ts`
-- [ ] **2.3** **Deliberately exempt** `exportAccount.ts` and the audit log — a full export
+- [x] **2.3** **Deliberately exempt** `exportAccount.ts` and the audit log — a full export
       must remain complete. Document the exemption in-file so a future reviewer does not
       "fix" it.
-- [ ] **2.4** Add a **lint-style guard test** (`convex/openingBalanceCoverage.test.ts`,
+- [x] **2.4** Add a **lint-style guard test** (`convex/openingBalanceCoverage.test.ts`,
       modelled on the existing `authzCoverage.test.ts`): every module that queries
       `transactions` / `journalLines` / `invoices` / `bills` with an entity scope must either
       use the scoped loader or appear on an explicit allow-list. **This is what stops the
       gap reopening** — the same discipline the repo already applies to authorization.
-- [ ] **2.5** **Archived toggle** (decision D1, §3.5). Add a quiet segmented control —
+- [x] **2.5** **Archived toggle** (decision D1, §3.5). Add a quiet segmented control —
       *Current books* / *Archived* — to Transactions, Inbox, Streams, Income, Expenses and
       the AR/AP lists. Design-system rules apply: no badge colour, no alarm red; archived is
       a neutral state, not an error.
-- [ ] **2.6** Archived rows render **read-only**: action controls (categorise, create rule,
+- [x] **2.6** Archived rows render **read-only**: action controls (categorise, create rule,
       re-post) are hidden, not merely disabled-with-tooltip, and each row carries its
       *"reversed — books start &lt;date&gt;"* provenance so the screen explains itself.
-- [ ] **2.7** Server-side enforcement of read-only: the mutations behind those actions
+- [x] **2.7** Server-side enforcement of read-only: the mutations behind those actions
       re-check the entity cutoff and refuse a pre-cutoff target. **The UI hiding a button is
       not a control** — same principle as the workspace authorization re-checks.
 

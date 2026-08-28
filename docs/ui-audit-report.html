@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="OpenBooks product, UI and architecture audit — finishing branch. Grounded in code with severity-rated findings and an implementation roadmap." />
+<title>OpenBooks — Product &amp; UI Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* brand green ramp */
+    --g50:#f1f8ee; --g100:#dcefd2; --g200:#bbe0a9; --g400:#63b347;
+    --g500:#2ca01c; --g600:#248716; --g700:#1d6b12; --g800:#17540f;
+    /* neutrals (codebase shadcn baseline) */
+    --bg:#ffffff; --fg:oklch(0.145 0 0); --text-2:oklch(0.45 0 0); --muted:oklch(0.556 0 0);
+    --border:oklch(0.922 0 0); --sunken:oklch(0.978 0 0); --page:oklch(0.985 0 0);
+    /* semantic */
+    --positive:#248716; --positive-s:#f1f8ee;
+    --negative:#d92d20; --negative-s:#fef3f2;
+    --warning:#b54708; --warning-s:#fffaeb;
+    --info:#175cd3; --info-s:#eff8ff;
+    --slate:#475467; --slate-s:#f2f4f7;
+    --ai:#1d6b12;
+    /* radii + shape */
+    --r-card:14px; --r-ctl:10px; --r-tab:8px;
+    --ring:0 0 0 1px rgba(0,0,0,.08);
+    --shadow-xs:0 1px 2px rgba(16,24,40,.04);
+    --shadow-md:0 4px 14px rgba(16,24,40,.08);
+    --sans:"Geist","Geist Fallback",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"Geist Mono","Geist Mono Fallback",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--page);color:var(--fg);font-family:var(--sans);
+    font-size:14px;line-height:1.6;letter-spacing:0;-webkit-font-smoothing:antialiased;font-feature-settings:"cv01","ss01"}
+  .wrap{max-width:1200px;margin:0 auto;padding:0 28px}
+  .tnum{font-family:var(--mono);font-variant-numeric:tabular-nums lining-nums}
+
+  /* header */
+  header.top{background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:60}
+  .top .wrap{display:flex;align-items:center;gap:14px;height:56px}
+  .mark{width:28px;height:28px;border-radius:50%;background:var(--g500);color:#fff;display:inline-flex;
+    align-items:center;justify-content:center;font-weight:600;font-size:13px;letter-spacing:-.02em;flex:0 0 auto}
+  .brand{font-weight:600;font-size:15px;letter-spacing:-.01em;line-height:1.15}
+  .brand small{display:block;font-weight:400;color:var(--text-2);font-size:12px}
+  .top .sp{flex:1}
+  .btn{appearance:none;border:1px solid var(--border);background:var(--bg);color:var(--fg);
+    border-radius:var(--r-ctl);padding:8px 13px;font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;
+    display:inline-flex;align-items:center;gap:7px;transition:background .12s ease,border-color .12s ease}
+  .btn:hover{background:var(--sunken);border-color:var(--muted)}
+  .btn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(99,179,71,.45)}
+  .btn .spark{width:13px;height:13px;color:var(--ai)}
+
+  /* layout */
+  .layout{display:grid;grid-template-columns:236px minmax(0,1fr);gap:32px;padding:28px 0 96px}
+  nav.toc{position:sticky;top:80px;align-self:start;max-height:calc(100vh - 104px);overflow:auto}
+  nav.toc h4{margin:2px 10px 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  nav.toc a{display:block;padding:6px 10px;border-radius:8px;color:var(--text-2);text-decoration:none;font-size:13px;line-height:1.45}
+  nav.toc a:hover{background:var(--sunken);color:var(--fg)}
+  main{min-width:0}
+
+  /* cards / sections */
+  section{background:var(--bg);border:1px solid var(--border);box-shadow:var(--shadow-xs);
+    border-radius:var(--r-card);padding:24px 28px;margin:0 0 18px}
+  h1{font-size:30px;line-height:1.18;letter-spacing:-.02em;margin:0 0 8px;font-weight:600}
+  h2{font-size:20px;letter-spacing:-.015em;margin:0 0 16px;font-weight:600;display:flex;align-items:baseline;gap:10px}
+  h2 .n{color:var(--muted);font-weight:500;font-size:14px;font-variant-numeric:tabular-nums}
+  h3{font-size:15px;margin:22px 0 8px;letter-spacing:-.01em;font-weight:600}
+  h4.sub{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;margin:18px 0 8px}
+  p{margin:0 0 12px;color:var(--fg)}
+  .sec p, .sec li{color:#27292e}
+  ul,ol{margin:0 0 12px;padding-left:20px}
+  li{margin:5px 0}
+  a{color:var(--g700)}
+  code{font-family:var(--mono);font-size:12px;background:var(--sunken);border:1px solid var(--border);
+    padding:1px 5px;border-radius:5px;color:#2f3338}
+  .lead{font-size:16px;line-height:1.55;color:var(--fg)}
+  .meta{color:var(--text-2);font-size:12.5px}
+  hr{border:none;border-top:1px solid var(--border);margin:20px 0}
+
+  /* metric chips */
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0 4px}
+  .chip{border:1px solid var(--border);border-radius:var(--r-ctl);padding:10px 14px;background:var(--bg);min-width:128px}
+  .chip .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;letter-spacing:-.01em;line-height:1.1}
+  .chip .l{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .chip.ok .v{color:var(--positive)} .chip.warn .v{color:var(--warning)}
+  .chip.crit .v{color:var(--negative)} .chip.info .v{color:var(--info)}
+
+  /* callouts */
+  .callout{border:1px solid var(--border);border-left:3px solid var(--g500);background:#fbfdfb;
+    border-radius:var(--r-ctl);padding:13px 15px;margin:14px 0;font-size:13.5px}
+  .callout.warn{border-left-color:var(--warning);background:var(--warning-s)}
+  .callout.crit{border-left-color:var(--negative);background:var(--negative-s)}
+  .callout.info{border-left-color:var(--info);background:var(--info-s)}
+  .callout b{font-weight:600}
+
+  /* severity pills */
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.01em;
+    padding:2px 9px;border-radius:999px;white-space:nowrap;border:1px solid transparent;line-height:1.5}
+  .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.9}
+  .sev-crit{background:var(--negative-s);color:var(--negative);border-color:#f4c9c4}
+  .sev-high{background:var(--warning-s);color:var(--warning);border-color:#f3dcae}
+  .sev-med{background:var(--info-s);color:var(--info);border-color:#cfe0fb}
+  .sev-low{background:var(--slate-s);color:var(--slate);border-color:#dde1e7}
+  .sev-ok{background:var(--positive-s);color:var(--positive);border-color:#cfe9c7}
+  .pill.flat::before{display:none}
+
+  /* severity bar */
+  .sevbar{display:flex;height:14px;border-radius:999px;overflow:hidden;margin:6px 0 14px;border:1px solid var(--border)}
+  .sevbar span{display:block}
+  .sevbar .c{background:var(--negative)} .sevbar .h{background:var(--warning)}
+  .sevbar .m{background:var(--info)} .sevbar .l{background:var(--slate)}
+  .sevkey{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--text-2)}
+  .sevkey span b{font-family:var(--mono);color:var(--fg)}
+
+  /* finding cards */
+  .find{border:1px solid var(--border);border-radius:var(--r-ctl);padding:13px 15px;margin:10px 0;background:var(--bg)}
+  .find .hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:5px}
+  .find .ti{font-weight:600;font-size:14px}
+  .find .lo{font-family:var(--mono);font-size:11.5px;color:var(--g700);background:var(--g50);
+    border:1px solid var(--g100);padding:1px 6px;border-radius:5px}
+  .find p{margin:0;font-size:13px;color:#33363b}
+
+  /* tables */
+  table{width:100%;border-collapse:collapse;margin:12px 0 14px;font-size:13px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+  thead th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600;
+    background:var(--sunken);border-bottom:1px solid var(--border)}
+  tbody tr:hover{background:#fcfdfc}
+  td.r{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  caption{caption-side:top;text-align:left;font-size:12px;color:var(--muted);margin-bottom:6px}
+
+  /* mermaid */
+  pre.mermaid{background:#fcfdfc;border:1px solid var(--border);border-radius:12px;padding:16px;margin:12px 0;
+    text-align:center;overflow-x:auto;font-family:var(--sans)}
+  figcaption{color:var(--muted);font-size:12px;text-align:center;margin:-2px 0 18px}
+
+  /* grids */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .kv{border:1px solid var(--border);border-radius:var(--r-ctl);padding:13px 15px;background:var(--bg)}
+  .kv b{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;font-weight:600}
+  .kv p{font-size:13px;margin:0;color:#33363b}
+
+  /* roadmap */
+  .phase{border:1px solid var(--border);border-radius:var(--r-card);padding:16px 18px;margin:0 0 12px;background:var(--bg)}
+  .phase .ph-h{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .phase .ph-n{width:26px;height:26px;border-radius:50%;background:var(--g500);color:#fff;font-family:var(--mono);
+    font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+  .phase .ph-t{font-weight:600;font-size:14.5px}
+  .phase .ph-t small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+
+  footer{color:var(--text-2);font-size:12px;text-align:center;padding:4px 0 56px;line-height:1.7}
+
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(18px);background:var(--fg);
+    color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;z-index:100}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (max-width:880px){
+    .layout{grid-template-columns:1fr;gap:0;padding-top:18px}
+    nav.toc{display:none}
+    section{padding:18px 16px}
+    .grid2,.grid3{grid-template-columns:1fr}
+    h1{font-size:24px}
+    .wrap{padding:0 16px}
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <span class="mark">OB</span>
+    <span class="brand">OpenBooks — Product &amp; UI Audit<small>finishing branch · grounded in code · 12 Jun 2026</small></span>
+    <span class="sp"></span>
+    <button class="btn" id="copyBtn" aria-label="Copy full report source for AI">
+      <svg class="spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+      Copy for AI
+    </button>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Contents">
+    <h4>Contents</h4>
+    <a href="#summary">Executive summary</a>
+    <a href="#severity">Severity breakdown</a>
+    <a href="#findings">Key findings</a>
+    <a href="#status">Status at a glance</a>
+    <a href="#arch">Architecture</a>
+    <a href="#ui">UI &amp; dashboard assessment</a>
+    <a href="#acct">Bookkeeping vs QuickBooks</a>
+    <a href="#acme">Acme Labs simulation</a>
+    <a href="#sec">Security &amp; production</a>
+    <a href="#oss">Open-source readiness</a>
+    <a href="#fixes">Recommended fixes</a>
+    <a href="#roadmap">Implementation roadmap</a>
+    <a href="#test">What to test next</a>
+  </nav>
+
+  <main class="sec">
+    <section id="summary">
+      <h1>OpenBooks — Product, UI &amp; Architecture Audit</h1>
+      <p class="meta">A read-only audit of the <code>finishing</code> branch, produced from a full reading of <code>docs/</code> and seven parallel code-verification passes (ledger/pipeline/data-model, Plaid/Stripe, AI, frontend, reports/payroll/receipts, auth/multi-tenancy, runnability). Every claim is grounded in <code>file:line</code> evidence. No product code was modified.</p>
+
+      <div class="chips">
+        <div class="chip ok"><div class="v">8 / 10</div><div class="l">Acceptance rows verified</div></div>
+        <div class="chip warn"><div class="v">2</div><div class="l">Money rails unproven live</div></div>
+        <div class="chip info"><div class="v">75%</div><div class="l">AI categorization accuracy</div></div>
+        <div class="chip crit"><div class="v">1</div><div class="l">Critical security gap</div></div>
+        <div class="chip ok"><div class="v">27 / 28</div><div class="l">Unit / e2e test files</div></div>
+      </div>
+
+      <h3>Verdict</h3>
+      <p class="lead">OpenBooks is a real, substantial product — not a scaffold. The double-entry accounting engine is genuinely accountant-grade by construction, the AI is a real tool-calling agent (not hardcoded answers), and almost every screen is wired to live data. The gaps are concentrated and well-understood: the two money rails (Plaid, Stripe) are fully coded and unit-tested but unproven against real external sessions; the dashboard's chart rendering is unpolished; AI categorization sits below its quality target; and one legacy AI route has a real cross-tenant read hole.</p>
+
+      <div class="callout"><b>Can it be run and tested today?</b> Yes. <code>pnpm dev:full</code> against the existing cloud Convex deployment, then sign in with the localhost "Continue as local dev owner" control and explore the seeded demo business. The full bank and Stripe sync experience needs a hosted Plaid sandbox session and a real Stripe test webhook first.</p></div>
+
+      <div class="grid2">
+        <div class="kv"><b>Genuinely done</b><p>Onboarding, app shell, all primary screens, ten settings sections, Reports built from journal lines, Income/Expenses/Bills, Payroll, receipts, Ask AI agent with propose-and-confirm, entity switching, audit log.</p></div>
+        <div class="kv"><b>Coded but unproven</b><p>Plaid and Stripe. Every path exists, is sandbox/test-locked, and is unit-tested with a mocked network. No real hosted Plaid Link session and no real Stripe-originated webhook have run.</p></div>
+        <div class="kv"><b>Weak spots</b><p>Dashboard chart finish; 75% AI accuracy vs an 80% target; payroll FX path untested; latent currency-unaware ledger balancing; mixed live-and-dead code in one large file.</p></div>
+        <div class="kv"><b>One critical gap</b><p>A legacy <code>POST /ai/chat</code> route reads another tenant's data from a client-supplied entity id. Bounded and not used by the product UI, but must be closed before multi-tenant exposure.</p></div>
+      </div>
+
+      <h4 class="sub">Three-phase backstory (essential context)</h4>
+      <ol>
+        <li><b>Initiation run</b> built a strong accounting core but over-reported the surface (marked 19/20 done while half-built); the AI was hardcoded keyword lookups and the 100% eval was circular.</li>
+        <li><b>Audit</b> caught the over-reporting: core 85–90% real, surface 45–55%.</li>
+        <li><b>Finishing run</b> rebuilt the surface against a strict evidence contract — nothing is "working" without a green real-click test plus a screenshot. This audit confirms those docs are accurate.</li>
+      </ol>
+    </section>
+
+    <section id="severity">
+      <h2><span class="n">01</span> Severity breakdown</h2>
+      <p>Eighteen findings, rated by impact on correctness, security, and shippability.</p>
+      <div class="sevbar" role="img" aria-label="1 critical, 5 high, 8 medium, 4 low">
+        <span class="c" style="width:5.5%"></span>
+        <span class="h" style="width:27.8%"></span>
+        <span class="m" style="width:44.4%"></span>
+        <span class="l" style="width:22.3%"></span>
+      </div>
+      <div class="sevkey">
+        <span><span class="pill sev-crit">Critical</span> <b>1</b> — tenant isolation</span>
+        <span><span class="pill sev-high">High</span> <b>5</b> — rails unproven, AI quality, OSS install</span>
+        <span><span class="pill sev-med">Medium</span> <b>8</b> — finish, robustness, ops</span>
+        <span><span class="pill sev-low">Low</span> <b>4</b> — polish, copy, dead code</span>
+      </div>
+      <p class="meta" style="margin-top:12px">Severity is about consequence, not effort. The single critical item happens to be a one-line fix; several medium items are larger. Effort is shown separately in <a href="#fixes">Recommended fixes</a>.</p>
+    </section>
+
+    <section id="findings">
+      <h2><span class="n">02</span> Key findings</h2>
+
+      <div class="find">
+        <div class="hd"><span class="pill sev-crit">Critical</span><span class="ti">Cross-tenant read via the legacy Ask-AI HTTP route</span><span class="lo">http.ts:102 · aiChatRuntime.ts:116 · agentToolQueries.ts:65</span></div>
+        <p><code>POST /ai/chat</code> authorizes the workspace but passes a client-supplied <code>entityId</code> straight into the AI read tools, which fetch the entity with no membership check. An authenticated member of workspace A can read workspace B's transactions, reports, balances, contacts, and payroll. Bounded — read-only, needs a valid account, Convex ids are not enumerable, and the product UI uses the secured durable-agent path instead — but a genuine isolation hole. One-line fix.</p>
+      </div>
+      <div class="find">
+        <div class="hd"><span class="pill sev-high">High</span><span class="ti">Plaid bank sync is unproven end-to-end</span><span class="lo">plaid.ts · plaid.test.ts</span></div>
+        <p>Link, token exchange, cursor sync, removal reversal, the four-hour cron, and the JWT-verified webhook all exist and are unit-tested with a mocked Plaid. No real hosted Link session has ever produced a real sandbox item and synced it. Sandbox-locked by design.</p>
+      </div>
+      <div class="find">
+        <div class="hd"><span class="pill sev-high">High</span><span class="ti">Stripe sync and payout reconciliation are unproven end-to-end</span><span class="lo">stripe.ts · register-stripe-webhook.mjs</span></div>
+        <p>Signature-verified webhook, dedupe, live-key refusal, clearing-account reconciliation, and payout-line drill-down are all implemented and unit-tested. No real Stripe-originated webhook has been delivered — the registration script signs its own payload, which proves the receiver, not external delivery.</p>
+      </div>
+      <div class="find">
+        <div class="hd"><span class="pill sev-high">High</span><span class="ti">AI categorization accuracy is below target</span><span class="lo">ai.ts (holdout eval)</span></div>
+        <p>The honest label-safe holdout eval records 45/60 correct (75%) against an 80% target. Safe by design — uncertain rows go to the Inbox rather than posting wrong — but not yet "trust without review."</p>
+      </div>
+      <div class="find">
+        <div class="hd"><span class="pill sev-high">High</span><span class="ti">No turnkey self-host path</span><span class="lo">scripts/dev-full.mjs</span></div>
+        <p>The stack is hard-wired to a cloud Convex deployment and the boot script refuses a local Convex. There is no documented "bring your own Convex project" flow, so a stranger cannot clone-and-run. This is the largest open-source-release blocker.</p>
+      </div>
+      <div class="find">
+        <div class="hd"><span class="pill sev-med">Medium</span><span class="ti">Dashboard charts are unfinished</span><span class="lo">CoreScreens.tsx · primitives.tsx</span></div>
+        <p>Charts are hand-rolled div-height bars and SVG paths with no donut, first-word category labels ("Cost of goods" renders as "Cost"), no axes or tooltips, and ragged multi-grid card heights. Real data, unfinished presentation — the likely source of the "looks weird" reaction.</p>
+      </div>
+      <div class="find">
+        <div class="hd"><span class="pill sev-med">Medium</span><span class="ti">Payroll FX path has no automated test</span><span class="lo">payroll.ts · payrollMath.ts</span></div>
+        <p>The multi-currency settlement, FX gain/loss line, and rounding are exercised only by the seeded demo. The only payroll unit test is USD-only. Rounding and FX is exactly where double-entry money bugs hide.</p>
+      </div>
+      <div class="find">
+        <div class="hd"><span class="pill sev-med">Medium</span><span class="ti">Ledger balance check is not currency-aware</span><span class="lo">ledger.ts:364</span></div>
+        <p>Debits and credits are summed across all lines regardless of each line's currency. Latent today because every caller uses one currency per entry, but a real risk if cross-currency entries are ever introduced.</p>
+      </div>
+      <p class="meta">Eleven further findings — credential entry is env-only with no UI, observability and automated backups missing, lightweight bank reconciliation only, mixed live/dead code in <code>ModuleScreens.tsx</code>, scanned-PDF OCR gap, an inbound relink webhook dropped, color drift beyond the single brand green, an inaccurate "accountant is read-only" label, two handler-less buttons, and dead static content — are itemized in <a href="#fixes">Recommended fixes</a>.</p>
+    </section>
+
+    <section id="status">
+      <h2><span class="n">03</span> Status at a glance</h2>
+      <p>Status legend: <span class="pill sev-ok flat">Usable</span> implemented and likely works · <span class="pill sev-high flat">Partial</span> implemented but incomplete · <span class="pill sev-med flat">Unproven</span> coded and unit-tested, not verified end-to-end · <span class="pill sev-low flat">Stub</span> placeholder or dead code · <span class="pill sev-crit flat">Gap</span> missing or insecure.</p>
+      <table>
+        <thead><tr><th>Capability</th><th>Status</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Double-entry ledger</td><td><span class="pill sev-ok flat">Usable</span></td><td>Single posting path, debits equal credits enforced, immutable journals, period locks, audit on every post.</td></tr>
+          <tr><td>Classification pipeline</td><td><span class="pill sev-ok flat">Usable</span></td><td>Nine-stage cascade: dedupe, transfer, match, rules, correction memory, semantic memory, Plaid prior, LLM, Inbox.</td></tr>
+          <tr><td>Onboarding / workspace creation</td><td><span class="pill sev-ok flat">Usable</span></td><td>Idempotent bootstrap of workspace, membership, settings, entity, chart of accounts, checklist.</td></tr>
+          <tr><td>Dashboard</td><td><span class="pill sev-high flat">Partial</span></td><td>Real and entity/period-scoped; chart rendering and layout are visually unfinished.</td></tr>
+          <tr><td>Inbox, Transactions, Income, Expenses, Bills</td><td><span class="pill sev-ok flat">Usable</span></td><td>Confirm/correct/rule/batch; recategorize reverses and reposts; invoice draft/finalize/void; bill mark-paid settles AP.</td></tr>
+          <tr><td>Payroll (multi-currency)</td><td><span class="pill sev-high flat">Partial</span></td><td>Full lifecycle posts balanced entries; FX path untested by automated tests.</td></tr>
+          <tr><td>Reports (11–12, from journal lines)</td><td><span class="pill sev-ok flat">Usable</span></td><td>Cash and accrual, never-future periods, drill-down, CSV export; balance sheet balances and trial balance nets to zero in the seed.</td></tr>
+          <tr><td>Ask AI (agent, threads, propose/confirm)</td><td><span class="pill sev-ok flat">Usable</span></td><td>Real agent, five read and five propose tools, streaming, zero direct ledger writes from the AI path.</td></tr>
+          <tr><td>AI categorization quality</td><td><span class="pill sev-high flat">Partial</span></td><td>75% holdout accuracy, below the 80% target. Safe — uncertain rows route to the Inbox.</td></tr>
+          <tr><td>Settings (ten sections)</td><td><span class="pill sev-ok flat">Usable</span></td><td>All wired to Convex; autonomy, rules, audit, and export verified.</td></tr>
+          <tr><td>Receipts</td><td><span class="pill sev-high flat">Partial</span></td><td>Image and text-PDF via Bedrock vision; create-expense posts balanced. Scanned image-only PDFs are not OCR'd.</td></tr>
+          <tr><td>Plaid bank sync</td><td><span class="pill sev-med flat">Unproven</span></td><td>Full code path, unit-tested with mocked network; no real hosted Link session.</td></tr>
+          <tr><td>Stripe sync and payout reconciliation</td><td><span class="pill sev-med flat">Unproven</span></td><td>Full code path, unit-tested; no real Stripe-originated webhook delivered.</td></tr>
+          <tr><td>Auth, roles, team invites, multi-entity</td><td><span class="pill sev-ok flat">Usable</span></td><td>Server-enforced; tokenized hashed invites; dev bypass localhost-gated.</td></tr>
+          <tr><td>Tenant isolation</td><td><span class="pill sev-crit flat">Gap</span></td><td>Strong everywhere except the legacy <code>POST /ai/chat</code> cross-entity read.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="arch">
+      <h2><span class="n">04</span> Architecture</h2>
+      <p>Next.js 16 App Router on Vercel, a large Convex backend that runs in a cloud dev deployment (never locally), AI on AWS Bedrock through the Convex Agent component, and sandbox/test-locked Plaid and Stripe. The hidden double-entry ledger is the single source of truth; every screen, report, and AI answer reads from it. A deeper system-architecture reference lives in <code>docs/architecture.md</code>.</p>
+
+      <h3>System architecture</h3>
+      <pre class="mermaid">
+flowchart TB
+  subgraph ext["External — bring-your-own keys"]
+    Plaid["Plaid Sandbox<br/>banks and cards"]
+    Stripe["Stripe Test Mode<br/>charges, invoices, payouts"]
+    Bedrock["AWS Bedrock<br/>chat, categorize, embeddings"]
+  end
+  subgraph vercel["Vercel — Next.js 16 App Router"]
+    UI["Screens: Dashboard, Inbox, Transactions,<br/>Income, Expenses, Bills, Contacts,<br/>Payroll, Reports, Ask AI, Settings"]
+  end
+  subgraph convex["Convex Cloud (dev deployment)"]
+    Q["Queries — read models"]
+    M["Mutations — transactional writes"]
+    A["Actions — external API calls"]
+    HTTP["HTTP routes: plaid + stripe webhooks, ai/chat"]
+    CRON["Cron: 4h Plaid sync"]
+    AGENT["Convex Agent — Ask AI threads"]
+    PIPE["Classification pipeline"]
+    LEDGER[("Double-entry ledger<br/>debits equal credits, immutable")]
+    DB[("Tables and vector indexes")]
+  end
+  UI --> Q
+  UI --> M
+  UI --> A
+  UI --> AGENT
+  Plaid --> A
+  Plaid --> HTTP
+  Stripe --> A
+  Stripe --> HTTP
+  Bedrock --> A
+  Bedrock --> AGENT
+  CRON --> A
+  A --> PIPE
+  M --> PIPE
+  PIPE -->|confident| LEDGER
+  PIPE -->|uncertain| DB
+  AGENT -->|propose only| DB
+  AGENT -->|human confirm| LEDGER
+  LEDGER --> DB
+  Q --> DB
+      </pre>
+      <figcaption>Every number on screen derives from the ledger; the AI never writes it directly.</figcaption>
+
+      <h3>Onboarding</h3>
+      <pre class="mermaid">
+sequenceDiagram
+  actor U as New user
+  participant Auth as Convex Auth (password)
+  participant OB as Onboarding screen
+  participant BM as bootstrapWorkspace
+  U->>Auth: sign in, falls back to sign up
+  Auth-->>U: authenticated, no workspace yet
+  U->>OB: business name, type, currency
+  OB->>BM: bootstrap
+  BM-->>U: workspace, entity, chart of accounts, checklist
+  U-->>U: lands on Dashboard
+      </pre>
+      <figcaption>New owners self-register; teammates join through invite links.</figcaption>
+
+      <h3>Plaid connection and transaction sync</h3>
+      <pre class="mermaid">
+sequenceDiagram
+  participant UIp as Settings, Connections
+  participant CX as Convex (plaid.ts)
+  participant P as Plaid Sandbox
+  participant PIPE as Pipeline
+  participant LED as Ledger or Inbox
+  UIp->>CX: prepare Link
+  CX->>P: link token create
+  P-->>UIp: link token, widget mounts
+  UIp->>CX: exchange public token
+  CX->>P: exchange, accounts get
+  CX->>CX: store access token server-side, never sent to client
+  Note over CX: sync via 4h cron, manual, or webhook
+  CX->>P: transactions sync with stored cursor
+  P-->>CX: added, modified, removed
+  CX->>PIPE: route through pipeline (system sync actor)
+  PIPE->>LED: confident posts, uncertain to Inbox
+      </pre>
+      <figcaption>Fully coded and unit-tested with a mocked Plaid; a real hosted Link session has not run. Hard-locked to the Plaid sandbox.</figcaption>
+
+      <h3>Stripe sync and payout reconciliation</h3>
+      <pre class="mermaid">
+flowchart LR
+  CH["Stripe charge"] --> CL["debit Clearing / credit Sales (gross)"]
+  CH --> FE["debit Fees / credit Clearing"]
+  CL --> POOL[("Clearing account")]
+  FE --> POOL
+  PO["Payout deposit lands"] --> DR{"drift = gross minus fees minus payout = 0 ?"}
+  POOL --> DR
+  DR -->|yes| OK["debit Bank / credit Clearing; match bank txn; reconciled"]
+  DR -->|no| MM["payout mismatch Inbox card, itemized"]
+      </pre>
+      <figcaption>The clearing-account method keeps gross revenue and fees visible; drift surfaces an Inbox card. Implemented and unit-tested; no real webhook delivery proven.</figcaption>
+
+      <h3>AI transaction classification cascade</h3>
+      <pre class="mermaid">
+flowchart TD
+  T["Incoming transaction"] --> D{"Duplicate?"}
+  D -->|yes| STOP["skip"]
+  D -->|no| TR{"Transfer? 0.99"}
+  TR -->|yes| POST
+  TR -->|no| MA{"Open record match? 0.97"}
+  MA -->|yes| POST
+  MA -->|no| RU{"User rule first-match? 0.91 to 0.93"}
+  RU -->|autoPost| POST
+  RU -->|no| CM{"Exact correction memory? 0.92"}
+  CM -->|yes| GATE
+  CM -->|no| SM{"Semantic memory, vector at or above 0.72?"}
+  SM -->|yes| GATE
+  SM -->|no| PP{"Plaid prior? 0.70"}
+  PP -->|yes| GATE
+  PP -->|no| LLM["Bedrock LLM: category, confidence, needsHuman"]
+  LLM --> GATE{"confidence at or above autonomy threshold and not needsHuman?"}
+  GATE -->|yes| POST["Post to ledger, stage stamped"]
+  GATE -->|no| INBOX["Inbox card with reasoning"]
+  POST --> MEM["on correction: write memory; after 3 identical, draft a rule"]
+      </pre>
+      <figcaption>Autonomy thresholds are one shared constant: suggest never auto-posts, balanced is 0.90, autopilot is 0.75. Stage confidences are routing labels, not calibrated probabilities.</figcaption>
+
+      <h3>Reporting</h3>
+      <pre class="mermaid">
+flowchart LR
+  JL[("journal lines")] --> BP["build report pack"]
+  BP --> CA{"cash or accrual?"}
+  CA -->|cash| EX["exclude open AR and AP entries"]
+  CA -->|accrual| ALL["all entries"]
+  EX --> R
+  ALL --> R["P and L, Balance Sheet, Cash Flow, AR and AP Aging,<br/>Expenses, Income by Customer, Payroll,<br/>General Ledger, Trial Balance, Journal, Monthly Review"]
+  R --> V["Reports viewer, periods never future"]
+  V --> DD["drill down to source journal lines"]
+  V --> CSV["CSV export matches the screen"]
+      </pre>
+      <figcaption>All reports derive from journal lines, never from ad-hoc category totals.</figcaption>
+
+      <h3>Deployment and local setup</h3>
+      <pre class="mermaid">
+flowchart TD
+  I["pnpm install"] --> E["fill .env.local with cloud Convex values"]
+  E --> DF["pnpm dev:full"]
+  DF --> AC{"is Convex cloud, not localhost?"}
+  AC -->|yes| PUSH["push functions to cloud"]
+  PUSH --> BOOT["bootstrap owner"]
+  BOOT --> RUN["start Next dev and Convex watcher"]
+  RUN --> SEED["seed demo data"]
+  SEED --> GO["sign in, Continue as local dev owner"]
+  AC -->|localhost| FAIL["refuses: cloud Convex only"]
+      </pre>
+      <figcaption>The stack is deliberately cloud-Convex-only; the Next app runs locally against the cloud backend.</figcaption>
+    </section>
+
+    <section id="ui">
+      <h2><span class="n">05</span> UI &amp; dashboard assessment</h2>
+      <p>This is the design heart of the audit. Every primary screen reads live Convex data — there is no mock business data in any live screen. The product is real; the finish is uneven.</p>
+
+      <h4 class="sub">Why the dashboard reads as unfinished</h4>
+      <ol>
+        <li>Charts are hand-rolled div-height bars and SVG paths, with no charting library and no donut despite the design brief calling for an expense donut.</li>
+        <li>Category labels are truncated to the first word, so "Cost of goods" shows as "Cost".</li>
+        <li>No axes, gridlines, tooltips, or value labels on the bars.</li>
+        <li>About seven stacked grids with different column ratios and non-normalized card heights produce ragged columns.</li>
+        <li>The cash sparkline plots net cash-flow deltas, not a running balance, so the trend can read counterintuitively.</li>
+        <li>Income-by-customer silently falls back to all-time when the selected month had no invoices, so values do not always match the period label.</li>
+      </ol>
+      <div class="callout">It is functional and real, not broken or mocked — the gap is presentation. A charting pass, full labels, and a normalized grid would resolve the perception.</div>
+
+      <h4 class="sub">Design-system adherence</h4>
+      <p>Mostly faithful: the single brand green, tabular money figures, Geist, and the absence of gradients, purple-AI styling, emoji, and glassmorphism. The notable drift is a small multi-color accent set — blue, red, amber, and pink chips in Income, Settings, and Reports — that exceeds the strict single-green rule. There is also mixed live and dead code in <code>ModuleScreens.tsx</code> (about 1,900 lines), including unreferenced settings and invoice components that still contain "save after integration" stub buttons.</p>
+      <p>Mobile is a genuine responsive surface (off-canvas drawer, bottom tab bar, true bottom-sheet for Ask AI), though the dashboard simply stacks its desktop grids on small screens.</p>
+    </section>
+
+    <section id="acct">
+      <h2><span class="n">06</span> Bookkeeping functionality vs QuickBooks</h2>
+      <table>
+        <thead><tr><th>Area</th><th>Status</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Chart of accounts</td><td><span class="pill sev-ok flat">Usable</span></td><td>~30 seeded by business type; add, rename, archive; system accounts protected.</td></tr>
+          <tr><td>Bank / Stripe connections</td><td><span class="pill sev-med flat">Unproven</span></td><td>Code complete; need a real sandbox Link session and a real test webhook.</td></tr>
+          <tr><td>Transaction import and review</td><td><span class="pill sev-ok flat">Usable</span></td><td>CSV and manual now; Inbox confirm, correct, rule, batch, keyboard.</td></tr>
+          <tr><td>Double-entry ledger and journal</td><td><span class="pill sev-ok flat">Usable</span></td><td>The crown jewel — balanced, immutable, audited.</td></tr>
+          <tr><td>Invoicing, AR aging</td><td><span class="pill sev-ok flat">Usable</span></td><td>Draft, finalize, void; Stripe hosted-send code exists (unproven live).</td></tr>
+          <tr><td>Payment and payout reconciliation</td><td><span class="pill sev-med flat">Unproven</span></td><td>Clearing-account method; drift to Inbox; bill and payroll consume bank txns.</td></tr>
+          <tr><td>Bank statement reconciliation</td><td><span class="pill sev-high flat">Partial</span></td><td>Lightweight ledger-versus-feed; formal statement reconcile is v2.</td></tr>
+          <tr><td>Reports: P and L, Balance Sheet, Cash Flow, Trial Balance, General Ledger, aging, Monthly Review</td><td><span class="pill sev-ok flat">Usable</span></td><td>All from journal lines; cash and accrual; drill-down; CSV.</td></tr>
+          <tr><td>Expense, income, vendor, customer tracking</td><td><span class="pill sev-ok flat">Usable</span></td><td>By category and vendor; income by customer; unified contacts.</td></tr>
+          <tr><td>Tax and 1099 readiness</td><td><span class="pill sev-high flat">Partial</span></td><td>Tax settings and fiscal year; no sales-tax engine or 1099 (v2).</td></tr>
+          <tr><td>Audit trail, multi-org, roles</td><td><span class="pill sev-ok flat">Usable</span></td><td>Per-post attribution; multi-entity with switcher; owner/admin/member.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">As a single-owner small-business tool, the accounting substance is close to a lightweight QuickBooks once Plaid and Stripe are proven live. The accountant-grade integrity is real and tested.</div>
+    </section>
+
+    <section id="acme">
+      <h2><span class="n">07</span> Acme Labs simulation</h2>
+      <div class="grid2">
+        <div class="kv"><b>Ideal flow</b><p>Sign up and name "Acme Labs"; connect Chase via Plaid and Stripe; the Inbox fills and the owner confirms or corrects (corrections teach memory and draft rules); invoices finalize into AR aging; a Stripe payout auto-splits into gross revenue minus fees through the clearing account and the bank deposit is consumed; reports and Monthly Review render; each week the owner clears a few Inbox cards.</p></div>
+        <div class="kv"><b>What the build supports today</b><p>Sign-up, onboarding, Inbox, invoices, reports, and the weekly loop work now on the seeded demo or a fresh business, with CSV substituting for live feeds. The Plaid and Stripe steps are coded and unit-tested but will not run end-to-end until a real hosted Plaid session and a real Stripe test webhook are provided. Statement reconciliation is lightweight only.</p></div>
+      </div>
+      <p class="meta">The richest way to experience it today is the seeded demo business: a services company with about six months of internally consistent books, multi-currency payroll, invoices, bills, receipts, Stripe-style payouts, and a trial balance of exactly zero.</p>
+    </section>
+
+    <section id="sec">
+      <h2><span class="n">08</span> Security &amp; production readiness</h2>
+      <div class="callout crit"><b>Critical — close before any multi-tenant exposure.</b> The legacy <code>aiChatRuntime.answer</code> action and its <code>POST /ai/chat</code> route (<code>http.ts:102</code>) authorize the workspace but pass a client-supplied <code>entityId</code> unchecked into the AI read tools (<code>agentToolQueries.getEntityById</code> does a bare lookup with no membership check). A member of one workspace can read another workspace's data. Bounded — read-only, requires a valid account, ids are not enumerable, and the product UI uses the secured durable-agent path — and the fix is a single workspace check in <code>getEntityById</code>.</div>
+      <div class="grid2">
+        <div class="kv"><b>Strong</b><p>Secrets are env-only in Convex, both env files are gitignored, and no secrets are committed. Plaid tokens are never sent to the client. Live keys are hard-refused. Ledger integrity, AI safety (no direct ledger writes), and signature-verified webhooks are all solid. Authorization is server-authoritative on every UI-reachable path.</p></div>
+        <div class="kv"><b>Gaps</b><p>No metrics, tracing, or alerting layer. No automated backups wired (export exists). Currency-unaware ledger balancing is a latent risk. The "accountant is read-only" label is inaccurate (admins can write). A forged system-actor id has no negative test.</p></div>
+      </div>
+    </section>
+
+    <section id="oss">
+      <h2><span class="n">09</span> Open-source readiness</h2>
+      <table>
+        <thead><tr><th>Dimension</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td>README, product and business-user docs</td><td><span class="pill sev-ok flat">Good and honest</span></td></tr>
+          <tr><td>One-command local boot</td><td><span class="pill sev-high flat">Owner-specific</span></td></tr>
+          <tr><td>Bring-your-own Convex project</td><td><span class="pill sev-crit flat">Missing — biggest barrier</span></td></tr>
+          <tr><td>Vercel / production deploy</td><td><span class="pill sev-high flat">Account-specific record</span></td></tr>
+          <tr><td>Env setup, secret handling</td><td><span class="pill sev-ok flat">Documented and sound</span></td></tr>
+          <tr><td>Demo / sandbox mode and seed data</td><td><span class="pill sev-ok flat">Excellent</span></td></tr>
+          <tr><td>UI to enter Plaid / Stripe / AI keys</td><td><span class="pill sev-high flat">Missing — env-only today</span></td></tr>
+        </tbody>
+      </table>
+      <div class="callout">A technical founder familiar with this deployment can run it today. A different developer can run it against their own new cloud Convex with effort, but there is no turnkey self-host path — the top item to build before an open-source release. A non-technical operator cannot install it.</div>
+    </section>
+
+    <section id="fixes">
+      <h2><span class="n">10</span> Recommended fixes (prioritized)</h2>
+      <table>
+        <caption>Effort: S under a day · M a few days · L a week or more.</caption>
+        <thead><tr><th>Fix</th><th>Severity</th><th>Effort</th></tr></thead>
+        <tbody>
+          <tr><td>Validate <code>entityId</code> against the workspace in <code>getEntityById</code> (closes the cross-tenant read)</td><td><span class="pill sev-crit flat">Critical</span></td><td class="r">S</td></tr>
+          <tr><td>Run a hosted Plaid sandbox Link session, then sync and confirm posting</td><td><span class="pill sev-high flat">High</span></td><td class="r">S</td></tr>
+          <tr><td>Deliver a real Stripe test webhook to the cloud route and confirm an invoice or payout update</td><td><span class="pill sev-high flat">High</span></td><td class="r">S</td></tr>
+          <tr><td>Lift AI categorization toward 80%+, or make the Inbox handoff explicit in copy</td><td><span class="pill sev-high flat">High</span></td><td class="r">M</td></tr>
+          <tr><td>Write a "bring your own Convex project" setup guide and unblock localhost-free onboarding</td><td><span class="pill sev-high flat">High</span></td><td class="r">M</td></tr>
+          <tr><td>Add automated tests for the payroll FX / multi-currency settlement path</td><td><span class="pill sev-med flat">Medium</span></td><td class="r">M</td></tr>
+          <tr><td>Make the ledger balance check currency-aware (or assert single-currency per entry)</td><td><span class="pill sev-med flat">Medium</span></td><td class="r">S</td></tr>
+          <tr><td>Replace dashboard div-charts with a charting pass: donut, full labels, axes, normalized grid</td><td><span class="pill sev-med flat">Medium</span></td><td class="r">M</td></tr>
+          <tr><td>Add a UI to enter Plaid / Stripe / AI keys (encrypted), beyond env-only</td><td><span class="pill sev-med flat">Medium</span></td><td class="r">M</td></tr>
+          <tr><td>Add observability (metrics, error tracking) and automated backups</td><td><span class="pill sev-med flat">Medium</span></td><td class="r">L</td></tr>
+          <tr><td>Handle the inbound ITEM_LOGIN_REQUIRED webhook (currently dropped)</td><td><span class="pill sev-med flat">Medium</span></td><td class="r">S</td></tr>
+          <tr><td>Remove dead code in <code>ModuleScreens.tsx</code> and the superseded keyword answerer and circular eval</td><td><span class="pill sev-low flat">Low</span></td><td class="r">S</td></tr>
+          <tr><td>Tighten color usage back to the single brand green; fix the "accountant is read-only" copy; wire or hide the Add-contact and Add-employee buttons</td><td><span class="pill sev-low flat">Low</span></td><td class="r">S</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="roadmap">
+      <h2><span class="n">11</span> Implementation roadmap</h2>
+      <div class="phase">
+        <div class="ph-h"><span class="ph-n">1</span><span class="ph-t">Before live testing<small>days · mostly inputs you already control</small></span></div>
+        <ul>
+          <li>Complete a hosted Plaid sandbox Link session, then run Sync now and confirm posting.</li>
+          <li>Deliver a real Stripe test webhook to <code>/stripe/webhook</code> with the signing secret set.</li>
+          <li>Confirm AWS Bedrock model access so the AI runs active rather than degraded.</li>
+          <li>Apply the one-line tenant-isolation fix.</li>
+        </ul>
+      </div>
+      <div class="phase">
+        <div class="ph-h"><span class="ph-n">2</span><span class="ph-t">Before an open-source release<small>weeks</small></span></div>
+        <ul>
+          <li>Write a bring-your-own-Convex setup path and a portable deploy guide.</li>
+          <li>Add a key-entry UI for Plaid, Stripe, and the AI provider.</li>
+          <li>Remove dead and legacy code; correct the role-permission copy.</li>
+        </ul>
+      </div>
+      <div class="phase">
+        <div class="ph-h"><span class="ph-n">3</span><span class="ph-t">Before a real business relies on it<small>weeks</small></span></div>
+        <ul>
+          <li>Prove Plaid and Stripe live; lift AI accuracy toward target.</li>
+          <li>Test the payroll FX path and make ledger balancing currency-aware.</li>
+          <li>Add observability and automated backups; deepen bank reconciliation.</li>
+        </ul>
+      </div>
+      <div class="phase">
+        <div class="ph-h"><span class="ph-n">4</span><span class="ph-t">Polish<small>ongoing</small></span></div>
+        <ul>
+          <li>Dashboard charting and layout pass; single-green palette discipline.</li>
+          <li>Partial-payment support; large-import AI fan-out; scanned-PDF OCR.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="test">
+      <h2><span class="n">12</span> What to test next, in order</h2>
+      <ol>
+        <li>Dev sign-in, then the Dashboard: click the four stat tiles and confirm matching totals; judge the chart finish for yourself.</li>
+        <li>Inbox: confirm and correct a card; watch a repeated correction draft a rule; batch-confirm.</li>
+        <li>Transactions: recategorize and confirm it reverses and reposts in the accounting drawer; split; CSV import.</li>
+        <li>Income and Bills: compose, save draft (nothing posts), finalize, see receivables; add a bill, mark paid, watch AP drop.</li>
+        <li>Payroll: open a run, approve, mark paid, print the statement — watch the PKR and INR FX lines, since that path is untested.</li>
+        <li>Reports: Monthly Review, then Profit and Loss; toggle cash and accrual; drill into a number; export CSV and compare.</li>
+        <li>Ask AI: ask the five flagship questions; then ask it to categorize and confirm the card; check the audit log attributes it to AI.</li>
+        <li>Settings: add a test business, switch to it, confirm empty states, archive it.</li>
+        <li>Mobile at 390px: Dashboard, Inbox, Transactions, Ask AI.</li>
+        <li>Money rails: when ready, run the Plaid Link session and Stripe test webhook to move the two unproven rows to verified.</li>
+      </ol>
+    </section>
+
+    <footer>
+      OpenBooks product, UI and architecture audit · read-only, no product code modified · grounded in file-and-line evidence.<br/>
+      Styled with the OpenBooks design system — one brand green, Geist, tabular figures, no decoration.
+    </footer>
+  </main>
+</div>
+
+<div class="toast" id="toast">Full report source copied</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  try {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        fontFamily: '"Geist", ui-sans-serif, system-ui, sans-serif',
+        fontSize: '13px',
+        primaryColor: '#f1f8ee',
+        primaryBorderColor: '#2ca01c',
+        primaryTextColor: '#17221a',
+        lineColor: '#98a2b3',
+        secondaryColor: '#f8f9fa',
+        tertiaryColor: '#ffffff',
+        clusterBkg: '#fcfdfc',
+        clusterBorder: '#e6e8eb',
+        nodeBorder: '#2ca01c'
+      },
+      flowchart: { htmlLabels: true, curve: 'basis', useMaxWidth: true },
+      sequence: { useMaxWidth: true, mirrorActors: false }
+    });
+  } catch (e) { /* mermaid unavailable offline; diagrams remain as text */ }
+
+  (function () {
+    var btn = document.getElementById('copyBtn');
+    var toast = document.getElementById('toast');
+    function flash(m){ toast.textContent = m; toast.classList.add('show'); setTimeout(function(){ toast.classList.remove('show'); }, 1800); }
+    function fallback(text){
+      var ta = document.createElement('textarea'); ta.value = text;
+      ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); flash('Full report source copied'); }
+      catch (e) { flash('Copy failed — select all and copy manually'); }
+      document.body.removeChild(ta);
+    }
+    btn.addEventListener('click', function () {
+      var src = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(src).then(function () { flash('Full report source copied'); }, function () { fallback(src); });
+      } else { fallback(src); }
+    });
+  })();
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@ flowchart LR
   Pipeline["Classification pipeline<br/>transfer -> match -> rules -> memory -> AI"]
   Inbox["Inbox<br/>owner resolves uncertainty"]
   Ledger["Double-entry ledger<br/>journal entries and lines"]
-  Reports["Reports<br/>P&L, balance sheet, cash flow, aging, monthly review"]
+  Reports["Reports<br/>P and L, balance sheet, cash flow, aging, monthly review"]
   AI["Ask AI<br/>reads reports and proposes actions"]
 
   Bank --> Pipeline
